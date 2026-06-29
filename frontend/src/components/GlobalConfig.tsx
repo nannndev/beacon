@@ -21,7 +21,7 @@ export default function GlobalConfig({ config, onSave }: Props) {
         </div>
         <div>
           <label className="text-sm">Variables</label>
-          <div className="text-xs text-zinc-400 mt-2">Use {{access_token}} etc in headers/payload. Editable in full editor.</div>
+          <div className="text-xs text-zinc-400 mt-2">Use {'{{access_token}}'} etc in headers/payload. Editable in full editor.</div>
         </div>
       </div>
     </div>

@@ -1,0 +1,19 @@
+{
+  "name": "security-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Security Tools - Dynamic API Tester (React + FastAPI)",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "dev": "concurrently -k --names \"[BACKEND]\",\"[FRONTEND]\" --prefix-colors \"blue.bold,green.bold\" --prefix \"[{name}]\" --timestamp-format \"HH:mm:ss\" --restart-tries 1 \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
+    "dev:backend": "cd backend && py -m uvicorn app.main:app --reload --port 8000 || python -m uvicorn app.main:app --reload --port 8000",
+    "dev:frontend": "node -e \"setTimeout(()=>{require('child_process').spawn(process.platform==='win32'?'pnpm.cmd':'pnpm',['--dir','frontend','dev'],{stdio:'inherit',shell:true})},2000);\"",
+    "start": "pnpm dev",
+    "build:frontend": "cd frontend && pnpm build",
+    "start:backend": "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "picocolors": "^1.1.1"
+  }
+}

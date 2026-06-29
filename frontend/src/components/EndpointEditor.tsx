@@ -15,15 +15,20 @@ interface Props {
 }
 
 export default function EndpointEditor({ testId, config, onClose, onSave }: Props) {
-  const [form, setForm] = useState<any>({
-    name: 'New Endpoint',
-    url: '/your-endpoint',
-    method: 'POST',
-    payload_type: 'json',
-    headers: { 'Content-Type': 'application/json' },
-    payload: {},
-    extractors: {}
-  })
+  const [form, setForm] = useState<any>(getDefaultForm())
+
+  function getDefaultForm() {
+    return {
+      name: 'New Endpoint',
+      url: '/your-endpoint',
+      method: 'POST',
+      payload_type: 'json',
+      headers: { 'Content-Type': 'application/json' },
+      cookies: {},
+      payload: {},
+      extractors: {}
+    }
+  }
 
   useEffect(() => {
     if (testId) {
@@ -32,10 +37,13 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
         setForm({
           ...existing,
           headers: existing.headers || {},
+          cookies: existing.cookies || {},
           payload: existing.payload || {},
           extractors: existing.extractors || {}
         })
       }
+    } else {
+      setForm(getDefaultForm())
     }
   }, [testId, config])
 
@@ -44,14 +52,24 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
   }
 
   const save = async () => {
-    const payload = { ...form }
+    const headers = { ...(form.headers || {}) }
+    const cookies = form.cookies || {}
+    if (Object.keys(cookies).length > 0) {
+      headers['Cookie'] = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ')
+    }
+
+    const payloadToSend = {
+      ...form,
+      headers,
+      cookies: undefined  // don't send cookies separately
+    }
 
     const url = testId ? `/tests/${testId}` : `/tests`
 
     await fetch(url, {
       method: testId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payloadToSend)
     })
 
     onSave()
@@ -76,7 +94,7 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
       </div>
 
       <div className="space-y-6">
-        {/* Basic */}
+        {/* Basic Info */}
         <Card>
           <CardHeader>
             <CardTitle>Basic Information</CardTitle>
@@ -84,11 +102,18 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
           <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-2">
               <Label>Name</Label>
-              <Input value={form.name} onChange={e => handleChange('name', e.target.value)} />
+              <Input 
+                value={form.name || ''} 
+                onChange={(e) => handleChange('name', e.target.value)} 
+              />
             </div>
             <div>
               <Label>Method</Label>
-              <select value={form.method} onChange={e => handleChange('method', e.target.value)} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <select 
+                value={form.method} 
+                onChange={(e) => handleChange('method', e.target.value)}
+                className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+              >
                 <option>POST</option>
                 <option>GET</option>
                 <option>PUT</option>
@@ -97,7 +122,11 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
             </div>
             <div>
               <Label>Payload Type</Label>
-              <select value={form.payload_type} onChange={e => handleChange('payload_type', e.target.value)} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <select 
+                value={form.payload_type} 
+                onChange={(e) => handleChange('payload_type', e.target.value)}
+                className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+              >
                 <option value="json">JSON</option>
                 <option value="form">Form</option>
                 <option value="multipart">Multipart</option>
@@ -105,27 +134,29 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
             </div>
             <div className="md:col-span-4">
               <Label>URL</Label>
-              <Input value={form.url} onChange={e => handleChange('url', e.target.value)} className="font-mono" />
+              <Input 
+                value={form.url || ''} 
+                onChange={(e) => handleChange('url', e.target.value)} 
+                className="font-mono" 
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* Auth Header - dynamic per project */}
+        {/* Authorization - Dynamic per project */}
         <Card>
           <CardHeader>
-            <CardTitle>Authorization</CardTitle>
+            <CardTitle>Authorization Header</CardTitle>
           </CardHeader>
           <CardContent>
-            <Label>Authorization Header</Label>
+            <Label>Authorization (use {'{{variable}}'} for dynamic tokens per project)</Label>
             <Input 
               value={form.headers?.Authorization || ''} 
-              onChange={e => handleChange('headers', { ...(form.headers || {}), Authorization: e.target.value })}
+              onChange={(e) => handleChange('headers', { ...(form.headers || {}), Authorization: e.target.value })}
               placeholder="Bearer {{access_token}}"
-              className="font-mono"
+              className={`font-mono ${ (form.headers?.Authorization || '').includes('{{') ? 'template-var' : '' }`}
             />
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Fully dynamic. Use any variable. Different APIs/projects can use different tokens.
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">Supports {'{{access_token}}'}, {'{{api_key}}'} etc. Different APIs can have different auth vars.</p>
           </CardContent>
         </Card>
 
@@ -137,7 +168,21 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
           <CardContent>
             <KVEditor 
               data={form.headers || {}} 
-              onChange={(h: any) => handleChange('headers', h)} 
+              onChange={(h) => handleChange('headers', h)} 
+            />
+          </CardContent>
+        </Card>
+
+        {/* Cookies */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Cookies</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <KVEditor 
+              data={form.cookies || {}} 
+              onChange={(c) => handleChange('cookies', c)} 
+              label="Will be sent as Cookie: header"
             />
           </CardContent>
         </Card>
@@ -150,10 +195,10 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
           <CardContent>
             <KVEditor 
               data={form.payload || {}} 
-              onChange={(p: any) => handleChange('payload', p)} 
+              onChange={(p) => handleChange('payload', p)} 
             />
-            <div className="mt-3 text-xs text-amber-400">
-              Supports template variables: <span className="font-mono bg-zinc-800 px-1 rounded">{'{{random_string}}'}</span>, <span className="font-mono bg-zinc-800 px-1 rounded">{'{{random_number}}'}</span>, <span className="font-mono bg-zinc-800 px-1 rounded">{'{{random_phone}}'}</span>
+            <div className="text-xs text-amber-400 mt-2">
+              Dynamic: {'{{random_string}}'}, {'{{random_number}}'}, {'{{random_phone}}'}, {'{{access_token}}'}
             </div>
           </CardContent>
         </Card>
@@ -161,13 +206,13 @@ export default function EndpointEditor({ testId, config, onClose, onSave }: Prop
         {/* Extractors */}
         <Card>
           <CardHeader>
-            <CardTitle>Extractors (for fresh tokens)</CardTitle>
+            <CardTitle>Response Extractors</CardTitle>
           </CardHeader>
           <CardContent>
             <KVEditor 
               data={form.extractors || {}} 
-              onChange={(e: any) => handleChange('extractors', e)} 
-              label="Map response fields to variables (e.g. access_token → body.access_token)"
+              onChange={(e) => handleChange('extractors', e)} 
+              label="e.g. access_token → body.access_token (updates global vars after run)"
             />
           </CardContent>
         </Card>

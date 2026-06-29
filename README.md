@@ -10,30 +10,62 @@
 - FastAPI backend (more reliable WebSockets than old SocketIO on Windows).
 - Core tester logic stays in Python (powerful for concurrent requests).
 
-## Running
+## Setup & Run (Recommended from ROOT)
 
-### 1. Backend (FastAPI)
+### 1. One-time Setup
 ```bash
+# Option A: Using pnpm (recommended)
+pnpm run setup
+
+# Option B: Windows double-click
+setup.bat
+```
+
+This will:
+- Install root dependencies (concurrently)
+- Install frontend (pnpm)
+- Install backend (pip)
+
+### 2. Run Both Together (one command)
+```bash
+pnpm dev
+```
+
+Or on Windows:
+```bash
+start-dev.bat
+```
+
+This starts:
+- **Backend**  → http://localhost:8000 (FastAPI)  — now with colored startup banner [BACKEND]
+- **Frontend** → http://localhost:5173 (React + shadcn/ui)
+
+Terminal output uses colored prefixes like:
+[BACKEND]  14:23:45  Uvicorn running...
+[FRONTEND] 14:23:45  VITE ready...
+
+### Available Root Scripts
+
+```bash
+pnpm run setup          # install everything
+pnpm dev                # start backend + frontend together
+pnpm run dev:backend    # start only backend
+pnpm run dev:frontend   # start only frontend
+```
+
+## Manual (if you prefer cd)
+
+```bash
+# Backend
 cd backend
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
-```
 
-### 2. Frontend (React + shadcn/ui)
-```bash
+# Frontend (new terminal)
 cd frontend
-npm install
-
-# Initialize shadcn (first time only)
-npx shadcn@latest init
-
-# Add components as needed
-npx shadcn@latest add button card input table textarea
-
-npm run dev
+pnpm install
+pnpm dev
 ```
-
-Open http://localhost:5173
 
 ## UI Stack
 - React + TypeScript + Vite

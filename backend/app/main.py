@@ -206,4 +206,14 @@ async def websocket_logs(websocket: WebSocket):
         active_websockets.remove(websocket)
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    print("\033[94m[BACKEND]\033[0m \033[1mStarting FastAPI + Uvicorn...\033[0m")
+    print("\033[94m[BACKEND]\033[0m → http://localhost:8000")
+    print("\033[94m[BACKEND]\033[0m Docs → http://localhost:8000/docs")
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info",
+        use_colors=True,
+    )

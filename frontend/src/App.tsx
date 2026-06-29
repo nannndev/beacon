@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
-import { Input } from './components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './components/ui/table'
+import { Badge } from './components/ui/badge'
 import { Endpoint, TestConfig } from './types'
 import EndpointEditor from './components/EndpointEditor'
 import LiveMonitor from './components/LiveMonitor'
@@ -68,101 +68,104 @@ function App() {
     }, 800)
   }
 
-  if (showEditor) {
-    return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-200 p-6">
-        <EndpointEditor 
-          testId={editingId} 
-          config={config} 
-          onClose={closeEditor}
-          onSave={fetchConfig}
-        />
-      </div>
-    )
-  }
-
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-200">
       {/* Sidebar */}
-      <div className="w-64 bg-zinc-900 border-r border-zinc-800 p-4 flex flex-col">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold">Security Tools</h1>
-          <p className="text-sm text-zinc-400">Dynamic API Tester</p>
+      <div className="w-64 bg-zinc-900 border-r border-zinc-800 p-6 flex flex-col">
+        <div className="mb-10">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded bg-indigo-600" />
+            <h1 className="text-2xl font-bold">Security Tools</h1>
+          </div>
+          <p className="text-sm text-zinc-400 mt-1">Dynamic API Tester</p>
         </div>
 
-        <Button onClick={openNewEditor} className="mb-4">
+        <Button onClick={openNewEditor} className="w-full mb-4">
           + New Endpoint
         </Button>
 
-        <div className="mt-auto text-xs text-zinc-500">
+        <div className="space-y-1 text-sm">
+          <div className="px-3 py-2 text-zinc-400">Endpoints</div>
+          <div className="px-3 py-1.5 rounded bg-zinc-800 text-sm">All ({config.tests.length})</div>
+        </div>
+
+        <div className="mt-auto pt-8 text-xs text-zinc-500 border-t border-zinc-800">
           React + shadcn/ui + FastAPI
         </div>
       </div>
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col overflow-auto p-6">
-        <div className="mb-6">
-          <h2 className="text-3xl font-semibold">Dashboard</h2>
-          <p className="text-zinc-400">Test endpoints with dynamic payloads and variables</p>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between bg-zinc-950">
+          <div>
+            <h2 className="font-semibold text-xl">Dashboard</h2>
+            <p className="text-xs text-zinc-400">Test and brute force your APIs with dynamic payloads</p>
+          </div>
+          <Badge variant="outline">Config: {config.base_url || 'not set'}</Badge>
         </div>
 
-        {/* Endpoints Table using shadcn Table */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Endpoints</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>URL</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {config.tests.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-zinc-400">
-                      No endpoints yet. Click "New Endpoint".
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  config.tests.map((test) => (
-                    <TableRow key={test.id}>
-                      <TableCell className="font-medium">{test.name}</TableCell>
-                      <TableCell>
-                        <span className="inline-block px-2 py-0.5 text-xs rounded bg-zinc-800">
-                          {test.method}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-zinc-400">{test.url}</TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => handleRun(test.id)}
-                        >
-                          Run
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          onClick={() => openEdit(test.id)}
-                        >
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <div className="flex-1 overflow-auto p-6 space-y-6">
+          {showEditor ? (
+            <EndpointEditor 
+              testId={editingId} 
+              config={config} 
+              onClose={closeEditor}
+              onSave={fetchConfig}
+            />
+          ) : (
+            <>
+              {/* Endpoints */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Endpoints</CardTitle>
+                  <Button size="sm" onClick={openNewEditor}>New Endpoint</Button>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>URL</TableHead>
+                        <TableHead className="text-right pr-4">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {config.tests.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                            No endpoints. Click "New Endpoint" to start.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {config.tests.map((test: any) => (
+                        <TableRow key={test.id}>
+                          <TableCell className="font-medium">{test.name}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="font-mono text-xs">{test.method}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[280px]">{test.url}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button size="sm" variant="outline" onClick={() => handleRun(test.id)}>
+                                Run
+                              </Button>
+                              <Button size="sm" onClick={() => openEdit(test.id)}>
+                                Edit
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
 
-        <LiveMonitor logs={runLogs} />
-
+              <LiveMonitor logs={runLogs} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

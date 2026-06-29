@@ -4,14 +4,34 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": "/src",
+    },
+  },
   server: {
     port: 5173,
     proxy: {
-      '/config': 'http://localhost:8000',
-      '/tests': 'http://localhost:8000',
-      '/run': 'http://localhost:8000',
-      '/status': 'http://localhost:8000',
-      '/stop': 'http://localhost:8000',
+      '/config': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/tests': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/run': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/status': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/stop': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
     }
   }
 })
