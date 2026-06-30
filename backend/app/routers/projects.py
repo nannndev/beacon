@@ -3,8 +3,13 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from ..state import store
+from ..core.tester import EndpointTest
 
 router = APIRouter(tags=["projects"])
+
+# Portable project file format (Postman-style export/import envelope).
+EXPORT_FORMAT = "security-tools.project"
+EXPORT_VERSION = 1
 
 
 @router.get("/projects")
@@ -96,6 +101,138 @@ def delete_project(project_id: str):
     return {
         "status": "deleted",
         "current_project_id": store.current_project_id,
+        "config": store.current_config.to_dict(),
+    }
+
+
+# ---- export / import (Postman-style) ---------------------------------
+
+def _blank_template() -> dict:
+    """A ready-to-edit project envelope so importing is fill-in-the-blanks."""
+    return {
+        "format": EXPORT_FORMAT,
+        "version": EXPORT_VERSION,
+        "project": {
+            "name": "My API Project",
+            "environments": [
+                {
+                    "name": "Local",
+                    "base_url": "https://api.example.com",
+                    "variables": {"access_token": "", "refresh_token": ""},
+                }
+            ],
+            "tests": [
+                {
+                    "name": "Example Login",
+                    "url": "/auth/login",
+                    "method": "POST",
+                    "headers": {"Content-Type": "application/json"},
+                    "payload": {"email": "{{random_email}}", "password": "ChangeMe123"},
+                    "payload_type": "json",
+                    "extractors": {"access_token": "body.access_token"},
+                    "run_config": None,
+                }
+            ],
+        },
+    }
+
+
+@router.get("/projects/template")
+def project_template():
+    """Blank importable template — same shape as an export."""
+    return _blank_template()
+
+
+@router.get("/projects/{project_id}/export")
+def export_project(project_id: str, include_secrets: bool = False):
+    """Export a project as a portable envelope.
+
+    By default variable *values* are redacted (keys kept) because environments
+    can hold live bearer tokens / JWTs. Pass ?include_secrets=true for a full
+    round-trip export.
+    """
+    store.save_active_project()  # fold in-memory edits of the active project back first
+    proj = next((p for p in store.projects if p.get("id") == project_id), None)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    envs = []
+    for e in proj.get("environments", []):
+        variables = e.get("variables", {}) or {}
+        if not include_secrets:
+            variables = {k: "" for k in variables}  # keep names, drop secret values
+        envs.append({
+            "name": e.get("name", ""),
+            "base_url": e.get("base_url", ""),
+            "variables": variables,
+        })
+
+    return {
+        "format": EXPORT_FORMAT,
+        "version": EXPORT_VERSION,
+        "project": {
+            "name": proj.get("name", "Exported Project"),
+            "environments": envs,
+            "tests": proj.get("tests", []),
+        },
+        "secrets_included": include_secrets,
+    }
+
+
+@router.post("/projects/import")
+def import_project(data: dict):
+    """Import a project from an export envelope or a bare project object.
+
+    Fresh ids are minted for the project, every environment, and every endpoint
+    so an import never collides with or overwrites existing data.
+    """
+    payload = data.get("project") if isinstance(data, dict) and "project" in data else data
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid import body: expected a project object")
+
+    name = payload.get("name") or "Imported Project"
+
+    # Validate endpoints through the engine's own contract; assign fresh ids.
+    tests = []
+    for idx, t in enumerate(payload.get("tests") or []):
+        if not isinstance(t, dict):
+            raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} is not an object")
+        try:
+            et = EndpointTest.from_dict({**t, "id": str(uuid.uuid4())})
+        except KeyError as e:
+            raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} missing required field {e}")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} invalid: {e}")
+        tests.append(et.to_dict())
+
+    envs = []
+    for e in payload.get("environments") or []:
+        if not isinstance(e, dict):
+            continue
+        envs.append({
+            "id": str(uuid.uuid4()),
+            "name": e.get("name") or "Imported",
+            "base_url": e.get("base_url", "") or "",
+            "variables": e.get("variables", {}) or {},
+        })
+    if not envs:
+        envs = [{"id": str(uuid.uuid4()), "name": "Local", "base_url": "", "variables": {}}]
+
+    pid = str(uuid.uuid4())
+    store.projects.append({
+        "id": pid,
+        "name": name,
+        "environments": envs,
+        "current_environment_id": envs[0]["id"],
+        "tests": tests,
+    })
+    store.current_project_id = pid
+    store.sync_current_config()
+    store.save()
+    return {
+        "id": pid,
+        "name": name,
+        "imported": {"tests": len(tests), "environments": len(envs)},
         "config": store.current_config.to_dict(),
     }
 

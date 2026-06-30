@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { RunConfig } from '../types'
+import { RunConfig, RunResponse } from '../types'
 import { RunStats, RunStatus } from '../components/LiveMonitor'
 import { api } from '../lib/api'
 import { toast } from '../components/ui/toast'
@@ -8,10 +8,11 @@ const EMPTY_STATS: RunStats = { attempts: 0, success: 0, rate_limited: 0, errors
 
 /**
  * Drives a single endpoint run: starts it on the backend, then streams logs +
- * stats over WebSocket, falling back to /status polling if the socket fails.
+ * stats + responses over WebSocket, falling back to /status polling if the socket fails.
  */
 export function useRun() {
   const [logs, setLogs] = useState<string[]>([])
+  const [responses, setResponses] = useState<RunResponse[]>([])
   const [stats, setStats] = useState<RunStats>(EMPTY_STATS)
   const [status, setStatus] = useState<RunStatus>('idle')
   const [runningTestId, setRunningTestId] = useState<string | null>(null)
@@ -43,6 +44,7 @@ export function useRun() {
         const st: any = await api.getStatus(rid)
         if (st.stats) setStats(st.stats)
         if (st.logs) setLogs(st.logs.filter((l: string) => !l.includes('run_finished')))
+        if (st.responses) setResponses(st.responses)
         if (st.status && st.status !== 'running') finish()
       } catch {}
     }, 1000)
@@ -64,6 +66,8 @@ export function useRun() {
             else setLogs(prev => [...prev, msg.message])
           } else if (msg.type === 'stats') {
             setStats(msg.stats)
+          } else if (msg.type === 'response' && msg.response) {
+            setResponses(prev => [...prev, msg.response])
           }
         } catch {}
       }
@@ -80,6 +84,7 @@ export function useRun() {
     setRunningTestId(testId)
     setMaxRequests(cfg.max_requests)
     setStats(EMPTY_STATS)
+    setResponses([])
     setStatus('running')
     setLogs([`Starting "${name}" — ${cfg.concurrency} workers × ${cfg.max_requests} requests${cfg.use_min_delay ? ' (min delay)' : ` · ${Math.round(cfg.delay * 1000)}ms delay`}`])
 
@@ -107,10 +112,11 @@ export function useRun() {
   const clear = useCallback(() => {
     cleanupSockets()
     setLogs([])
+    setResponses([])
     setStats(EMPTY_STATS)
     setStatus('idle')
     setRunningTestId(null)
   }, [cleanupSockets])
 
-  return { logs, stats, status, runningTestId, maxRequests, start, stop, clear }
+  return { logs, responses, stats, status, runningTestId, maxRequests, start, stop, clear }
 }

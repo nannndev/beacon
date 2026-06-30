@@ -1,0 +1,46 @@
+{
+  "format": "security-tools.project",
+  "version": 1,
+  "project": {
+    "name": "My API Project",
+    "environments": [
+      {
+        "name": "Local",
+        "base_url": "https://api.example.com",
+        "variables": {
+          "access_token": "",
+          "refresh_token": ""
+        }
+      },
+      {
+        "name": "Staging",
+        "base_url": "https://staging-api.example.com",
+        "variables": {
+          "access_token": ""
+        }
+      }
+    ],
+    "tests": [
+      {
+        "name": "Login",
+        "url": "/auth/login",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json" },
+        "payload": { "email": "{{random_email}}", "password": "ChangeMe123" },
+        "payload_type": "json",
+        "extractors": { "access_token": "body.access_token" },
+        "run_config": null
+      },
+      {
+        "name": "Get Profile (uses token)",
+        "url": "/me",
+        "method": "GET",
+        "headers": { "Authorization": "Bearer {{access_token}}" },
+        "payload": {},
+        "payload_type": "json",
+        "extractors": {},
+        "run_config": { "concurrency": 1, "max_requests": 10, "delay": 0.1, "use_min_delay": false }
+      }
+    ]
+  }
+}

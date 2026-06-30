@@ -69,6 +69,7 @@ class APITester:
                  concurrency: int = 1, delay: float = 0.1, max_requests: int = 100,
                  log_callback: Callable[[str], None] = None,
                  stats_callback: Callable[[Dict], None] = None,
+                 response_callback: Callable[[Dict], None] = None,
                  stop_flag: Optional[Dict] = None):
         self.test = test
         self.config = config
@@ -77,16 +78,32 @@ class APITester:
         self.max_requests = max_requests
         self.log = log_callback or print
         self.update_stats = stats_callback or (lambda x: None)
+        self.emit_response = response_callback or (lambda x: None)
         self.stop_flag = stop_flag or {"stop": False}
-        self.session = requests.Session()
+        # Per-thread HTTP sessions. A single requests.Session shared across the
+        # ThreadPoolExecutor workers is not thread-safe (its cookie jar and
+        # header dict race), which corrupts state under concurrency > 1.
+        self._tls = threading.local()
         self._lock = threading.Lock()
         self._reset_metrics()
+
+    def _session(self) -> "requests.Session":
+        s = getattr(self._tls, "session", None)
+        if s is None:
+            s = requests.Session()
+            self._tls.session = s
+        return s
 
     def _reset_metrics(self):
         self.results = {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0}
         self._codes: Dict[str, int] = {}
         self._recent: List[int] = []
+        self._all_lat: List[float] = []  # full-run latencies, for percentiles
         self._lat = {"sum": 0.0, "count": 0, "min": 0.0, "max": 0.0, "last": 0.0}
+        # Defense-validation metrics: at which attempt the target first threw a
+        # 429/throttle, and the last Retry-After it advertised.
+        self._first_rate_limited_at: Optional[int] = None
+        self._last_retry_after: Optional[str] = None
         self._t_start = time.time()
 
     def _record_latency(self, ms: float):
@@ -99,6 +116,20 @@ class APITester:
         self._recent.append(round(ms))
         if len(self._recent) > 60:
             del self._recent[0]
+        self._all_lat.append(ms)
+
+    @staticmethod
+    def _percentile(sorted_vals: List[float], pct: float) -> float:
+        """Linear-interpolated percentile over an already-sorted list."""
+        n = len(sorted_vals)
+        if n == 0:
+            return 0.0
+        if n == 1:
+            return sorted_vals[0]
+        rank = pct / 100.0 * (n - 1)
+        lo = int(rank)
+        hi = min(lo + 1, n - 1)
+        return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (rank - lo)
 
     def _snapshot(self) -> Dict:
         """Build a stats snapshot (counters + latency + status mix + throughput)."""
@@ -108,14 +139,21 @@ class APITester:
         snap = dict(self.results)
         snap["status_codes"] = dict(self._codes)
         snap["recent_ms"] = list(self._recent)
+        # Percentiles over the full run (modest run sizes; sort cost acceptable).
+        srt = sorted(self._all_lat)
         snap["latency_ms"] = {
             "avg": round(l["sum"] / cnt) if cnt else 0,
             "min": round(l["min"]),
             "max": round(l["max"]),
             "last": round(l["last"]),
+            "p50": round(self._percentile(srt, 50)),
+            "p95": round(self._percentile(srt, 95)),
+            "p99": round(self._percentile(srt, 99)),
         }
         snap["elapsed_s"] = round(elapsed, 2)
         snap["rps"] = round(self.results["attempts"] / elapsed, 1)
+        snap["first_rate_limited_at"] = self._first_rate_limited_at
+        snap["retry_after"] = self._last_retry_after
         return snap
 
     def _substitute(self, value: Any) -> Any:
@@ -246,8 +284,9 @@ class APITester:
         start = time.time()
         try:
             ptype = (self.test.payload_type or "json").lower()
+            session = self._session()
             if ptype == "form":
-                resp = self.session.request(self.test.method, url, headers=headers, data=payload, timeout=10)
+                resp = session.request(self.test.method, url, headers=headers, data=payload, timeout=10)
             elif ptype == "multipart":
                 # multipart/form-data — text fields + real file fields (base64-embedded)
                 files = {}
@@ -262,14 +301,26 @@ class APITester:
                         files[k] = (None, str(v))
                 # remove any content-type so requests sets correct multipart boundary
                 headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
-                resp = self.session.request(self.test.method, url, headers=headers, files=files, timeout=10)
+                resp = session.request(self.test.method, url, headers=headers, files=files, timeout=10)
             else:
                 # json (default)
-                resp = self.session.request(self.test.method, url, headers=headers, json=payload, timeout=10)
+                resp = session.request(self.test.method, url, headers=headers, json=payload, timeout=10)
 
             elapsed = time.time() - start
             is_success = 200 <= resp.status_code < 300
-            is_rate = resp.status_code == 429 or "rate" in resp.text.lower() or "too many" in resp.text.lower()
+            retry_after = resp.headers.get("Retry-After")
+            # Accurate throttle detection: prefer HTTP 429 / Retry-After, then
+            # fall back to specific phrases. Avoid a bare "rate" substring — it
+            # matches innocent words like "generate"/"accurate" and inflates the
+            # rate_limited count that defense-validation runs depend on.
+            text_lc = resp.text.lower()
+            is_rate = (
+                resp.status_code == 429
+                or "rate limit" in text_lc
+                or "ratelimit" in text_lc
+                or "too many request" in text_lc
+                or "too many attempt" in text_lc
+            )
 
             with self._lock:
                 self.results["attempts"] += 1
@@ -277,6 +328,10 @@ class APITester:
                     self.results["success"] += 1
                 elif is_rate:
                     self.results["rate_limited"] += 1
+                    if self._first_rate_limited_at is None:
+                        self._first_rate_limited_at = self.results["attempts"]
+                    if retry_after:
+                        self._last_retry_after = retry_after
                 self._codes[str(resp.status_code)] = self._codes.get(str(resp.status_code), 0) + 1
                 self._record_latency(elapsed * 1000.0)
                 snapshot = self._snapshot()
@@ -287,14 +342,18 @@ class APITester:
 
             result = {
                 "attempt": i,
+                "method": self.test.method,
+                "url": url,
                 "status": resp.status_code,
                 "time": round(elapsed, 3),
                 "success": is_success,
                 "rate_limited": is_rate,
-                "body": resp.text[:500]
+                "retry_after": retry_after,
+                "body": resp.text[:2000],
             }
 
             self.update_stats(snapshot)
+            self.emit_response(result)
             self.log(f"[{i}] {self.test.name} {url} -> {resp.status_code} ({elapsed:.2f}s) {'SUCCESS' if is_success else 'FAIL'}")
 
             return result
@@ -305,8 +364,16 @@ class APITester:
                 self._codes["error"] = self._codes.get("error", 0) + 1
                 snapshot = self._snapshot()
             self.update_stats(snapshot)
+            err = {
+                "attempt": i,
+                "method": self.test.method,
+                "url": url,
+                "error": str(e),
+                "success": False,
+            }
+            self.emit_response(err)
             self.log(f"[{i}] ERROR: {str(e)}")
-            return {"attempt": i, "error": str(e)}
+            return err
 
     def run(self):
         self._reset_metrics()

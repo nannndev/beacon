@@ -7,6 +7,7 @@ import { ExecutionControls, ExecSettings, DEFAULT_SETTINGS, settingsToConfig, co
 import LiveMonitor from './components/LiveMonitor'
 import EndpointEditor from './components/EndpointEditor'
 import { ProjectDialog } from './components/dialogs/ProjectDialog'
+import { ImportDialog } from './components/dialogs/ImportDialog'
 import { EnvironmentsDialog } from './components/dialogs/EnvironmentsDialog'
 import { GlobalVarsDialog } from './components/dialogs/GlobalVarsDialog'
 import { ProjectSettingsDialog } from './components/dialogs/ProjectSettingsDialog'
@@ -34,6 +35,8 @@ function App() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const [showProjectDialog, setShowProjectDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => localStorage.getItem('sidebar_collapsed') === 'true')
   const [showEnvDialog, setShowEnvDialog] = useState(false)
   const [showGlobalDialog, setShowGlobalDialog] = useState(false)
   const [showProjectSettings, setShowProjectSettings] = useState(false)
@@ -125,6 +128,33 @@ function App() {
     } catch (e: any) {
       toast.error(e?.message || 'Failed to delete project')
     }
+  }
+
+  // ---- export / import (Postman-style) ---------------------------------
+  const exportProject = async () => {
+    if (!currentProject) return
+    try {
+      // Default export redacts secret values; the backend keeps variable names.
+      const data = await api.exportProject(currentProjectId, false)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const safeName = (currentProject.name || 'project').replace(/[^a-z0-9-_]+/gi, '_').toLowerCase()
+      a.href = url
+      a.download = `${safeName}.project.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Exported (secret values redacted)')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to export project')
+    }
+  }
+
+  // Parse + send to backend; throws so ImportDialog can surface the error inline.
+  const doImport = async (payload: unknown) => {
+    const res = await api.importProject(payload)
+    toast.success(`Imported "${res.name}" — ${res.imported.tests} endpoint(s)`)
+    await switchProject(res.id)
   }
 
   const saveEnvironments = async (envs: any[]) => {
@@ -230,6 +260,8 @@ function App() {
         currentProjectId={currentProjectId}
         currentProject={currentProject}
         config={config}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((c) => { localStorage.setItem('sidebar_collapsed', String(!c)); return !c })}
         onSwitchProject={switchProject}
         onNewProject={() => setShowProjectDialog(true)}
         onSwitchEnv={switchEnv}
@@ -239,7 +271,12 @@ function App() {
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header currentProject={currentProject} onProjectSettings={() => setShowProjectSettings(true)} />
+        <Header
+          currentProject={currentProject}
+          onProjectSettings={() => setShowProjectSettings(true)}
+          onImport={() => setShowImportDialog(true)}
+          onExport={exportProject}
+        />
 
         <div className={`flex-1 overflow-auto ${showEditor ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
           {showEditor ? (
@@ -280,6 +317,7 @@ function App() {
 
               <LiveMonitor
                 logs={run.logs}
+                responses={run.responses}
                 stats={run.stats}
                 status={run.status}
                 maxRequests={run.maxRequests}
@@ -294,6 +332,7 @@ function App() {
 
       {/* Dialogs */}
       <ProjectDialog open={showProjectDialog} onOpenChange={setShowProjectDialog} onCreate={createProject} />
+      <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} onImport={doImport} fetchTemplate={api.projectTemplate} />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
       <ProjectSettingsDialog open={showProjectSettings} onOpenChange={setShowProjectSettings} project={currentProject} onRename={renameProject} onDelete={deleteProject} />

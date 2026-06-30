@@ -54,3 +54,15 @@ export interface RunStatus {
   }
   logs: string[]
 }
+
+export interface RunResponse {
+  attempt: number
+  method?: string
+  url?: string
+  status?: number
+  time?: number
+  success?: boolean
+  rate_limited?: boolean
+  body?: string
+  error?: string
+}

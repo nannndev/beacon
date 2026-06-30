@@ -1,6 +1,6 @@
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Plus, Settings, Globe } from 'lucide-react'
+import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack } from 'lucide-react'
 import { Project, TestConfig } from '../types'
 
 interface Props {
@@ -8,6 +8,8 @@ interface Props {
   currentProjectId: string
   currentProject?: Project
   config: TestConfig
+  collapsed: boolean
+  onToggleCollapse: () => void
   onSwitchProject: (id: string) => void
   onNewProject: () => void
   onSwitchEnv: (envId: string) => void
@@ -17,18 +19,69 @@ interface Props {
 }
 
 export function Sidebar({
-  projects, currentProjectId, currentProject, config,
+  projects, currentProjectId, currentProject, config, collapsed, onToggleCollapse,
   onSwitchProject, onNewProject, onSwitchEnv, onManageEnv, onGlobalVars, onNewEndpoint,
 }: Props) {
   const envs = currentProject?.environments || []
 
+  // ---- Collapsed rail --------------------------------------------------
+  if (collapsed) {
+    return (
+      <div className="w-14 bg-card border-r border-border flex flex-col items-center py-3 gap-2">
+        <Button size="icon" variant="ghost" className="h-8 w-8" title="Expand sidebar" onClick={onToggleCollapse}>
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+        <div className="h-7 w-7 rounded bg-primary shrink-0" title="Security Tools" />
+
+        <div className="w-8 border-t border-border my-1" />
+
+        <Button size="icon" variant="ghost" className="h-8 w-8" title="New project" onClick={onNewProject}>
+          <Plus className="h-4 w-4" />
+        </Button>
+
+        <div className="flex-1 w-full overflow-auto flex flex-col items-center gap-1 px-1">
+          {projects.map((p) => {
+            const active = p.id === currentProjectId
+            return (
+              <button
+                key={p.id}
+                onClick={() => onSwitchProject(p.id)}
+                title={p.name}
+                className={`h-8 w-8 rounded-md text-xs font-semibold uppercase transition-colors flex items-center justify-center ${
+                  active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
+                }`}
+              >
+                {p.name.trim().charAt(0) || '?'}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="w-8 border-t border-border my-1" />
+        <Button size="icon" variant="ghost" className="h-8 w-8" title="Manage environments" onClick={onManageEnv}>
+          <Settings className="h-4 w-4" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-8 w-8" title="Global variables" onClick={onGlobalVars}>
+          <Globe className="h-4 w-4" />
+        </Button>
+        <Button size="icon" variant="default" className="h-8 w-8" title="New endpoint" onClick={onNewEndpoint}>
+          <FileStack className="h-4 w-4" />
+        </Button>
+      </div>
+    )
+  }
+
+  // ---- Full sidebar ----------------------------------------------------
   return (
     <div className="w-64 bg-card border-r border-border flex flex-col">
       {/* Brand */}
       <div className="p-4 pb-3">
         <div className="flex items-center gap-2">
           <div className="h-7 w-7 rounded bg-primary" />
-          <h1 className="text-lg font-semibold tracking-tight">Security Tools</h1>
+          <h1 className="text-lg font-semibold tracking-tight flex-1">Security Tools</h1>
+          <Button size="icon" variant="ghost" className="h-7 w-7 -mr-1" title="Collapse sidebar" onClick={onToggleCollapse}>
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5 pl-9">API Testing</p>
       </div>

@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { RunResponse } from '../types'
+import { Copy, Check } from 'lucide-react'
 
 export interface RunStats {
   attempts: number
@@ -19,6 +22,7 @@ export type RunStatus = 'idle' | 'running' | 'finished' | 'stopped'
 
 interface Props {
   logs: string[]
+  responses: RunResponse[]
   stats: RunStats
   status: RunStatus
   maxRequests?: number
@@ -34,17 +38,42 @@ const statusBadge: Record<RunStatus, { label: string; className: string }> = {
   stopped: { label: 'Stopped', className: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' },
 }
 
-export default function LiveMonitor({ logs, stats, status, maxRequests, runningName, onStop, onClear }: Props) {
+export default function LiveMonitor({ logs, responses, stats, status, maxRequests, runningName, onStop, onClear }: Props) {
   const logRef = useRef<HTMLDivElement>(null)
+  const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
+  const [followLatest, setFollowLatest] = useState(true)
+  const [copied, setCopied] = useState(false)
+
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [logs])
 
+  useEffect(() => {
+    if (responses.length === 0) {
+      setSelectedAttempt(null)
+      return
+    }
+    if (followLatest) {
+      setSelectedAttempt(responses[responses.length - 1].attempt)
+    }
+  }, [responses, followLatest])
+
+  const selected = responses.find((r) => r.attempt === selectedAttempt) ?? null
   const successRate = stats.attempts > 0 ? Math.round((stats.success / stats.attempts) * 100) : 0
   const progress = maxRequests && maxRequests > 0 ? Math.min(100, Math.round((stats.attempts / maxRequests) * 100)) : 0
   const badge = statusBadge[status]
   const lat = stats.latency_ms
   const showSummary = stats.attempts > 0
+
+  const copyBody = async () => {
+    const text = selected ? formatBody(selected) : ''
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {}
+  }
 
   return (
     <Card>
@@ -64,7 +93,6 @@ export default function LiveMonitor({ logs, stats, status, maxRequests, runningN
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4 pt-0">
-        {/* Progress toward max requests */}
         {(status === 'running' || stats.attempts > 0) && maxRequests ? (
           <div className="mb-3">
             <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
@@ -85,7 +113,6 @@ export default function LiveMonitor({ logs, stats, status, maxRequests, runningN
           <StatCard label="Errors" value={stats.errors} tone="text-red-600 dark:text-red-400" />
         </div>
 
-        {/* Summary: latency, throughput, sparkline, status distribution */}
         {showSummary && (
           <div className="mb-3 space-y-3">
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -113,19 +140,117 @@ export default function LiveMonitor({ logs, stats, status, maxRequests, runningN
           </div>
         )}
 
-        <div
-          ref={logRef}
-          className="log-container h-56 overflow-auto bg-muted/50 border border-border rounded-lg p-3 text-xs font-mono scroll-smooth"
-        >
-          {logs.length === 0 ? (
-            <div className="text-muted-foreground">Run an endpoint to see live output here.</div>
-          ) : (
-            logs.map((line, i) => <div key={i} className={`py-0.5 ${lineColor(line)}`}>{line}</div>)
-          )}
-        </div>
+        <Tabs defaultValue="responses" className="w-full">
+          <TabsList className="h-8 mb-2">
+            <TabsTrigger value="responses" className="text-xs px-3 h-7">
+              Responses {responses.length > 0 && <span className="ml-1.5 text-muted-foreground">({responses.length})</span>}
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="text-xs px-3 h-7">Logs</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="responses" className="mt-0">
+            {responses.length === 0 ? (
+              <div className="h-56 flex items-center justify-center text-xs text-muted-foreground border border-border rounded-lg bg-muted/30">
+                Run an endpoint to inspect response bodies here.
+              </div>
+            ) : (
+              <div className="flex gap-2 h-64 border border-border rounded-lg overflow-hidden bg-muted/20">
+                <div className="w-36 shrink-0 overflow-auto border-r border-border bg-background/50">
+                  {responses.map((r) => (
+                    <button
+                      key={r.attempt}
+                      onClick={() => { setSelectedAttempt(r.attempt); setFollowLatest(false) }}
+                      className={`w-full text-left px-2.5 py-2 text-[11px] font-mono border-b border-border/50 transition-colors ${
+                        selectedAttempt === r.attempt ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/60 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">#{r.attempt}</span>
+                        <ResponseStatusBadge response={r} />
+                      </div>
+                      {r.time != null && <div className="text-[10px] opacity-70 mt-0.5">{Math.round(r.time * 1000)}ms</div>}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 min-w-0 flex flex-col">
+                  {selected ? (
+                    <>
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-background/60 text-xs shrink-0">
+                        <span className="font-mono font-semibold">{selected.method}</span>
+                        <span className="truncate text-muted-foreground flex-1" title={selected.url}>{selected.url}</span>
+                        <ResponseStatusBadge response={selected} />
+                        {selected.time != null && <span className="text-muted-foreground font-mono">{Math.round(selected.time * 1000)}ms</span>}
+                        <Button variant="ghost" size="sm" className="h-6 px-2" onClick={copyBody}>
+                          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                        {status === 'running' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-6 px-2 text-[10px] ${followLatest ? 'text-primary' : ''}`}
+                            onClick={() => setFollowLatest(true)}
+                          >
+                            Live
+                          </Button>
+                        )}
+                      </div>
+                      <pre className="flex-1 overflow-auto p-3 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
+                        {selected.error ? (
+                          <span className="text-red-600 dark:text-red-400">{selected.error}</span>
+                        ) : (
+                          formatBody(selected)
+                        )}
+                      </pre>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
+                      Select a response
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="logs" className="mt-0">
+            <div
+              ref={logRef}
+              className="log-container h-56 overflow-auto bg-muted/50 border border-border rounded-lg p-3 text-xs font-mono scroll-smooth"
+            >
+              {logs.length === 0 ? (
+                <div className="text-muted-foreground">Run an endpoint to see live output here.</div>
+              ) : (
+                logs.map((line, i) => <div key={i} className={`py-0.5 ${lineColor(line)}`}>{line}</div>)
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   )
+}
+
+function formatBody(r: RunResponse): string {
+  if (!r.body) return '(empty body)'
+  try {
+    return JSON.stringify(JSON.parse(r.body), null, 2)
+  } catch {
+    return r.body
+  }
+}
+
+function ResponseStatusBadge({ response: r }: { response: RunResponse }) {
+  if (r.error) {
+    return <Badge className="h-4 px-1 text-[9px] bg-red-500/15 text-red-600 dark:text-red-400">ERR</Badge>
+  }
+  if (r.rate_limited) {
+    return <Badge className="h-4 px-1 text-[9px] bg-yellow-500/15 text-yellow-600 dark:text-yellow-400">{r.status}</Badge>
+  }
+  if (r.success) {
+    return <Badge className="h-4 px-1 text-[9px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">{r.status}</Badge>
+  }
+  return <Badge className="h-4 px-1 text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400">{r.status}</Badge>
 }
 
 function StatCard({ label, value, tone, sub }: { label: string; value: number; tone?: string; sub?: string }) {

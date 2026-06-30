@@ -36,3 +36,17 @@ async def broadcast_stats(run_id: str, stats: dict):
         except Exception:
             if ws in store.active_websockets:
                 store.active_websockets.remove(ws)
+
+
+async def broadcast_response(run_id: str, response: dict):
+    if run_id in store.current_runs:
+        responses = store.current_runs[run_id].setdefault("responses", [])
+        responses.append(response)
+        if len(responses) > 100:
+            del responses[:-100]
+    for ws in store.active_websockets[:]:
+        try:
+            await ws.send_json({"type": "response", "run_id": run_id, "response": response})
+        except Exception:
+            if ws in store.active_websockets:
+                store.active_websockets.remove(ws)

@@ -26,6 +26,7 @@ async def start_run(data: dict):
     store.current_runs[run_id] = {
         "status": "running",
         "logs": [],
+        "responses": [],
         "stats": {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0},
         "stop_flag": {"stop": False},
     }
@@ -39,6 +40,7 @@ async def start_run(data: dict):
                 max_requests=max_requests,
                 log_callback=lambda m: runner.dispatch(runner.broadcast_log(run_id, m)),
                 stats_callback=lambda s: runner.dispatch(runner.broadcast_stats(run_id, s)),
+                response_callback=lambda r: runner.dispatch(runner.broadcast_response(run_id, r)),
                 stop_flag=store.current_runs[run_id]["stop_flag"],
             )
             results = tester.run()
@@ -77,6 +79,7 @@ def get_status(run_id: str):
         "status": run["status"],
         "stats": run["stats"],
         "logs": run["logs"][-100:],
+        "responses": run.get("responses", [])[-100:],
     }
 
 
