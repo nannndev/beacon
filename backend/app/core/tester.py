@@ -351,7 +351,7 @@ class APITester:
                 "success": is_success,
                 "rate_limited": is_rate,
                 "retry_after": retry_after,
-                "body": resp.text[:2000],
+                "body": resp.text[:50000],
             }
 
             self.update_stats(snapshot)

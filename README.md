@@ -1,4 +1,35 @@
-# Security Tools (Refactored)
+# Beacon
+
+**Beacon** is a modern API workspace and load testing tool with folder organization, Postman import, dynamic variables, extractors, live monitoring, and desktop support.
+
+## Documentation
+
+Full documentation is available using VitePress:
+
+- Run locally: `npm run docs:dev`
+- Built docs live at: (will be deployed)
+
+See the [Documentation](./docs/index.md) or visit the docs site when deployed.
+
+## Features
+
+- Nested folders (Postman-style)
+- Postman collection import
+- Dynamic variables and generators
+- Response extractors for chaining
+- Live load testing & monitoring
+- Desktop app via Tauri (with backend sidecar)
+- And more...
+
+## Quick Start
+
+```bash
+npm install
+npm run dev
+```
+
+Then open http://localhost:5173
+
 
 **Modern scalable version** — React (TypeScript) + shadcn/ui frontend + Python FastAPI backend.
 
@@ -65,6 +96,28 @@ python -m uvicorn app.main:app --reload --port 8001
 cd frontend
 pnpm install
 pnpm dev
+```
+
+## Documentation
+
+Full documentation is powered by **VitePress** and lives in the `docs/` folder.
+
+### Run docs locally
+
+```bash
+npm run docs:dev
+```
+
+Open http://localhost:5174
+
+### Link from Landing Page
+
+The main landing page already has a **"Docs"** link in the navigation that opens the documentation.
+
+When deploying:
+- You can host docs at a subpath (e.g. `/docs`)
+- Or use a custom domain (recommended: `docs.yourdomain.com`)
+- Update the link in `frontend/src/pages/LandingPage.tsx` accordingly
 ```
 
 ## UI Stack

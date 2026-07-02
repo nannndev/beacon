@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { JsonCodeEditor } from './JsonCodeEditor'
 import { RunResponse } from '../types'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, Play, Pause } from 'lucide-react'
 
 export interface RunStats {
   attempts: number
@@ -47,6 +48,7 @@ const statusBadge: Record<RunStatus, { label: string; className: string }> = {
 
 export default function LiveMonitor({ logs, responses, stats, status, maxRequests, runQueue, runningName, onStop, onClear }: Props) {
   const logRef = useRef<HTMLDivElement>(null)
+  const responsesListRef = useRef<HTMLDivElement>(null)
   const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
   const [followLatest, setFollowLatest] = useState(true)
   const [copied, setCopied] = useState(false)
@@ -58,10 +60,17 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [logs])
 
-  // Follow latest response
+  // Follow latest response selection
   useEffect(() => {
     if (responses.length === 0) { setSelectedAttempt(null); return }
     if (followLatest) setSelectedAttempt(responses[responses.length - 1].attempt)
+  }, [responses, followLatest])
+
+  // Auto-scroll the responses list to bottom when following latest (like logs)
+  useEffect(() => {
+    if (followLatest && responsesListRef.current && responses.length > 0) {
+      responsesListRef.current.scrollTop = responsesListRef.current.scrollHeight
+    }
   }, [responses, followLatest])
 
   // Live elapsed timer — ticks every second while running
@@ -200,8 +209,8 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
                 Run an endpoint to inspect response bodies here.
               </div>
             ) : (
-              <div className="flex gap-2 h-64 border border-border rounded-lg overflow-hidden bg-muted/20">
-                <div className="w-36 shrink-0 overflow-auto border-r border-border bg-background/50">
+              <div className="flex gap-2 h-[420px] border border-border rounded-lg overflow-hidden bg-muted/20">
+                <div ref={responsesListRef} className="w-36 shrink-0 overflow-auto border-r border-border bg-background/50 scroll-smooth">
                   {responses.map((r) => (
                     <button
                       key={r.attempt}
@@ -219,7 +228,7 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
                   ))}
                 </div>
 
-                <div className="flex-1 min-w-0 flex flex-col">
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col">
                   {selected ? (
                     <>
                       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-background/60 text-xs shrink-0">
@@ -230,24 +239,41 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
                         <Button variant="ghost" size="sm" className="h-6 px-2" onClick={copyBody}>
                           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         </Button>
-                        {status === 'running' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={`h-6 px-2 text-[10px] ${followLatest ? 'text-primary' : ''}`}
-                            onClick={() => setFollowLatest(true)}
-                          >
-                            Live
-                          </Button>
+
+                        {/* Auto-follow / auto-scroll control for responses list (like logs) */}
+                        <Button
+                          variant={followLatest ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="h-6 px-2 gap-1 text-[10px]"
+                          onClick={() => {
+                            const next = !followLatest
+                            setFollowLatest(next)
+                            if (next && responses.length > 0) {
+                              setSelectedAttempt(responses[responses.length - 1].attempt)
+                            }
+                          }}
+                          title={followLatest ? 'Stop auto-scroll / follow latest' : 'Follow latest response (auto-scroll list)'}
+                        >
+                          {followLatest ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                          <span>{followLatest ? 'Following' : 'Follow'}</span>
+                        </Button>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden bg-[#07090d] flex flex-col">
+                        {selected.error ? (
+                          <div className="p-3 text-[11px] font-mono text-red-400 overflow-auto">{selected.error}</div>
+                        ) : (
+                          <JsonCodeEditor
+                            value={formatBody(selected)}
+                            readOnly
+                            fileName="response.body.json"
+                            showHeader={false}
+                            showToolbar={false}
+                            showStatus={false}
+                            minHeight="0"
+                            className="h-full border-0 shadow-none rounded-none"
+                          />
                         )}
                       </div>
-                      <pre className="flex-1 overflow-auto p-3 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
-                        {selected.error ? (
-                          <span className="text-red-600 dark:text-red-400">{selected.error}</span>
-                        ) : (
-                          formatBody(selected)
-                        )}
-                      </pre>
                     </>
                   ) : (
                     <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">

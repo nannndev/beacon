@@ -126,7 +126,16 @@ export default function LandingPage({ onLaunchApp }: Props) {
             <a href="#product-preview" className="transition hover:text-foreground">Product</a>
             <a href="#features" className="transition hover:text-foreground">Features</a>
             <a href="#workflow" className="transition hover:text-foreground">Workflow</a>
-            <a href="#desktop" className="transition font-semibold text-foreground hover:text-cyan-400">Desktop</a>
+            <a href="#desktop" className="transition hover:text-foreground">Desktop</a>
+            <a 
+              href="http://localhost:5174" 
+              target="_blank" 
+              rel="noopener" 
+              className="transition font-semibold text-cyan-400 hover:text-cyan-300"
+              title="Open full documentation (VitePress)"
+            >
+              Documentation
+            </a>
           </nav>
 
           <div className="flex items-center gap-2.5">
@@ -138,6 +147,23 @@ export default function LandingPage({ onLaunchApp }: Props) {
             >
               <Download className="h-4 w-4" />
               Download Desktop
+            </a>
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener"
+              className="hidden md:inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-4 py-1.5 text-sm font-semibold transition-all hover:bg-muted hover:border-border active:scale-[0.985]"
+            >
+              Documentation
+            </a>
+
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 px-4 py-1.5 text-sm font-semibold text-cyan-400 transition-all hover:bg-cyan-500/5 active:scale-[0.985]"
+            >
+              Documentation
             </a>
 
             <button
@@ -183,6 +209,15 @@ export default function LandingPage({ onLaunchApp }: Props) {
             >
               <Download className="h-4 w-4" />
               Download Desktop
+            </a>
+
+            <a
+              href="http://localhost:5174"
+              target="_blank"
+              rel="noopener"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-cyan-500/30 px-6 text-[15px] font-semibold text-cyan-400 transition-all hover:bg-cyan-500/5 active:scale-[0.985]"
+            >
+              Documentation
             </a>
           </div>
 
@@ -363,6 +398,7 @@ export default function LandingPage({ onLaunchApp }: Props) {
             <a href="#features" className="hover:text-foreground">Features</a>
             <a href="#workflow" className="hover:text-foreground">How it works</a>
             <a href="#desktop" className="hover:text-foreground">Desktop</a>
+            <a href="http://localhost:5174" target="_blank" rel="noopener" className="hover:text-foreground">Documentation</a>
           </div>
           <div className="text-xs">Built for people who ship APIs.</div>
         </div>

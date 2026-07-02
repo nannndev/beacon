@@ -59,6 +59,14 @@
     @apply bg-background text-foreground;
     font-family: 'Plus Jakarta Sans', sans-serif;
   }
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+  }
 }
 
 /* Compact, theme-aware scrollbars everywhere */
@@ -136,6 +144,60 @@
   animation: pulse-signal 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes sidebar-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-sidebar-in {
+  animation: sidebar-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes nav-pop {
+  0% { transform: scale(0.985); }
+  55% { transform: scale(1.012); }
+  100% { transform: scale(1); }
+}
+
+.animate-nav-pop {
+  animation: nav-pop 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes soft-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.12); }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 1.7s ease-in-out infinite;
+}
+
+.brand-mark {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 10px 28px -18px rgb(34 211 238 / 0.85);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 0.42rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  pointer-events: none;
+}
+
+@keyframes brand-scan {
+  0% { transform: translateY(-8px); opacity: 0; }
+  18% { opacity: 0.85; }
+  72% { opacity: 0.85; }
+  100% { transform: translateY(42px); opacity: 0; }
+}
+
+.brand-mark-animated .brand-mark-scan {
+  animation: brand-scan 2.6s ease-in-out infinite;
+}
+
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-6px); }
@@ -154,6 +216,24 @@
 .animate-text-shine {
   background-size: 200% auto;
   animation: text-shine 4s linear infinite;
+}
+
+.endpoint-editor-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 768px) {
+  .endpoint-editor-grid {
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1440px) {
+  .endpoint-editor-grid {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  }
 }
 
 /* Typewriter cursor blink */

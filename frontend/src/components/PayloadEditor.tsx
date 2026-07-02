@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { KVEditor } from './KVEditor'
 import { MultipartEditor } from './MultipartEditor'
-import { Textarea } from './ui/textarea'
+import { JsonCodeEditor } from './JsonCodeEditor'
 import { Button } from './ui/button'
 
 interface Props {
@@ -29,13 +29,22 @@ export function PayloadEditor({ value, onChange, payloadType }: Props) {
   const [jsonText, setJsonText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // Keep the raw JSON text in sync if the outer value changes (e.g. from Fields edits)
+  useEffect(() => {
+    if (mode === 'json') {
+      setJsonText(JSON.stringify(value ?? {}, null, 2))
+      setError(null)
+    }
+  }, [value, mode])
+
   // multipart/form-data: per-field text or file (Postman-style)
   if (payloadType === 'multipart') {
     return <MultipartEditor value={value} onChange={onChange} />
   }
 
   const toJson = () => {
-    setJsonText(JSON.stringify(value ?? {}, null, 2))
+    const text = JSON.stringify(value ?? {}, null, 2)
+    setJsonText(text)
     setError(null)
     setMode('json')
   }
@@ -56,52 +65,45 @@ export function PayloadEditor({ value, onChange, payloadType }: Props) {
     }
   }
 
-  const format = () => {
-    try {
-      const parsed = JSON.parse(jsonText)
-      setJsonText(JSON.stringify(parsed, null, 2))
-      setError(null)
-    } catch {
-      /* leave as-is; error already shown */
-    }
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-1">
-        <div className="inline-flex rounded-md border border-border p-0.5 bg-muted/40">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-grid h-8 grid-cols-2 rounded-lg border border-border bg-muted/35 p-0.5">
           <button
             type="button"
             onClick={() => setMode('fields')}
-            className={`px-2.5 py-0.5 text-xs rounded ${mode === 'fields' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}
+            className={`rounded-md px-3 text-xs font-bold transition-all ${mode === 'fields' ? 'bg-background shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Fields
           </button>
           <button
             type="button"
             onClick={toJson}
-            className={`px-2.5 py-0.5 text-xs rounded ${mode === 'json' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}
+            className={`rounded-md px-3 text-xs font-bold transition-all ${mode === 'json' ? 'bg-background shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            JSON
+            Raw JSON
           </button>
         </div>
         {mode === 'json' && (
-          <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={format} disabled={!!error}>
-            Format
-          </Button>
+          <span className={`ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold ${error ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
+            {error ? 'Invalid JSON' : 'Valid JSON'}
+          </span>
         )}
-        {mode === 'json' && error && <span className="text-[11px] text-red-500 ml-auto truncate">{error}</span>}
       </div>
 
       {mode === 'fields' ? (
-        <KVEditor data={value || {}} onChange={onChange} />
+        <KVEditor data={value || {}} onChange={onChange} allowJson={false} />
       ) : (
-        <Textarea
+        <JsonCodeEditor
           value={jsonText}
-          onChange={(e) => onJsonChange(e.target.value)}
+          onChange={onJsonChange}
+          error={error}
+          fileName="request.body.json"
           placeholder={PLACEHOLDER}
-          spellCheck={false}
-          className={`font-mono text-xs min-h-[180px] ${error ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+          minHeight="220px"
+          showStatus={false}
+          showToolbar={true}
+          onError={setError}
         />
       )}
     </div>

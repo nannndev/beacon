@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
-import { Textarea } from '../ui/textarea'
+import { JsonCodeEditor } from '../JsonCodeEditor'
 import { Button } from '../ui/button'
 import { Upload, FileJson, ClipboardPaste, AlertCircle } from 'lucide-react'
 
@@ -129,12 +129,15 @@ export function ImportDialog({ open, onOpenChange, onImport, fetchTemplate }: Pr
           </TabsContent>
 
           <TabsContent value="paste" className="mt-3">
-            <Textarea
+            <JsonCodeEditor
               value={raw}
-              onChange={(e) => { setRaw(e.target.value); setError('') }}
+              onChange={(v) => { setRaw(v); setError('') }}
+              error={error && error.startsWith('Invalid') ? error : null}
+              fileName="project.json"
               placeholder='{ "format": "security-tools.project", "version": 1, "project": { ... } }'
-              className="font-mono text-xs h-56 resize-none"
-              spellCheck={false}
+              minHeight="240px"
+              showStatus={false}
+              showToolbar={true}
             />
           </TabsContent>
         </Tabs>

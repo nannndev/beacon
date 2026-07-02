@@ -1,7 +1,8 @@
 import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
-import { Settings, Download, Upload } from 'lucide-react'
+import { Settings, Download, Upload, Activity } from 'lucide-react'
 import { Project } from '../types'
+import { BrandMark } from './BrandMark'
 
 interface Props {
   currentProject?: Project
@@ -12,10 +13,18 @@ interface Props {
 
 export function Header({ currentProject, onProjectSettings, onImport, onExport }: Props) {
   return (
-    <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background">
-      <div>
-        <h2 className="font-semibold text-lg leading-tight">Dashboard</h2>
-        <p className="text-xs text-muted-foreground">Load &amp; rate-limit testing</p>
+    <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background/95 backdrop-blur">
+      <div className="flex items-center gap-3">
+        <BrandMark size="sm" className="hidden sm:block" />
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-lg leading-tight">Beacon workspace</h2>
+            <span className="hidden md:inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <Activity className="h-3 w-3 animate-soft-pulse" /> Ready
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">{currentProject?.name || 'No project selected'} / illuminate every API call</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">

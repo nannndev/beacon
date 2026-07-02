@@ -1,4 +1,5 @@
 import uuid
+import json
 
 from fastapi import APIRouter, HTTPException
 
@@ -23,6 +24,9 @@ def list_projects():
                 "name": p["name"],
                 "environments": p.get("environments", []),
                 "current_environment_id": p.get("current_environment_id"),
+                "items": p.get("items") or [
+                    {"type": "request", **t} for t in p.get("tests", [])
+                ],
             }
             for p in store.projects
         ],
@@ -80,6 +84,8 @@ def update_project(project_id: str, data: dict):
         if proj.get("current_environment_id") not in [e.get("id") for e in proj.get("environments", [])]:
             if proj.get("environments"):
                 proj["current_environment_id"] = proj["environments"][0]["id"]
+    if "items" in data:
+        proj["items"] = data["items"]  # allow updating the full tree (for folder mgmt)
     # Sync FIRST so current_config reflects the new env data, THEN persist —
     # otherwise save_active_project() would clobber the just-updated env vars
     # with the stale current_config (this is what wiped saved tokens).
@@ -108,7 +114,9 @@ def delete_project(project_id: str):
 # ---- export / import (Postman-style) ---------------------------------
 
 def _blank_template() -> dict:
-    """A ready-to-edit project envelope so importing is fill-in-the-blanks."""
+    """A ready-to-edit project envelope so importing is fill-in-the-blanks.
+    Uses Postman-like 'items' tree (folders + requests) for flexibility.
+    """
     return {
         "format": EXPORT_FORMAT,
         "version": EXPORT_VERSION,
@@ -121,20 +129,101 @@ def _blank_template() -> dict:
                     "variables": {"access_token": "", "refresh_token": ""},
                 }
             ],
-            "tests": [
+            "items": [
                 {
-                    "name": "Example Login",
-                    "url": "/auth/login",
-                    "method": "POST",
-                    "headers": {"Content-Type": "application/json"},
-                    "payload": {"email": "{{random_email}}", "password": "ChangeMe123"},
+                    "id": "folder-auth",
+                    "name": "Auth",
+                    "type": "folder",
+                    "items": [
+                        {
+                            "id": "req-login",
+                            "name": "Example Login",
+                            "type": "request",
+                            "url": "/auth/login",
+                            "method": "POST",
+                            "headers": {"Content-Type": "application/json"},
+                            "payload": {"email": "{{random_email}}", "password": "ChangeMe123"},
+                            "payload_type": "json",
+                            "extractors": {"access_token": "body.access_token"},
+                            "run_config": None,
+                        }
+                    ],
+                },
+                {
+                    "id": "req-profile",
+                    "name": "Get Profile",
+                    "type": "request",
+                    "url": "/me",
+                    "method": "GET",
+                    "headers": {"Authorization": "Bearer {{access_token}}"},
+                    "payload": {},
                     "payload_type": "json",
-                    "extractors": {"access_token": "body.access_token"},
+                    "extractors": {},
                     "run_config": None,
-                }
+                },
             ],
         },
     }
+
+
+def _convert_postman_to_our_items(postman_data: dict) -> list:
+    """Convert Postman collection v2.1 structure to our recursive items tree."""
+    def convert(node: dict) -> dict:
+        if "item" in node:  # folder
+            return {
+                "id": str(uuid.uuid4()),
+                "name": node.get("name", "Folder"),
+                "type": "folder",
+                "items": [convert(child) for child in node.get("item", [])],
+            }
+        else:  # request
+            req = node.get("request", {})
+            url = req.get("url", "")
+            if isinstance(url, dict):
+                url = url.get("raw", "") or ""
+            method = req.get("method", "GET") or "GET"
+
+            headers = {}
+            for h in req.get("header", []) or []:
+                if isinstance(h, dict) and h.get("key"):
+                    headers[h["key"]] = h.get("value", "")
+
+            body = {}
+            payload_type = "json"
+            b = req.get("body", {}) or {}
+            mode = b.get("mode")
+            if mode == "raw":
+                raw = b.get("raw", "")
+                try:
+                    body = json.loads(raw) if raw.strip() else {}
+                except Exception:
+                    body = {"raw": raw}
+                payload_type = "json"
+            elif mode == "formdata":
+                payload_type = "form"
+                for f in b.get("formdata", []) or []:
+                    if isinstance(f, dict) and f.get("key"):
+                        body[f["key"]] = f.get("value", "")
+            elif mode == "urlencoded":
+                payload_type = "form"
+                for f in b.get("urlencoded", []) or []:
+                    if isinstance(f, dict) and f.get("key"):
+                        body[f["key"]] = f.get("value", "")
+
+            return {
+                "id": str(uuid.uuid4()),
+                "name": node.get("name", "Request"),
+                "type": "request",
+                "url": url,
+                "method": method,
+                "headers": headers,
+                "payload": body,
+                "payload_type": payload_type,
+                "extractors": {},
+                "run_config": None,
+            }
+
+    return [convert(it) for it in postman_data.get("item", []) if isinstance(it, dict)]
 
 
 @router.get("/projects/template")
@@ -173,7 +262,9 @@ def export_project(project_id: str, include_secrets: bool = False):
         "project": {
             "name": proj.get("name", "Exported Project"),
             "environments": envs,
-            "tests": proj.get("tests", []),
+            "items": proj.get("items") or [
+                {**t, "type": "request"} for t in proj.get("tests", [])
+            ],
         },
         "secrets_included": include_secrets,
     }
@@ -190,31 +281,89 @@ def import_project(data: dict):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid import body: expected a project object")
 
-    name = payload.get("name") or "Imported Project"
+    # Detect Postman collection
+    if "info" in payload and "item" in payload:
+        name = payload.get("info", {}).get("name") or payload.get("name") or "Imported Postman Collection"
+        items = _convert_postman_to_our_items(payload)
+        # Create default env from Postman variables if any
+        env_vars = {}
+        for v in payload.get("variable", []) or []:
+            if isinstance(v, dict) and v.get("key"):
+                env_vars[v["key"]] = v.get("value", "")
+        payload = {
+            "name": name,
+            "environments": [{"name": "Imported", "base_url": "", "variables": env_vars}],
+            "items": items,
+        }
 
-    # Validate endpoints through the engine's own contract; assign fresh ids.
-    tests = []
-    for idx, t in enumerate(payload.get("tests") or []):
+    is_legacy_config = (
+        "tests" in payload
+        and ("base_url" in payload or "variables" in payload)
+        and "environments" not in payload
+    )
+    name = payload.get("name") or ("Imported Config" if is_legacy_config else "Imported Project")
+
+    # Support Postman-style nested items + legacy flat tests
+    raw_items = payload.get("items")
+    raw_tests = payload.get("tests") or []
+
+    def _assign_fresh_ids(node: dict) -> dict:
+        node = dict(node)  # copy
+        node["id"] = str(uuid.uuid4())
+        if node.get("type") == "folder" and node.get("items"):
+            node["items"] = [_assign_fresh_ids(child) for child in node["items"]]
+        return node
+
+    items: list = []
+    if raw_items:
+        items = [_assign_fresh_ids(item) for item in raw_items]
+    elif raw_tests:
+        # legacy flat -> top level requests
+        items = [
+            {"type": "request", **t, "id": str(uuid.uuid4())} for t in raw_tests
+        ]
+
+    # Flatten for validation against the engine (we still keep flat tests for execution)
+    flat_tests = []
+    def _collect_requests(nodes):
+        for n in nodes or []:
+            if n.get("type") == "request":
+                flat_tests.append(n)
+            elif n.get("type") == "folder":
+                _collect_requests(n.get("items", []))
+    _collect_requests(items)
+
+    # Validate endpoints
+    validated_flat = []
+    for idx, t in enumerate(flat_tests):
         if not isinstance(t, dict):
             raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} is not an object")
         try:
-            et = EndpointTest.from_dict({**t, "id": str(uuid.uuid4())})
+            et = EndpointTest.from_dict({**t, "id": t.get("id") or str(uuid.uuid4())})
         except KeyError as e:
             raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} missing required field {e}")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} invalid: {e}")
-        tests.append(et.to_dict())
+        validated_flat.append(et.to_dict())
 
     envs = []
-    for e in payload.get("environments") or []:
-        if not isinstance(e, dict):
-            continue
+    if is_legacy_config:
         envs.append({
             "id": str(uuid.uuid4()),
-            "name": e.get("name") or "Imported",
-            "base_url": e.get("base_url", "") or "",
-            "variables": e.get("variables", {}) or {},
+            "name": "Imported",
+            "base_url": payload.get("base_url", "") or "",
+            "variables": payload.get("variables", {}) or {},
         })
+    else:
+        for e in payload.get("environments") or []:
+            if not isinstance(e, dict):
+                continue
+            envs.append({
+                "id": str(uuid.uuid4()),
+                "name": e.get("name") or "Imported",
+                "base_url": e.get("base_url", "") or "",
+                "variables": e.get("variables", {}) or {},
+            })
     if not envs:
         envs = [{"id": str(uuid.uuid4()), "name": "Local", "base_url": "", "variables": {}}]
 
@@ -224,7 +373,9 @@ def import_project(data: dict):
         "name": name,
         "environments": envs,
         "current_environment_id": envs[0]["id"],
-        "tests": tests,
+        "items": items,
+        # also keep flat for backward
+        "tests": validated_flat,
     })
     store.current_project_id = pid
     store.sync_current_config()
@@ -232,7 +383,7 @@ def import_project(data: dict):
     return {
         "id": pid,
         "name": name,
-        "imported": {"tests": len(tests), "environments": len(envs)},
+        "imported": {"tests": len(validated_flat), "environments": len(envs)},
         "config": store.current_config.to_dict(),
     }
 

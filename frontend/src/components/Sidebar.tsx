@@ -1,7 +1,8 @@
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo } from 'lucide-react'
+import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo, Activity, Database, Layers3, Sparkles } from 'lucide-react'
 import { Project, TestConfig } from '../types'
+import { BrandMark } from './BrandMark'
 
 interface Props {
   projects: Project[]
@@ -25,15 +26,16 @@ export function Sidebar({
   onSwitchProject, onNewProject, onSwitchEnv, onManageEnv, onGlobalVars, onNewEndpoint, onRunAll, runAllDisabled,
 }: Props) {
   const envs = currentProject?.environments || []
+  const activeEnv = envs.find((env) => env.id === currentProject?.current_environment_id)
 
   // ---- Collapsed rail --------------------------------------------------
   if (collapsed) {
     return (
-      <div className="w-14 bg-card border-r border-border flex flex-col items-center py-3 gap-2">
+      <aside className="w-16 bg-card border-r border-border flex flex-col items-center py-3 gap-2 animate-sidebar-in">
         <Button size="icon" variant="ghost" className="h-8 w-8" title="Expand sidebar" onClick={onToggleCollapse}>
           <PanelLeftOpen className="h-4 w-4" />
         </Button>
-        <div className="h-7 w-7 rounded bg-primary shrink-0" title="apytest" />
+        <BrandMark size="sm" className="my-1" />
 
         <div className="w-8 border-t border-border my-1" />
 
@@ -49,10 +51,11 @@ export function Sidebar({
                 key={p.id}
                 onClick={() => onSwitchProject(p.id)}
                 title={p.name}
-                className={`h-8 w-8 rounded-md text-xs font-semibold uppercase transition-colors flex items-center justify-center ${
-                  active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
+                className={`relative h-9 w-9 rounded-lg text-xs font-semibold uppercase transition-all flex items-center justify-center active:scale-95 ${
+                  active ? 'bg-primary text-primary-foreground shadow-sm animate-nav-pop' : 'hover:bg-muted text-muted-foreground'
                 }`}
               >
+                {active && <span className="absolute -left-1.5 h-5 w-1 rounded-full bg-cyan-400" />}
                 {p.name.trim().charAt(0) || '?'}
               </button>
             )
@@ -69,59 +72,95 @@ export function Sidebar({
         <Button size="icon" variant="default" className="h-8 w-8" title="New endpoint" onClick={onNewEndpoint}>
           <FileStack className="h-4 w-4" />
         </Button>
-      </div>
+      </aside>
     )
   }
 
   // ---- Full sidebar ----------------------------------------------------
   return (
-    <div className="w-64 bg-card border-r border-border flex flex-col">
+    <aside className="w-72 bg-card border-r border-border flex flex-col animate-sidebar-in">
       {/* Brand */}
-      <div className="p-4 pb-3">
+      <div className="p-4 pb-3 bg-gradient-to-b from-muted/55 to-transparent">
         <div className="flex items-center gap-2">
-          <a href="#" className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1" title="Go to home page">
-            <div className="h-7 w-7 rounded bg-primary shrink-0 animate-pulse-signal" />
-            <h1 className="text-sm font-extrabold tracking-tight">apy<span className="text-cyan-500">test</span></h1>
+          <a href="#" className="flex items-center gap-2 hover:opacity-90 transition-opacity flex-1" title="Go to home page">
+            <BrandMark size="md" />
+            <div className="min-w-0">
+              <h1 className="text-base font-extrabold tracking-tight leading-none">Beacon</h1>
+              <p className="text-[10px] text-muted-foreground mt-1">Clarity for every request</p>
+            </div>
           </a>
           <Button size="icon" variant="ghost" className="h-7 w-7 -mr-1 shrink-0" title="Collapse sidebar" onClick={onToggleCollapse}>
             <PanelLeftClose className="h-4 w-4" />
           </Button>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5 pl-9">API Tester &amp; Auditor</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-border/80 bg-background/70 px-3 py-2">
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <Layers3 className="h-3 w-3" /> Projects
+            </div>
+            <div className="mt-1 text-lg font-bold tabular-nums">{projects.length}</div>
+          </div>
+          <div className="rounded-lg border border-border/80 bg-background/70 px-3 py-2">
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <Activity className="h-3 w-3" /> Endpoints
+            </div>
+            <div className="mt-1 text-lg font-bold tabular-nums">{config.tests.length}</div>
+          </div>
+        </div>
       </div>
 
       {/* Projects */}
-      <div className="px-4 flex items-center justify-between mb-1">
-        <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Projects</div>
+      <div className="px-4 flex items-center justify-between mb-2">
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Projects</div>
         <Button size="icon" variant="ghost" className="h-6 w-6" title="New project" onClick={onNewProject}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <div className="px-2 flex-1 overflow-auto space-y-0.5 min-h-[60px]">
+      <div className="px-3 flex-1 overflow-auto space-y-1.5 min-h-[60px]">
         {projects.length === 0 && (
-          <div className="text-xs text-muted-foreground px-2 py-3">No projects yet.</div>
+          <div className="rounded-lg border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">No projects yet.</div>
         )}
         {projects.map((p) => {
           const active = p.id === currentProjectId
+          const endpointText = active
+            ? `${config.tests.length} endpoint${config.tests.length === 1 ? '' : 's'}`
+            : 'Project workspace'
           return (
             <button
               key={p.id}
               onClick={() => onSwitchProject(p.id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2 ${
-                active ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted text-foreground'
+              className={`group relative w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center gap-3 active:scale-[0.99] ${
+                active ? 'bg-primary text-primary-foreground font-semibold shadow-sm animate-nav-pop' : 'hover:bg-muted text-foreground'
               }`}
             >
-              <span className={`h-2 w-2 rounded-full ${active ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
-              <span className="truncate">{p.name}</span>
+              {active && <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-cyan-400" />}
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-bold uppercase ${
+                active ? 'bg-primary-foreground/15 text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:text-foreground'
+              }`}>
+                {p.name.trim().charAt(0) || '?'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate leading-tight">{p.name}</span>
+                <span className={`mt-0.5 block truncate text-[10px] ${active ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                  {endpointText}
+                </span>
+              </span>
             </button>
           )
         })}
       </div>
 
       {/* Config (moved out of the header) */}
-      <div className="border-t border-border p-4 space-y-3">
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Environment</div>
+      <div className="border-t border-border p-4 space-y-3 bg-muted/20">
+        <div className="rounded-xl border border-border bg-background/80 p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <Database className="h-3.5 w-3.5" /> Environment
+            </div>
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-soft-pulse" /> active
+            </span>
+          </div>
           <div className="flex gap-1.5">
             <Select
               value={currentProject?.current_environment_id || ''}
@@ -140,28 +179,33 @@ export function Sidebar({
               <Settings className="h-3.5 w-3.5" />
             </Button>
           </div>
+          <div className="mt-2 text-[10px] font-medium text-foreground truncate" title={activeEnv?.name}>
+            {activeEnv?.name || 'No environment selected'}
+          </div>
           <div className="mt-1.5 text-[10px] text-muted-foreground font-mono truncate" title={config.base_url}>
             {config.base_url || 'base url not set'}
           </div>
         </div>
 
-        <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5 justify-start" onClick={onGlobalVars}>
+        <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5 justify-start bg-background/80" onClick={onGlobalVars}>
           <Globe className="h-3.5 w-3.5" /> Global Variables
         </Button>
 
-        <Button onClick={onNewEndpoint} className="w-full" size="sm">+ New Endpoint</Button>
+        <Button onClick={onNewEndpoint} className="w-full h-9 gap-2 shadow-sm hover:-translate-y-0.5" size="sm">
+          <Sparkles className="h-3.5 w-3.5" /> New Endpoint
+        </Button>
         {onRunAll && (
           <Button
             variant="outline"
             onClick={onRunAll}
             disabled={runAllDisabled || config.tests.length === 0}
-            className="w-full h-8 text-xs gap-1.5"
+            className="w-full h-8 text-xs gap-1.5 bg-background/80"
           >
             <ListVideo className="h-3.5 w-3.5" /> Run All Endpoints
           </Button>
         )}
-        <div className="text-[10px] text-center text-muted-foreground">{config.tests.length} endpoints</div>
+        <div className="text-[10px] text-center text-muted-foreground">Ready for authorized API testing</div>
       </div>
-    </div>
+    </aside>
   )
 }

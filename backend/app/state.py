@@ -26,6 +26,21 @@ class Store:
         self.main_loop: Optional[asyncio.AbstractEventLoop] = None
 
     # ---- environment / config sync ------------------------------------
+    def _flatten_items(self, items: list) -> list:
+        """Recursively collect only request nodes from a Postman-like items tree."""
+        result = []
+        def walk(nodes):
+            for node in nodes or []:
+                if isinstance(node, dict):
+                    if node.get("type") == "request":
+                        result.append(node)
+                    elif node.get("type") == "folder" or "items" in node:
+                        walk(node.get("items", []))
+                    elif "tests" in node:  # legacy
+                        result.extend(node.get("tests", []))
+        walk(items)
+        return result
+
     def get_active_env(self, project: dict) -> dict:
         envs = project.get("environments") or []
         if not envs:
@@ -58,7 +73,7 @@ class Store:
                     "variables": {"access_token": "", "refresh_token": ""},
                 }],
                 "current_environment_id": None,
-                "tests": [],
+                "items": [],
             })
             self.current_project_id = pid
 
@@ -74,10 +89,18 @@ class Store:
         env = self.get_active_env(active_project)
         effective_vars = {**self.global_variables, **env.get("variables", {})}
 
+        # Support new items tree (Postman-style folders) + legacy flat tests
+        items = active_project.get("items")
+        tests_data = []
+        if items:
+            tests_data = self._flatten_items(items)
+        else:
+            tests_data = active_project.get("tests", [])
+
         self.current_config = TestConfig(
             base_url=env.get("base_url", ""),
             variables=effective_vars,
-            tests=[EndpointTest.from_dict(t) for t in active_project.get("tests", [])],
+            tests=[EndpointTest.from_dict(t) for t in tests_data],
         )
 
     def save_active_project(self):
@@ -89,7 +112,9 @@ class Store:
         env["base_url"] = self.current_config.base_url
         # Only env-specific vars are stored on the env (globals stay global).
         env["variables"] = {k: v for k, v in self.current_config.variables.items() if k not in self.global_variables}
-        active["tests"] = [t.to_dict() for t in self.current_config.tests]
+        # Preserve Postman-style items tree if present. Only write flat tests for legacy.
+        if "items" not in active or not active.get("items"):
+            active["tests"] = [t.to_dict() for t in self.current_config.tests]
 
     # ---- persistence --------------------------------------------------
     def load(self):
@@ -107,7 +132,7 @@ class Store:
                     "variables": {"access_token": "", "refresh_token": ""},
                 }],
                 "current_environment_id": None,
-                "tests": [],
+                "items": [],
             }]
             self.current_project_id = pid
             self.global_variables = {}
@@ -115,6 +140,12 @@ class Store:
             self.projects = data.get("projects", [])
             self.current_project_id = data.get("current_project_id")
             self.global_variables = data.get("global_variables", {})
+            # Migrate old flat projects to items tree for Postman-like folders
+            for p in self.projects:
+                if "items" not in p and "tests" in p:
+                    p["items"] = [
+                        {**t, "type": "request"} for t in p.get("tests", [])
+                    ]
         else:
             # migrate old single-config format
             self.projects = [{

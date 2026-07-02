@@ -3,7 +3,7 @@ echo "Starting Security Tools (Backend + Frontend)..."
 
 # Backend
 cd backend
-python3 -m uvicorn app.main:app --reload --port 8000 || python -m uvicorn app.main:app --reload --port 8000 &
+python3 -m uvicorn app.main:app --reload --port 8001 || python -m uvicorn app.main:app --reload --port 8001 &
 BACKEND_PID=$!
 cd ..
 

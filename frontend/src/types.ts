@@ -20,7 +20,7 @@ export interface Endpoint {
 export interface TestConfig {
   base_url: string
   variables: Record<string, string>
-  tests: Endpoint[]
+  tests: Endpoint[]   // flattened requests for execution (derived from items tree)
 }
 
 export interface Environment {
@@ -30,12 +30,25 @@ export interface Environment {
   variables: Record<string, string>
 }
 
+export type CollectionItem =
+  | {
+      id: string
+      name: string
+      type: 'folder'
+      items: CollectionItem[]
+    }
+  | (Endpoint & {
+      type: 'request'
+    })
+
 export interface Project {
   id: string
   name: string
   environments: Environment[]
   current_environment_id?: string
-  tests: any[]  // reuse Endpoint[]
+  items: CollectionItem[]   // tree structure like Postman (supports folders)
+  // legacy flat support during migration
+  tests?: Endpoint[]
 }
 
 export interface AppData {
