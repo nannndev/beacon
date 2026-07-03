@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod mcp_registration;
+
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Mutex;
