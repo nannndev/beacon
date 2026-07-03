@@ -30,11 +30,11 @@ import { NetworkBackground } from '../components/NetworkBackground'
 // URLs injected from the root .env via vite.config.ts (define block).
 const DOCS_URL = (import.meta as any).env?.VITE_DOCS_URL || 'http://localhost:5174/docs/'
 const DOWNLOAD_URL =
-  (import.meta as any).env?.VITE_DOWNLOAD_URL || 'https://github.com/naneps/beacon/releases/latest'
+  (import.meta as any).env?.VITE_DOWNLOAD_URL || 'https://github.com/nannndev/beacon/releases/latest'
 const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
-  (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/naneps/beacon'
+  (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
 // TODO: create a Discord server + permanent invite, then set VITE_DISCORD_URL
 // (or replace this default) with the real invite link.
 const DISCORD_URL =

@@ -76,11 +76,11 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/naneps/beacon' }
+      { icon: 'github', link: 'https://github.com/nannndev/beacon' }
     ],
 
     editLink: {
-      pattern: 'https://github.com/naneps/beacon/edit/main/docs/:path'
+      pattern: 'https://github.com/nannndev/beacon/edit/main/docs/:path'
     },
 
     footer: {

@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
 
   // Where the marketing CTAs point. Override any of these in the root .env.
   const docsUrl = env.VITE_DOCS_URL || `http://localhost:${DOCS_PORT}/docs/`
-  const downloadUrl = env.VITE_DOWNLOAD_URL || 'https://github.com/naneps/beacon/releases/latest'
+  const downloadUrl = env.VITE_DOWNLOAD_URL || 'https://github.com/nannndev/beacon/releases/latest'
   const appUrl = env.VITE_APP_URL || `http://localhost:${FRONTEND_PORT}`
 
   return {

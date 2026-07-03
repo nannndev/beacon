@@ -13,7 +13,7 @@ Beacon is a modern API workspace that combines Postman-style organization with p
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/naneps/security-tools.git
+git clone https://github.com/nannndev/beacon.git
 cd security-tools
 npm install
 cd backend && pip install -r requirements.txt && cd ..

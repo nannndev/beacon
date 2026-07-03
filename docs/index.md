@@ -11,7 +11,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/naneps/security-tools
+      link: https://github.com/nannndev/beacon
     - theme: alt
       text: Documentation
       link: /introduction

@@ -16,7 +16,7 @@ runtime in production. Only the **backend** needs an always-on server.
 
 ## Ports (development)
 
-All ports come from the single root `.env` (see [`.env.example`](https://github.com/naneps/beacon/blob/main/.env.example)).
+All ports come from the single root `.env` (see [`.env.example`](https://github.com/nannndev/beacon/blob/main/.env.example)).
 
 | Service | Env var | Default |
 |---------|---------|---------|
@@ -51,10 +51,10 @@ pnpm build          # → landing/dist/
 
 | Env var | Default |
 |---------|---------|
-| `VITE_DOWNLOAD_URL` | `https://github.com/naneps/beacon/releases/latest` |
+| `VITE_DOWNLOAD_URL` | `https://github.com/nannndev/beacon/releases/latest` |
 | `VITE_APP_URL` | `http://localhost:5173` |
 | `VITE_SUPPORT_URL` | `https://buymeacoffee.com/ekaprasety8` |
-| `VITE_GITHUB_URL` | `https://github.com/naneps/beacon` |
+| `VITE_GITHUB_URL` | `https://github.com/nannndev/beacon` |
 | `VITE_DISCORD_URL` | *(set to your Discord invite)* |
 
 **Recommended hosts**: GitHub Pages, Vercel, Netlify, Cloudflare Pages, or any
