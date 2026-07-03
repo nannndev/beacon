@@ -149,6 +149,27 @@ pub fn mcp_status(app: tauri::AppHandle) -> McpStatus {
     McpStatus { claude_desktop, claude_code }
 }
 
+/// Write `contents` to `path` atomically: write a sibling temp file in the same
+/// directory, then rename it over the target. A crash/power-loss mid-write can
+/// only leave the (discardable) temp file behind — the user's real config is
+/// either the old bytes or the new bytes, never a truncated mix. Upholds the
+/// merge-never-clobber invariant against interrupted writes, not just bad input.
+fn atomic_write(path: &std::path::Path, contents: &str) -> Result<(), String> {
+    let dir = path.parent().ok_or("config path has no parent directory")?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!(
+        ".{}.beacon.tmp",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("config")
+    ));
+    std::fs::write(&tmp, contents).map_err(|e| e.to_string())?;
+    // rename is atomic on the same volume; on Windows it also replaces an
+    // existing target. Clean up the temp file if the rename fails.
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
 #[tauri::command]
 pub fn mcp_register_claude_desktop(
     app: tauri::AppHandle,
@@ -162,10 +183,7 @@ pub fn mcp_register_claude_desktop(
         Err(e) => return Err(format!("failed to read Claude Desktop config: {e}")),
     };
     let merged = merge_beacon_entry(&existing, &binary)?; // refuses on corrupt JSON
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&path, merged).map_err(|e| e.to_string())
+    atomic_write(&path, &merged)
 }
 
 #[tauri::command]
@@ -176,7 +194,7 @@ pub fn mcp_unregister_claude_desktop(app: tauri::AppHandle) -> Result<(), String
     }
     let existing = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let updated = remove_beacon_entry(&existing)?;
-    std::fs::write(&path, updated).map_err(|e| e.to_string())
+    atomic_write(&path, &updated)
 }
 
 #[tauri::command]
