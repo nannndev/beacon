@@ -68,6 +68,7 @@ export default defineConfig({
       {
         text: 'Reference',
         items: [
+          { text: 'MCP Server', link: '/mcp' },
           { text: 'Deployment & Server Spec', link: '/deployment' },
           { text: 'Changelog', link: '/changelog' },
           { text: 'Development', link: '/development' },
