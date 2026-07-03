@@ -40,7 +40,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "backend"
+      "backend",
+      "mcp_server"
     ],
     "windows": {
       "nsis": {
