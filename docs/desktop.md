@@ -29,18 +29,16 @@ Desktop support is **fully implemented** using:
 
 ```bash
 cd frontend
-
-# 1. Build the Python backend as sidecar
-cd ../backend
-python build_backend.py
-
-# 2. Copy the binary (Windows example)
-copy dist\backend.exe ..\frontend\src-tauri\backend.exe
-
-# 3. Build the desktop app
-cd ../frontend
-npm run desktop:build
+npm run desktop:prepare   # PyInstaller-builds backend + mcp_server, copies both sidecars
+npm run tauri:build       # or: npm run desktop:build to run both steps together
 ```
+
+> **Order matters.** `desktop:prepare` must run — and succeed — *before*
+> `tauri:build` (or a raw `cargo build`). Tauri v2 treats a missing
+> `externalBin` sidecar (`backend-<triple>.exe` / `mcp_server-<triple>.exe`) as
+> a **hard build error**, not a warning, since both are now declared in
+> `tauri.conf.json`'s `bundle.externalBin`. On a clean checkout or in CI,
+> `desktop:prepare` has never run yet, so skipping it fails the build.
 
 The final executable will be in:
 `frontend/src-tauri/target/release/`

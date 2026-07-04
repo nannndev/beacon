@@ -50,6 +50,21 @@ claude mcp add beacon -- python -m app.mcp_server   # run from backend/
 }
 ```
 
+## Desktop app (no Python needed)
+
+The Beacon desktop app bundles the MCP server as a standalone binary — you do
+**not** need Python installed. Open **MCP** in the app to:
+
+- Register / unregister with **Claude Desktop** and **Claude Code** in one
+  click (Beacon only ever touches its own `beacon` entry — your other MCP
+  servers are left untouched).
+- Copy a ready-to-paste config snippet for any other MCP client (Cursor,
+  Windsurf, Cline, …).
+
+The bundled binary is staged at a stable per-user path
+(`%APPDATA%\com.beacon.app\mcp_server.exe` on Windows) so registrations keep
+working across app updates.
+
 ## Tools
 
 | Tool | What it does |

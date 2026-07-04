@@ -56,4 +56,18 @@ if (!fs.existsSync(srcBinary)) {
 
 fs.copyFileSync(srcBinary, destBinary);
 console.log(`Copied ${srcName} -> ${destBinary}`);
+
+// Second sidecar: the MCP server binary (same triple-suffix convention).
+const mcpSrcName = isWindows ? 'mcp_server.exe' : 'mcp_server';
+const mcpDestName = isWindows ? `mcp_server-${triple}.exe` : `mcp_server-${triple}`;
+const mcpSrcBinary = path.join(distDir, mcpSrcName);
+const mcpDestBinary = path.join(tauriDir, mcpDestName);
+
+if (!fs.existsSync(mcpSrcBinary)) {
+  console.error(`MCP server binary not found at ${mcpSrcBinary}`);
+  process.exit(1);
+}
+
+fs.copyFileSync(mcpSrcBinary, mcpDestBinary);
+console.log(`Copied ${mcpSrcName} -> ${mcpDestBinary}`);
 console.log('Backend sidecar ready. Now run: npm run tauri:build');

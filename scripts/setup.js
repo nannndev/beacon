@@ -53,7 +53,12 @@ async function main() {
   const frontendDir = path.join(rootDir, 'frontend');
   run('pnpm install', { cwd: frontendDir });
 
-  // 3. Backend
+  // 3. Landing
+  log('=== Installing landing page ===', 'cyan');
+  const landingDir = path.join(rootDir, 'landing');
+  run('pnpm install', { cwd: landingDir });
+
+  // 4. Backend
   log('=== Installing backend (FastAPI) ===', 'cyan');
   const backendDir = path.join(rootDir, 'backend');
   const pipCmd = process.platform === 'win32' 

@@ -22,6 +22,17 @@ if __name__ == "__main__":
         "--hidden-import", "uvicorn.lifespan.on",
         "--add-data", f"app{os.pathsep}app",
     ])
-    print("\nBackend built as dist/backend (or dist/backend.exe on Windows).")
-    print("Run `npm run desktop:prepare` from frontend/ to copy it into")
-    print("src-tauri/binaries/ with the required <target-triple> suffix.")
+
+    PyInstaller.__main__.run([
+        "run_mcp.py",
+        "--onefile",
+        "--name", "mcp_server",
+        "--clean",
+        "--noconfirm",
+        "--log-level", "INFO",
+        "--add-data", f"app{os.pathsep}app",
+    ])
+
+    print("\nBackend + MCP server built as dist/backend and dist/mcp_server")
+    print("(.exe on Windows). Run `npm run desktop:prepare` from frontend/ to")
+    print("copy them into src-tauri/ with the required <target-triple> suffix.")

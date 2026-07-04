@@ -13,8 +13,10 @@ import { ImportDialog } from './components/dialogs/ImportDialog'
 import { EnvironmentsDialog } from './components/dialogs/EnvironmentsDialog'
 import { GlobalVarsDialog } from './components/dialogs/GlobalVarsDialog'
 import { ProjectSettingsDialog } from './components/dialogs/ProjectSettingsDialog'
+import McpSettingsDialog from './components/dialogs/McpSettingsDialog'
 import { useRun } from './hooks/useRun'
 import { api } from './lib/api'
+import { isDesktop } from './lib/platform'
 import { toast } from './components/ui/toast'
 import Onboarding from './pages/Onboarding'
 
@@ -64,6 +66,7 @@ function App() {
   const [showEnvDialog, setShowEnvDialog] = useState(false)
   const [showGlobalDialog, setShowGlobalDialog] = useState(false)
   const [showProjectSettings, setShowProjectSettings] = useState(false)
+  const [showMcpDialog, setShowMcpDialog] = useState(false)
 
   // Execution settings: a global default (persisted) + an active view that may
   // be a per-endpoint override.
@@ -423,6 +426,7 @@ function App() {
           onProjectSettings={() => setShowProjectSettings(true)}
           onImport={() => setShowImportDialog(true)}
           onExport={exportProject}
+          onOpenMcp={() => setShowMcpDialog(true)}
         />
 
         <div className={`flex-1 overflow-auto ${showEditor ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
@@ -495,6 +499,7 @@ function App() {
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
       <ProjectSettingsDialog open={showProjectSettings} onOpenChange={setShowProjectSettings} project={currentProject} onRename={renameProject} onDelete={deleteProject} />
+      {isDesktop() && <McpSettingsDialog open={showMcpDialog} onOpenChange={setShowMcpDialog} />}
     </div>
   )
 }

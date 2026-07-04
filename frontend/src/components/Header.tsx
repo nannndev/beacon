@@ -1,17 +1,19 @@
 import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
-import { Settings, Download, Upload, Activity } from 'lucide-react'
+import { Settings, Download, Upload, Activity, Plug } from 'lucide-react'
 import { Project } from '../types'
 import { BrandMark } from './BrandMark'
+import { isDesktop } from '../lib/platform'
 
 interface Props {
   currentProject?: Project
   onProjectSettings: () => void
   onImport: () => void
   onExport: () => void
+  onOpenMcp: () => void
 }
 
-export function Header({ currentProject, onProjectSettings, onImport, onExport }: Props) {
+export function Header({ currentProject, onProjectSettings, onImport, onExport, onOpenMcp }: Props) {
   return (
     <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background/95 backdrop-blur">
       <div className="flex items-center gap-3">
@@ -65,6 +67,18 @@ export function Header({ currentProject, onProjectSettings, onImport, onExport }
           <span className="truncate">{currentProject?.name || 'No project'}</span>
           <Settings className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
+        {isDesktop() && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 font-medium"
+            onClick={onOpenMcp}
+            title="MCP server settings"
+          >
+            <Plug className="h-3.5 w-3.5 opacity-70" />
+            <span className="hidden sm:inline">MCP</span>
+          </Button>
+        )}
         <ThemeToggle />
       </div>
     </div>
