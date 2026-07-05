@@ -41,6 +41,13 @@ engine and the same `tests.json` store:
 - `delete_endpoint(name_or_id)`; `delete_folder(name_or_id, recursive?)` —
   folder delete refuses a non-empty folder unless `recursive=true`.
 
+**Send / inspect**
+- `send_request(name_or_id)` — fire the endpoint **once** and get the full
+  response: status, reason, time_ms, size_bytes, content_type, headers, body
+  (capped), parsed json, and `extracted` (names of variables the extractors
+  refreshed on a 2xx). Use it to debug a response or to prime a token (send
+  "Login" so `{{access_token}}` is fresh) before other calls.
+
 **Run**
 - `run_endpoint(name_or_id, concurrency, count, delay, use_min_delay?)` —
   **fires real HTTP** and returns final stats (counts, latency p50/p95/p99,
