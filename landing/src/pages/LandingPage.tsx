@@ -4,24 +4,25 @@ import {
   ArrowRight,
   Bot,
   Braces,
-  Clock3,
   Code2,
   Coffee,
   Download,
-  FileJson,
+  FileCode2,
   FolderKanban,
   Github,
+  GitBranch,
   Globe2,
   History,
   Menu,
   MessagesSquare,
   Play,
+  Repeat,
   RotateCcw,
-  Server,
+  Send,
+  ShieldCheck,
   Sparkles,
   StopCircle,
   Terminal,
-  Workflow,
   X,
 } from 'lucide-react'
 import { ThemeToggle } from '../components/ThemeToggle'
@@ -325,7 +326,8 @@ export default function LandingPage() {
           </h1>
 
           <p className="mt-6 max-w-xl text-pretty text-[17px] leading-relaxed text-muted-foreground">
-            A modern workspace for API collections, environments, dynamic requests, and high-fidelity load testing. Built for speed and precision.
+            Send a request and read the response. Assert it, chain it, and load-test it —
+            collections, environments, and dynamic variables included. Built for speed and precision.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -406,12 +408,12 @@ export default function LandingPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             {[
-              { icon: Code2, title: 'Body editor', body: 'Edit JSON, form data, or multipart payloads with variable support.' },
-              { icon: Activity, title: 'Live execution', body: 'Watch attempts, success, rate limits, errors, and timing update as runs execute.' },
-              { icon: Workflow, title: 'Chained auth', body: 'Extract tokens from responses and reuse them in later requests.' },
-              { icon: FileJson, title: 'Portable projects', body: 'Import and export project JSON without locking your workflow to a database.' },
-              { icon: Server, title: 'Backend runner', body: 'Run concurrent tests through the FastAPI execution layer.' },
-              { icon: Clock3, title: 'Rate control', body: 'Tune concurrency, delays, and max requests per endpoint.' },
+              { icon: Send, title: 'Send & inspect', body: 'Fire one request and read the full response — status, timing, headers, and a pretty JSON / XML / HTML viewer.' },
+              { icon: ShieldCheck, title: 'Assertions', body: 'Pass/fail rules on status, response time, body text, JSON fields, or headers — checked on every send.' },
+              { icon: GitBranch, title: 'Scenarios', body: 'Chain endpoints in order; tokens extracted from one step flow into the next. Login → use → repeat.' },
+              { icon: FileCode2, title: 'Any content type', body: 'JSON, form, multipart file upload, or raw text / XML / GraphQL — all with variable templating.' },
+              { icon: Activity, title: 'Live load testing', body: 'Watch attempts, success, rate limits, errors, latency percentiles, and a live trend chart as runs execute.' },
+              { icon: Repeat, title: 'Retry & rate control', body: 'Auto-retry on errors or non-2xx, and tune concurrency, delays, and max requests per endpoint.' },
             ].map(({ icon: Icon, title, body }) => (
               <article key={title} className="rounded-xl border border-border bg-card/55 p-5">
                 <div className="flex items-center gap-3">
@@ -444,10 +446,10 @@ export default function LandingPage() {
 
           <div className="grid gap-4 pt-8 md:grid-cols-4">
             {[
-              ['01', 'Create', 'Define method, URL, headers, body, and auth.'],
-              ['02', 'Parameterize', 'Use variables and dynamic generators.'],
-              ['03', 'Run', 'Execute one endpoint or a full collection.'],
-              ['04', 'Inspect', 'Read response, logs, stats, and failures.'],
+              ['01', 'Create', 'Method, URL, headers, body, auth, and dynamic variables.'],
+              ['02', 'Send & inspect', 'Fire once, read the response, click a field to save a token.'],
+              ['03', 'Assert', 'Add pass/fail rules on status, time, body, or JSON.'],
+              ['04', 'Chain & scale', 'Run a scenario end-to-end, or load-test at concurrency.'],
             ].map(([step, title, body]) => (
               <div key={step} className="rounded-2xl border border-border/50 bg-background/60 p-6">
                 <div className="font-mono text-xs font-bold tracking-widest text-cyan-500">{step}</div>
@@ -469,9 +471,10 @@ export default function LandingPage() {
               Drive Beacon with your AI.
             </h2>
             <p className="mt-5 max-w-lg text-pretty leading-7 text-muted-foreground">
-              Beacon ships an MCP server, so assistants like Claude can list and create
-              endpoints, import Postman/curl, and run or load-test them — through the same
-              engine, no glue code.
+              Beacon ships a bundled MCP server — one click in the desktop app registers it
+              with Claude. Assistants get <span className="font-semibold text-foreground">17 tools</span> to
+              create, organize, import, send &amp; inspect, assert, chain scenarios, and
+              load-test endpoints — through the same engine, no glue code.
             </p>
             <a
               href={DOCS_URL.replace(/\/$/, '') + '/mcp'}
@@ -489,12 +492,13 @@ export default function LandingPage() {
               <span className="h-3 w-3 rounded-full bg-amber-400" />
               <span className="h-3 w-3 rounded-full bg-emerald-400" />
             </div>
-            <pre className="overflow-auto"><code>{`# Claude Code — from the repo
-cd backend
-claude mcp add beacon -- python -m app.mcp_server
+            <pre className="overflow-auto"><code>{`# Desktop app → MCP panel → one click to register
+# (or Claude Code, pointing at the bundled binary)
+claude mcp add beacon -- <path-to>/mcp_server
 
 # then just ask your assistant:
-"run the login endpoint 100x at concurrency 10"`}</code></pre>
+"send Login, then run the Checkout scenario"
+"load-test /reports 100x at concurrency 10"`}</code></pre>
           </div>
         </div>
       </section>
@@ -707,7 +711,13 @@ function ProductPreview({ current, selected, response, logs, running, logRef, on
               <div className="p-4">
                 <div className="mb-2 flex items-center justify-between text-xs font-bold text-muted-foreground">
                   <span className="inline-flex items-center gap-2"><Terminal className="h-3.5 w-3.5" /> Response</span>
-                  <span className={`rounded-md px-2 py-0.5 font-mono ${current.status === 429 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>{current.status}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className={`rounded-md px-2 py-0.5 font-mono ${current.status >= 200 && current.status < 300 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>{current.status}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">{current.time}ms</span>
+                    <span className={`rounded-md px-2 py-0.5 ${current.status >= 200 && current.status < 300 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'}`}>
+                      {current.status >= 200 && current.status < 300 ? '✓ assertions' : '✗ assertions'}
+                    </span>
+                  </span>
                 </div>
                 <pre className="min-h-[230px] overflow-auto rounded-xl bg-slate-950 p-4 text-left font-mono text-xs leading-6 text-slate-200"><code>{response}</code></pre>
                 <div ref={logRef} className="mt-4 h-24 overflow-auto rounded-xl border border-border bg-background p-3 font-mono text-[11px] leading-5 text-muted-foreground">
