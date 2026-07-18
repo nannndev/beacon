@@ -383,13 +383,27 @@ function App() {
     } catch {}
   }
 
-  const runSelected = async () => {
+  const runSelected = async (payload?: Record<string, unknown>) => {
     if (!selectedTestId) { toast.error('Select an endpoint first'); return }
     const ep = effectiveTests.find((t) => t.id === selectedTestId) || (config.tests as any[]).find((t) => t.id === selectedTestId)
     if (!ep) return
+
+    // Scenario mode: delegate to the existing runFolderAsScenario-style flow
+    if (payload?.__scenario) {
+      const allIds = effectiveTests.map((t) => t.id)
+      try {
+        const result = await api.runScenario(allIds, { continue_on_error: false })
+        setScenarioResult(result)
+        await fetchAll()
+      } catch (e: any) {
+        toast.error(e?.message || 'Scenario failed')
+      }
+      return
+    }
+
     const cfg = settingsToConfig(settings)
     await persistOverride(ep, cfg)
-    run.start(ep.id, ep.name, cfg)
+    run.start(ep.id, ep.name, cfg, payload)
   }
 
   const runRow = (id: string) => {
@@ -475,6 +489,7 @@ function App() {
                 onRun={runSelected}
                 onRunAll={runAll}
                 onStop={run.stop}
+                selectedTestId={selectedTestId}
               />
 
               <EndpointTable

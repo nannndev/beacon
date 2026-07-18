@@ -5,7 +5,8 @@ import { Badge } from './ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { JsonCodeEditor } from './JsonCodeEditor'
 import { RunResponse } from '../types'
-import { Copy, Check, Play, Pause } from 'lucide-react'
+import { Copy, Check, Play, Pause, Download, ChevronDown } from 'lucide-react'
+import { useExport, ExportFormat } from '../hooks/useExport'
 
 export interface RunStats {
   attempts: number
@@ -49,13 +50,17 @@ const statusBadge: Record<RunStatus, { label: string; className: string }> = {
 export default function LiveMonitor({ logs, responses, stats, status, maxRequests, runQueue, runningName, onStop, onClear }: Props) {
   const logRef = useRef<HTMLDivElement>(null)
   const responsesListRef = useRef<HTMLDivElement>(null)
+  const exportRef = useRef<HTMLDivElement>(null)
   const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
   const [followLatest, setFollowLatest] = useState(true)
   const [copied, setCopied] = useState(false)
   const [liveElapsed, setLiveElapsed] = useState(0)
   const [logFilter, setLogFilter] = useState<LogFilter>('all')
+  const [showExportMenu, setShowExportMenu] = useState(false)
   // Whole-run latency trend (a line over time, complementing the recent bars).
   const [series, setSeries] = useState<number[]>([])
+
+  const { exportRun } = useExport()
 
   // Auto-scroll logs
   useEffect(() => {
@@ -112,6 +117,25 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
     } catch {}
   }
 
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    if (!showExportMenu) return
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showExportMenu])
+
+  const handleExport = (format: ExportFormat) => {
+    setShowExportMenu(false)
+    exportRun(format, { responses, logs, stats, runName: runningName })
+  }
+
+  const canExport = responses.length > 0 || logs.length > 0
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between py-2.5 px-4">
@@ -128,6 +152,41 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
           {status === 'running' && (
             <Button variant="destructive" size="sm" onClick={onStop}>Stop</Button>
           )}
+
+          {/* Export dropdown */}
+          <div ref={exportRef} className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-7 px-2.5 text-xs"
+              disabled={!canExport || status === 'running'}
+              onClick={() => setShowExportMenu((v) => !v)}
+            >
+              <Download className="h-3 w-3" />
+              Export
+              <ChevronDown className={`h-3 w-3 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+            </Button>
+
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+                {([
+                  { format: 'json' as ExportFormat, label: 'Export as JSON', sub: 'Full data + stats' },
+                  { format: 'csv'  as ExportFormat, label: 'Export as CSV',  sub: 'Responses table'  },
+                  { format: 'logs' as ExportFormat, label: 'Export Logs',    sub: 'Plain text file'  },
+                ] as const).map(({ format, label, sub }) => (
+                  <button
+                    key={format}
+                    onClick={() => handleExport(format)}
+                    className="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors border-b border-border/50 last:border-0"
+                  >
+                    <div className="text-xs font-medium">{label}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <Button variant="ghost" size="sm" onClick={onClear} disabled={status === 'running'}>Clear</Button>
         </div>
       </CardHeader>

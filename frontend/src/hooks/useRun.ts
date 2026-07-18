@@ -10,6 +10,8 @@ export interface RunQueueItem {
   testId: string
   name: string
   cfg: RunConfig
+  /** Optional full payload override (for mode-based runs). When set, cfg is ignored. */
+  payload?: Record<string, unknown>
 }
 
 export interface RunQueueProgress {
@@ -38,10 +40,14 @@ function mergeStats(base: RunStats, current: RunStats): RunStats {
   }
 }
 
-function formatStartLine(name: string, cfg: RunConfig, queuePos?: number, queueTotal?: number): string {
+function formatStartLine(name: string, payload: Record<string, unknown>, queuePos?: number, queueTotal?: number): string {
   const prefix = queuePos && queueTotal ? `[${queuePos}/${queueTotal}] ` : ''
-  const delay = cfg.use_min_delay ? ' (min delay)' : ` · ${Math.round(cfg.delay * 1000)}ms delay`
-  return `${prefix}Starting "${name}" — ${cfg.concurrency} workers × ${cfg.max_requests} requests${delay}`
+  const mode = (payload.mode as string) ?? 'load'
+  const cfg = payload as any
+  const detail = mode === 'load'
+    ? `${cfg.concurrency ?? 1} workers × ${cfg.max_requests ?? '?'} req · ${cfg.no_delay ? 'no delay' : `${Math.round((cfg.delay_ms ?? 0))}ms`}`
+    : mode
+  return `${prefix}Starting "${name}" [${mode}] — ${detail}`
 }
 
 /**
@@ -92,15 +98,15 @@ export function useRun() {
   const startInternal = useCallback(async (
     testId: string,
     name: string,
-    cfg: RunConfig,
+    payload: Record<string, unknown>,
     opts: { fresh: boolean; queuePos?: number; queueTotal?: number },
   ) => {
     cleanupSockets()
     setRunningTestId(testId)
-    setMaxRequests(cfg.max_requests)
+    setMaxRequests((payload.max_requests as number) ?? (payload.benchmark_requests as number) ?? (payload.probe_step_requests as number) ?? 0)
     setStatus('running')
 
-    const line = formatStartLine(name, cfg, opts.queuePos, opts.queueTotal)
+    const line = formatStartLine(name, payload, opts.queuePos, opts.queueTotal)
     if (opts.fresh) {
       baseStatsRef.current = EMPTY_STATS
       setStats(EMPTY_STATS)
@@ -110,7 +116,7 @@ export function useRun() {
       setLogs((prev) => [...prev, '', `─── ${line}`])
     }
 
-    const data = await api.startRun(testId, cfg)
+    const data = await api.startRun(payload)
     runIdRef.current = data.run_id
     connectRef.current(data.run_id)
   }, [cleanupSockets])
@@ -122,7 +128,8 @@ export function useRun() {
     const pos = (progress?.current ?? 0) + 1
     const total = progress?.total ?? pos
     setRunQueue({ current: pos, total })
-    startInternal(next.testId, next.name, next.cfg, { fresh: false, queuePos: pos, queueTotal: total })
+    const payload = next.payload ?? { test_id: next.testId, mode: 'load', ...next.cfg }
+    startInternal(next.testId, next.name, payload, { fresh: false, queuePos: pos, queueTotal: total })
       .catch((e: any) => {
         runAllModeRef.current = false
         queueRef.current = []
@@ -207,14 +214,24 @@ export function useRun() {
   const connectRef = useRef(connect)
   useEffect(() => { connectRef.current = connect }, [connect])
 
-  const start = useCallback(async (testId: string, name: string, cfg: RunConfig) => {
+  /**
+   * Start a single run with a full payload (supports all 8 modes).
+   * If `payload` is omitted, falls back to legacy cfg (load mode).
+   */
+  const start = useCallback(async (
+    testId: string,
+    name: string,
+    cfg: RunConfig,
+    payload?: Record<string, unknown>,
+  ) => {
     stoppedRef.current = false
     runAllModeRef.current = false
     queueRef.current = []
     setRunQueue(null)
-    setTotalMaxRequests(cfg.max_requests)
+    const finalPayload = payload ?? { test_id: testId, mode: 'load', ...cfg }
+    setTotalMaxRequests((finalPayload.max_requests as number) ?? cfg.max_requests)
     try {
-      await startInternal(testId, name, cfg, { fresh: true })
+      await startInternal(testId, name, finalPayload, { fresh: true })
       toast.success('Run started')
     } catch (e: any) {
       setStatus('idle')

@@ -27,9 +27,47 @@ async def start_run(data: dict):
         raise HTTPException(status_code=400, detail="concurrency/delay/max_requests must be numbers")
     use_min_delay = data.get("use_min_delay", False)
 
+    # --- Mode selection ---
+    mode = str(data.get("mode", "load")).lower().strip()
+
+    # Build mode-specific params dict with sensible defaults drawn from the
+    # request body.  Common keys (concurrency, delay, max_requests) are
+    # forwarded into every mode so callers only need to set them once.
+    params: dict = {
+        # shared / common
+        "concurrency": concurrency,
+        "delay": delay if not use_min_delay else 0.001,
+        "max_requests": max_requests,
+        # ramp
+        "ramp_start": int(data.get("ramp_start", 1)),
+        "ramp_end": int(data.get("ramp_end", 16)),
+        "ramp_step_duration": float(data.get("ramp_step_duration", 10.0)),
+        # spike
+        "baseline_workers": int(data.get("baseline_workers", 2)),
+        "peak_workers": int(data.get("peak_workers", 20)),
+        "baseline_requests": int(data.get("baseline_requests", 50)),
+        "peak_requests": int(data.get("peak_requests", 200)),
+        "recovery_requests": int(data.get("recovery_requests", 50)),
+        # soak
+        "duration_s": float(data.get("duration_s", 300.0)),
+        "rps": float(data.get("rps", 5.0)),
+        # rate_probe
+        "start_rps": float(data.get("start_rps", 1.0)),
+        "step_rps": float(data.get("step_rps", 1.0)),
+        "step_requests": int(data.get("step_requests", 20)),
+        "max_rps": float(data.get("max_rps", 100.0)),
+        # fuzz
+        "fuzz_fields": data.get("fuzz_fields") or {},
+        "fuzz_types": data.get("fuzz_types") or {},
+        # benchmark
+        "n_samples": int(data.get("n_samples", 100)),
+        "warmup": int(data.get("warmup", 10)),
+    }
+
     run_id = str(os.urandom(8).hex())
     store.current_runs[run_id] = {
         "status": "running",
+        "mode": mode,
         "logs": [],
         "responses": [],
         "stats": {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0},
@@ -48,7 +86,7 @@ async def start_run(data: dict):
                 response_callback=lambda r: runner.dispatch(runner.broadcast_response(run_id, r)),
                 stop_flag=store.current_runs[run_id]["stop_flag"],
             )
-            results = tester.run()
+            results = tester.run_mode(mode, params)
             # NOTE: extractor-refreshed variables live in current_config in
             # memory (used by chained runs this session). We deliberately do
             # NOT store.save() here — a background thread writing the whole
@@ -64,7 +102,7 @@ async def start_run(data: dict):
             runner.dispatch(runner.broadcast_stats(run_id, store.current_runs[run_id]["stats"]))
 
     threading.Thread(target=run_in_thread, daemon=True).start()
-    return {"run_id": run_id}
+    return {"run_id": run_id, "mode": mode}
 
 
 @router.post("/send")

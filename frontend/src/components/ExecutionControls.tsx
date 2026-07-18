@@ -1,13 +1,20 @@
+import { useState } from 'react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
-import { Play, Square, Turtle, Zap, Flame, Bomb, ListVideo } from 'lucide-react'
+import { Play, Square, ListVideo } from 'lucide-react'
 import { RunConfig } from '../types'
 import { RunStatus } from './LiveMonitor'
+import { ModeSelector } from './ModeSelector'
+import { ModeParamsForm, estimateModeDuration, buildRunPayload } from './ModeParamsForm'
+import {
+  TestMode, ModeParams, MODE_DEFAULTS,
+  LoadParams,
+} from '../types/testModes'
+
+// ---- Legacy compat: derive a RunConfig from load params -------------------
 
 export interface ExecSettings {
-  rate: number       // requests / second (derived view of delay)
+  rate: number
   delayMs: number
   maxRequests: number
   concurrency: number
@@ -42,65 +49,7 @@ export function configToSettings(c: RunConfig): ExecSettings {
   }
 }
 
-interface Preset {
-  key: string
-  label: string
-  icon: React.ReactNode
-  s: ExecSettings
-  burst?: boolean
-}
-
-const PRESETS: Preset[] = [
-  {
-    key: 'slow',
-    label: 'Slow',
-    icon: <Turtle className="h-3 w-3" />,
-    s: { rate: 2, delayMs: 500, maxRequests: 50, concurrency: 1, noDelay: false },
-  },
-  {
-    key: 'normal',
-    label: 'Normal',
-    icon: <Zap className="h-3 w-3" />,
-    s: { rate: 5, delayMs: 200, maxRequests: 200, concurrency: 4, noDelay: false },
-  },
-  {
-    key: 'aggressive',
-    label: 'Aggressive',
-    icon: <Flame className="h-3 w-3" />,
-    s: { rate: 20, delayMs: 50, maxRequests: 500, concurrency: 16, noDelay: false },
-  },
-  {
-    key: 'burst',
-    label: 'BURST',
-    icon: <Bomb className="h-3 w-3" />,
-    s: { rate: 0, delayMs: 0, maxRequests: 1000, concurrency: 32, noDelay: true },
-    burst: true,
-  },
-]
-
-function sameSettings(a: ExecSettings, b: ExecSettings) {
-  return (
-    a.delayMs === b.delayMs &&
-    a.maxRequests === b.maxRequests &&
-    a.concurrency === b.concurrency &&
-    a.noDelay === b.noDelay
-  )
-}
-
-/** Estimate run duration in human-readable form. */
-function estimateDuration(s: ExecSettings): string {
-  if (s.noDelay) {
-    // burst: limited by concurrency throughput — rough ~1000 req/s per worker
-    const estSec = Math.ceil(s.maxRequests / (s.concurrency * 50))
-    return estSec < 2 ? '< 1s' : `~${estSec}s`
-  }
-  if (s.delayMs === 0) return '< 1s'
-  // effective throughput: concurrency / (delayMs / 1000)
-  const rps = (s.concurrency * 1000) / s.delayMs
-  const estSec = Math.ceil(s.maxRequests / rps)
-  if (estSec < 60) return `~${estSec}s`
-  return `~${Math.ceil(estSec / 60)}m`
-}
+// ---- Props ---------------------------------------------------------------
 
 interface Props {
   settings: ExecSettings
@@ -111,54 +60,89 @@ interface Props {
   endpointCount: number
   overrideEnabled: boolean
   onToggleOverride: (on: boolean) => void
-  onRun: () => void
+  onRun: (payload?: Record<string, unknown>) => void
   onRunAll: () => void
   onStop: () => void
+  selectedTestId?: string | null
 }
 
-function NumField({ label, value, onChange, disabled, mono, width = 'w-20' }: {
-  label: string; value: number; onChange: (n: number) => void; disabled?: boolean; mono?: boolean; width?: string
-}) {
-  return (
-    <div className={width}>
-      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
-      <Input
-        type="number"
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-        className={`h-8 mt-0.5 px-2 ${mono ? 'font-mono' : ''} disabled:opacity-50`}
-      />
-    </div>
-  )
-}
+// ---- Component -----------------------------------------------------------
 
 export function ExecutionControls({
-  settings, onChange, status, selectedName, hasSelection, endpointCount, overrideEnabled,
-  onToggleOverride, onRun, onRunAll, onStop,
+  settings, onChange, status, selectedName, hasSelection, endpointCount,
+  overrideEnabled, onToggleOverride, onRun, onRunAll, onStop, selectedTestId,
 }: Props) {
   const running = status === 'running'
 
-  const setRate = (rate: number) => {
-    const r = Math.max(0, rate)
-    onChange({ ...settings, rate: r, delayMs: r > 0 ? Math.round(1000 / r) : 0 })
-  }
-  const setDelay = (delayMs: number) => {
-    const d = Math.max(0, delayMs)
-    onChange({ ...settings, delayMs: d, rate: d > 0 ? Math.round(1000 / d) : 0 })
+  // Mode state — persisted in component for the session
+  const [mode, setMode] = useState<TestMode>('load')
+  const [modeParams, setModeParams] = useState<ModeParams['params']>(
+    () => MODE_DEFAULTS[mode]
+  )
+
+  const handleModeChange = (m: TestMode) => {
+    setMode(m)
+    setModeParams(MODE_DEFAULTS[m])
   }
 
-  const estimated = estimateDuration(settings)
-  const activePreset = PRESETS.find((p) => sameSettings(settings, p.s))
+  const handleParamsChange = (p: ModeParams['params']) => {
+    setModeParams(p)
+    // Mirror load params back into legacy settings so other parts of UI stay in sync
+    if (mode === 'load') {
+      const lp = p as LoadParams
+      onChange({
+        rate: lp.delay_ms > 0 ? Math.round(1000 / lp.delay_ms) : 0,
+        delayMs: lp.delay_ms,
+        maxRequests: lp.max_requests,
+        concurrency: lp.concurrency,
+        noDelay: lp.no_delay,
+      })
+    }
+  }
+
+  // Sync load params from legacy settings when they change externally (e.g. override toggle)
+  const syncedParams: ModeParams['params'] = mode === 'load'
+    ? {
+        concurrency: settings.concurrency,
+        max_requests: settings.maxRequests,
+        delay_ms: settings.delayMs,
+        no_delay: settings.noDelay,
+      } as LoadParams
+    : modeParams
+
+  const estimated = estimateModeDuration(mode, syncedParams)
+
+  const handleRun = () => {
+    if (!selectedTestId) return
+    if (mode === 'scenario') {
+      // Scenario mode → use existing scenario flow (handled in App.tsx via onRun with special flag)
+      onRun({ __scenario: true })
+      return
+    }
+    const payload = buildRunPayload(selectedTestId, mode, syncedParams)
+    onRun(payload)
+  }
 
   return (
     <Card>
       <CardContent className="p-3 space-y-2.5">
-        {/* Title + presets */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="mr-1">
-            <div className="text-sm font-semibold leading-none">Execution Controls</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
+
+        {/* Mode selector */}
+        <ModeSelector selected={mode} onChange={handleModeChange} />
+
+        {/* Mode parameter form */}
+        <div className="pt-1 border-t border-border/60">
+          <ModeParamsForm
+            mode={mode}
+            params={syncedParams}
+            onChange={handleParamsChange}
+          />
+        </div>
+
+        {/* Footer row: target label + override + est + actions */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 border-t border-border/60">
+          <div>
+            <div className="text-[10px] text-muted-foreground">
               {hasSelection
                 ? <><span>Target: </span><span className="text-foreground font-medium">{selectedName}</span></>
                 : 'Select an endpoint'}
@@ -166,51 +150,8 @@ export function ExecutionControls({
             </div>
           </div>
 
-          {/* Preset buttons with icons */}
-          <div className="flex flex-wrap items-center gap-1 ml-auto">
-            {PRESETS.map((p) => {
-              const active = activePreset?.key === p.key
-              return (
-                <Button
-                  key={p.key}
-                  size="sm"
-                  variant={active ? 'default' : 'outline'}
-                  className={`h-7 text-xs gap-1.5 ${
-                    p.burst
-                      ? active
-                        ? 'bg-amber-600 hover:bg-amber-600/90 text-white border-amber-600'
-                        : 'border-amber-600/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-                      : ''
-                  }`}
-                  onClick={() => onChange({ ...p.s })}
-                >
-                  {p.icon}
-                  {p.label}
-                </Button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Fields + estimated duration + actions */}
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-          <NumField label="Rate /s"  value={settings.rate}        onChange={setRate}  disabled={settings.noDelay} mono />
-          <NumField label="Delay ms" value={settings.delayMs}     onChange={setDelay} disabled={settings.noDelay} mono />
-          <NumField label="Max Req"  value={settings.maxRequests} onChange={(n) => onChange({ ...settings, maxRequests: Math.max(1, n) })} mono width="w-24" />
-          <NumField label="Workers"  value={settings.concurrency} onChange={(n) => onChange({ ...settings, concurrency: Math.max(1, n) })} mono />
-
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none h-8 px-1">
-            <input
-              type="checkbox"
-              checked={settings.noDelay}
-              onChange={(e) => onChange({ ...settings, noDelay: e.target.checked })}
-              className="h-3.5 w-3.5 rounded border-input accent-primary"
-            />
-            No delay
-          </label>
-
           {hasSelection && (
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none h-8 px-1">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={overrideEnabled}
@@ -239,18 +180,19 @@ export function ExecutionControls({
               <ListVideo className="h-3.5 w-3.5" /> Run All
             </Button>
             <Button
-              onClick={onRun}
+              onClick={handleRun}
               disabled={!hasSelection || running}
               size="sm"
               className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              <Play className="h-3.5 w-3.5" /> Run Selected
+              <Play className="h-3.5 w-3.5" /> Run
             </Button>
             <Button onClick={onStop} disabled={!running} size="sm" variant="destructive" className="h-8 gap-1.5">
               <Square className="h-3 w-3" /> Stop
             </Button>
           </div>
         </div>
+
       </CardContent>
     </Card>
   )

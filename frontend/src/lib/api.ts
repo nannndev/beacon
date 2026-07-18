@@ -169,8 +169,9 @@ export const api = {
   duplicateTest: (id: string) => req<Endpoint>(`/tests/${id}/duplicate`, jsonInit('POST')),
 
   // Runs
-  startRun: (test_id: string, cfg: RunConfig) =>
-    req<{ run_id: string }>('/run', jsonInit('POST', { test_id, ...cfg })),
+  // payload can be a plain RunConfig (load mode default) or any mode-specific dict
+  startRun: (payload: Record<string, unknown>) =>
+    req<{ run_id: string }>('/run', jsonInit('POST', payload)),
   stopRun: (runId: string) => req(`/stop/${runId}`, jsonInit('POST')),
   getStatus: (runId: string) => req(`/status/${runId}`),
 }

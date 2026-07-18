@@ -177,6 +177,7 @@ class APITester:
         # 429/throttle, and the last Retry-After it advertised.
         self._first_rate_limited_at: Optional[int] = None
         self._last_retry_after: Optional[str] = None
+        self._probe_threshold_rps: Optional[float] = None
         self._t_start = time.time()
 
     def _record_latency(self, ms: float):
@@ -220,13 +221,17 @@ class APITester:
             "max": round(l["max"]),
             "last": round(l["last"]),
             "p50": round(self._percentile(srt, 50)),
+            "p75": round(self._percentile(srt, 75)),
+            "p90": round(self._percentile(srt, 90)),
             "p95": round(self._percentile(srt, 95)),
             "p99": round(self._percentile(srt, 99)),
+            "p999": round(self._percentile(srt, 99.9)),
         }
         snap["elapsed_s"] = round(elapsed, 2)
         snap["rps"] = round(self.results["attempts"] / elapsed, 1)
         snap["first_rate_limited_at"] = self._first_rate_limited_at
         snap["retry_after"] = self._last_retry_after
+        snap["probe_threshold_rps"] = self._probe_threshold_rps
         return snap
 
     def _substitute(self, value: Any) -> Any:
@@ -530,6 +535,7 @@ class APITester:
             return err
 
     def run(self):
+        """Standard load run: fixed concurrency, fixed request count."""
         self._reset_metrics()
         self.update_stats(self._snapshot())
 
@@ -555,3 +561,431 @@ class APITester:
 
         self.log(f"Finished. {self.results}")
         return self.results
+
+    # -------------------------------------------------------------------------
+    # RAMP mode: gradually double workers every ramp_step_duration seconds
+    # -------------------------------------------------------------------------
+    def run_ramp(self, ramp_start: int = 1, ramp_end: int = 16,
+                 ramp_step_duration: float = 10.0, max_requests: int = 500,
+                 delay: float = 0.05):
+        """Gradually ramp up concurrency. Start at ramp_start workers, double
+        every ramp_step_duration seconds until ramp_end, submitting requests
+        up to max_requests total."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+        counter = [0]  # shared mutable int
+        counter_lock = threading.Lock()
+
+        current_workers = max(1, ramp_start)
+        self.log(f"[ramp] Starting ramp: {current_workers} -> {ramp_end} workers, "
+                 f"step={ramp_step_duration}s, max_requests={max_requests}")
+
+        def _next_idx():
+            with counter_lock:
+                counter[0] += 1
+                return counter[0]
+
+        with ThreadPoolExecutor(max_workers=max(ramp_end, 1)) as executor:
+            step_deadline = time.time() + ramp_step_duration
+            while True:
+                if self.stop_flag.get("stop"):
+                    break
+                with counter_lock:
+                    total_so_far = counter[0]
+                if total_so_far >= max_requests:
+                    break
+
+                # Ramp up workers on schedule
+                now = time.time()
+                if now >= step_deadline and current_workers < ramp_end:
+                    current_workers = min(current_workers * 2, ramp_end)
+                    self.log(f"[ramp] Workers increased to {current_workers}")
+                    step_deadline = now + ramp_step_duration
+
+                # Submit a batch equal to current_workers
+                futures_batch = []
+                for _ in range(current_workers):
+                    with counter_lock:
+                        if counter[0] >= max_requests:
+                            break
+                        counter[0] += 1
+                        idx = counter[0]
+                    if self.stop_flag.get("stop"):
+                        break
+                    futures_batch.append(executor.submit(self._send_one, idx))
+
+                for f in as_completed(futures_batch):
+                    if self.stop_flag.get("stop"):
+                        break
+
+                if delay > 0:
+                    time.sleep(delay)
+
+        self.log(f"[ramp] Finished. workers reached={current_workers}. {self.results}")
+        return self.results
+
+    # -------------------------------------------------------------------------
+    # SPIKE mode: baseline -> peak -> recovery (3 phases)
+    # -------------------------------------------------------------------------
+    def run_spike(self, baseline_workers: int = 2, peak_workers: int = 20,
+                  baseline_requests: int = 50, peak_requests: int = 200,
+                  recovery_requests: int = 50, delay: float = 0.05):
+        """3-phase spike: baseline load, sudden peak, then recovery."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+
+        phases = [
+            ("baseline", baseline_workers, baseline_requests),
+            ("peak",     peak_workers,     peak_requests),
+            ("recovery", baseline_workers, recovery_requests),
+        ]
+        global_i = [0]
+
+        for phase_name, workers, n_req in phases:
+            if self.stop_flag.get("stop"):
+                break
+            self.log(f"[spike] === Phase: {phase_name} | workers={workers} | requests={n_req} ===")
+            with ThreadPoolExecutor(max_workers=max(workers, 1)) as executor:
+                futures = []
+                for _ in range(n_req):
+                    if self.stop_flag.get("stop"):
+                        break
+                    global_i[0] += 1
+                    futures.append(executor.submit(self._send_one, global_i[0]))
+                    if delay > 0:
+                        time.sleep(delay)
+                for f in as_completed(futures):
+                    if self.stop_flag.get("stop"):
+                        break
+            self.log(f"[spike] Phase {phase_name} complete. Running stats: {self.results}")
+
+        self.log(f"[spike] Finished. {self.results}")
+        return self.results
+
+    # -------------------------------------------------------------------------
+    # SOAK mode: time-based run at a fixed RPS
+    # -------------------------------------------------------------------------
+    def run_soak(self, duration_s: float = 300.0, rps: float = 5.0,
+                 concurrency: int = 1):
+        """Run for a fixed wall-clock duration at a target RPS. Logs throughput
+        summary every 10 seconds."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+
+        interval = 1.0 / max(rps, 0.001)  # seconds between submissions
+        deadline = time.time() + duration_s
+        next_log = time.time() + 10.0
+        i = 0
+
+        self.log(f"[soak] Starting: duration={duration_s}s rps={rps} concurrency={concurrency}")
+
+        if concurrency > 1:
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures_running: list = []
+                while time.time() < deadline and not self.stop_flag.get("stop"):
+                    i += 1
+                    futures_running.append(executor.submit(self._send_one, i))
+                    # Prune completed futures to avoid memory growth
+                    futures_running = [f for f in futures_running if not f.done()]
+
+                    now = time.time()
+                    if now >= next_log:
+                        snap = self._snapshot()
+                        self.log(f"[soak] t={round(now - self._t_start)}s "
+                                 f"attempts={snap['attempts']} rps={snap['rps']} "
+                                 f"success={snap['success']} rl={snap['rate_limited']}")
+                        next_log = now + 10.0
+
+                    sleep_until = time.time() + interval
+                    remaining = sleep_until - time.time()
+                    if remaining > 0:
+                        time.sleep(remaining)
+
+                for f in as_completed(futures_running):
+                    pass  # drain
+        else:
+            while time.time() < deadline and not self.stop_flag.get("stop"):
+                i += 1
+                self._send_one(i)
+
+                now = time.time()
+                if now >= next_log:
+                    snap = self._snapshot()
+                    self.log(f"[soak] t={round(now - self._t_start)}s "
+                             f"attempts={snap['attempts']} rps={snap['rps']} "
+                             f"success={snap['success']} rl={snap['rate_limited']}")
+                    next_log = now + 10.0
+
+                sleep_until = time.time() + interval
+                remaining = sleep_until - time.time()
+                if remaining > 0:
+                    time.sleep(remaining)
+
+        snap = self._snapshot()
+        self.log(f"[soak] Finished. duration={round(snap['elapsed_s'])}s "
+                 f"attempts={snap['attempts']} avg_rps={snap['rps']}")
+        return self.results
+
+    # -------------------------------------------------------------------------
+    # RATE PROBE mode: auto-escalate RPS until 429
+    # -------------------------------------------------------------------------
+    def run_rate_probe(self, start_rps: float = 1.0, step_rps: float = 1.0,
+                       step_requests: int = 20, max_rps: float = 100.0):
+        """Probe the server's rate-limit threshold by incrementally increasing
+        RPS. Stops when a 429 is encountered and stores the threshold."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+        self._probe_threshold_rps = None
+
+        current_rps = start_rps
+        i = 0
+        self.log(f"[probe] Starting rate probe: {start_rps} -> {max_rps} rps, "
+                 f"step={step_rps}, step_requests={step_requests}")
+
+        while current_rps <= max_rps and not self.stop_flag.get("stop"):
+            interval = 1.0 / max(current_rps, 0.001)
+            step_rl_before = self.results["rate_limited"]
+            self.log(f"[probe] Testing at {current_rps:.1f} rps ...")
+
+            for _ in range(step_requests):
+                if self.stop_flag.get("stop"):
+                    break
+                i += 1
+                self._send_one(i)
+                time.sleep(interval)
+
+            step_rl_after = self.results["rate_limited"]
+            if step_rl_after > step_rl_before:
+                # Rate limit hit
+                self._probe_threshold_rps = current_rps
+                self.log(f"[probe] Rate limit threshold found at {current_rps:.1f} rps")
+                self.update_stats(self._snapshot())
+                break
+            else:
+                self.log(f"[probe] No rate limit at {current_rps:.1f} rps. Stepping up.")
+                current_rps = round(current_rps + step_rps, 3)
+                self.update_stats(self._snapshot())
+
+        if self._probe_threshold_rps is None and not self.stop_flag.get("stop"):
+            self.log(f"[probe] No rate limit detected up to {max_rps:.1f} rps")
+
+        self.log(f"[probe] Finished. threshold={self._probe_threshold_rps} rps. {self.results}")
+        return self.results
+
+    # -------------------------------------------------------------------------
+    # FUZZ mode: mutate payload fields with various fuzz values
+    # -------------------------------------------------------------------------
+    _SQL_PAYLOADS = [
+        "' OR 1=1--",
+        "'; DROP TABLE users;--",
+        "1' OR '1'='1",
+        "admin'--",
+    ]
+    _XSS_PAYLOADS = [
+        "<script>alert(1)</script>",
+        "javascript:alert(1)",
+        "<img src=x onerror=alert(1)>",
+        "'\"<svg/onload=alert(1)>",
+    ]
+
+    def _fuzz_payload(self, fuzz_fields: Dict[str, str],
+                      fuzz_types: Dict[str, str],
+                      _counters: Dict[str, int]) -> Dict:
+        """Build a dict of fuzz values for the given fields.
+        _counters is a mutable dict used to cycle through sequence payloads."""
+        result = {}
+        for field, ftype in fuzz_types.items():
+            if field not in fuzz_fields:
+                continue
+            ftype = ftype.lower()
+            if ftype == "string":
+                chars = string.ascii_letters + string.digits
+                result[field] = ''.join(random.choice(chars) for _ in range(8))
+            elif ftype == "number":
+                result[field] = random.randint(0, 99999)
+            elif ftype == "email":
+                result[field] = f"fuzz{random.randint(100000,9999999)}@fuzz.test"
+            elif ftype == "sql":
+                idx = _counters.get(field, 0) % len(self._SQL_PAYLOADS)
+                result[field] = self._SQL_PAYLOADS[idx]
+                _counters[field] = idx + 1
+            elif ftype == "xss":
+                idx = _counters.get(field, 0) % len(self._XSS_PAYLOADS)
+                result[field] = self._XSS_PAYLOADS[idx]
+                _counters[field] = idx + 1
+            elif ftype == "empty":
+                result[field] = ""
+            elif ftype == "long":
+                result[field] = "A" * 10000
+            else:
+                result[field] = fuzz_fields[field]  # unchanged
+        return result
+
+    def _send_fuzzed(self, i: int, fuzz_fields: Dict[str, str],
+                     fuzz_types: Dict[str, str],
+                     _counters: Dict[str, int]) -> Dict:
+        """Deep-copy payload, override fuzz fields, temporarily patch
+        self.test.payload, call _send_one, then restore."""
+        import copy
+        original_payload = self.test.payload
+        try:
+            patched = copy.deepcopy(original_payload) if isinstance(original_payload, dict) else {}
+            overrides = self._fuzz_payload(fuzz_fields, fuzz_types, _counters)
+            patched.update(overrides)
+            self.test.payload = patched
+            return self._send_one(i)
+        finally:
+            self.test.payload = original_payload
+
+    def run_fuzz(self, fuzz_fields: Dict[str, str] = None,
+                 fuzz_types: Dict[str, str] = None,
+                 max_requests: int = 100,
+                 concurrency: int = 1,
+                 delay: float = 0.05):
+        """Fuzz the endpoint by overriding payload fields with generated values.
+        fuzz_fields: {field_name: original_value} — fields to fuzz.
+        fuzz_types:  {field_name: fuzz_type} — type of fuzz per field."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+        fuzz_fields = fuzz_fields or {}
+        fuzz_types = fuzz_types or {}
+        _counters: Dict[str, int] = {}  # for cycling sql/xss sequences
+        _counters_lock = threading.Lock()
+
+        self.log(f"[fuzz] Starting: fields={list(fuzz_types.keys())} "
+                 f"max_requests={max_requests} concurrency={concurrency}")
+
+        if concurrency > 1:
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = []
+                for i in range(1, max_requests + 1):
+                    if self.stop_flag.get("stop"):
+                        break
+                    with _counters_lock:
+                        # Snapshot counters for this submission
+                        snap_counters = dict(_counters)
+                    futures.append(executor.submit(
+                        self._send_fuzzed, i, fuzz_fields, fuzz_types, snap_counters))
+                    if delay > 0:
+                        time.sleep(delay)
+                for f in as_completed(futures):
+                    if self.stop_flag.get("stop"):
+                        break
+        else:
+            for i in range(1, max_requests + 1):
+                if self.stop_flag.get("stop"):
+                    break
+                self._send_fuzzed(i, fuzz_fields, fuzz_types, _counters)
+                if delay > 0:
+                    time.sleep(delay)
+
+        self.log(f"[fuzz] Finished. {self.results}")
+        return self.results
+
+    # -------------------------------------------------------------------------
+    # BENCHMARK mode: warmup + percentile report
+    # -------------------------------------------------------------------------
+    def run_benchmark(self, n_samples: int = 100, warmup: int = 10):
+        """Sequential benchmark: warmup requests (stats discarded), then
+        n_samples requests with full percentile reporting at the end."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+
+        self.log(f"[benchmark] Warming up ({warmup} requests, stats discarded) ...")
+        for i in range(1, warmup + 1):
+            if self.stop_flag.get("stop"):
+                break
+            self._send_one(i)
+
+        # Reset after warmup
+        self._reset_metrics()
+        self.log(f"[benchmark] Warmup done. Running {n_samples} samples ...")
+
+        for i in range(1, n_samples + 1):
+            if self.stop_flag.get("stop"):
+                break
+            self._send_one(i)
+
+        # Compute final percentiles
+        srt = sorted(self._all_lat)
+        p = self._percentile
+        self.log(
+            f"[benchmark] Results ({len(srt)} samples): "
+            f"p50={round(p(srt,50))}ms "
+            f"p75={round(p(srt,75))}ms "
+            f"p90={round(p(srt,90))}ms "
+            f"p95={round(p(srt,95))}ms "
+            f"p99={round(p(srt,99))}ms "
+            f"p999={round(p(srt,99.9))}ms"
+        )
+        self.update_stats(self._snapshot())
+        self.log(f"[benchmark] Finished. {self.results}")
+        return self.results
+
+    # -------------------------------------------------------------------------
+    # run_mode: single dispatcher for all modes
+    # -------------------------------------------------------------------------
+    def run_mode(self, mode: str, params: Dict = None):
+        """Dispatch to the correct run method based on mode string.
+
+        Modes: 'load' (default), 'ramp', 'spike', 'soak', 'rate_probe',
+               'fuzz', 'benchmark'.
+        params is a dict of mode-specific keyword arguments."""
+        p = params or {}
+        mode = (mode or "load").lower().strip()
+
+        if mode == "load":
+            return self.run()
+
+        if mode == "ramp":
+            return self.run_ramp(
+                ramp_start=int(p.get("ramp_start", 1)),
+                ramp_end=int(p.get("ramp_end", 16)),
+                ramp_step_duration=float(p.get("ramp_step_duration", 10.0)),
+                max_requests=int(p.get("max_requests", 500)),
+                delay=float(p.get("delay", 0.05)),
+            )
+
+        if mode == "spike":
+            return self.run_spike(
+                baseline_workers=int(p.get("baseline_workers", 2)),
+                peak_workers=int(p.get("peak_workers", 20)),
+                baseline_requests=int(p.get("baseline_requests", 50)),
+                peak_requests=int(p.get("peak_requests", 200)),
+                recovery_requests=int(p.get("recovery_requests", 50)),
+                delay=float(p.get("delay", 0.05)),
+            )
+
+        if mode == "soak":
+            return self.run_soak(
+                duration_s=float(p.get("duration_s", 300.0)),
+                rps=float(p.get("rps", 5.0)),
+                concurrency=int(p.get("concurrency", 1)),
+            )
+
+        if mode == "rate_probe":
+            return self.run_rate_probe(
+                start_rps=float(p.get("start_rps", 1.0)),
+                step_rps=float(p.get("step_rps", 1.0)),
+                step_requests=int(p.get("step_requests", 20)),
+                max_rps=float(p.get("max_rps", 100.0)),
+            )
+
+        if mode == "fuzz":
+            return self.run_fuzz(
+                fuzz_fields=p.get("fuzz_fields") or {},
+                fuzz_types=p.get("fuzz_types") or {},
+                max_requests=int(p.get("max_requests", 100)),
+                concurrency=int(p.get("concurrency", 1)),
+                delay=float(p.get("delay", 0.05)),
+            )
+
+        if mode == "benchmark":
+            return self.run_benchmark(
+                n_samples=int(p.get("n_samples", 100)),
+                warmup=int(p.get("warmup", 10)),
+            )
+
+        # Fallback: unknown mode -> standard load run
+        self.log(f"[run_mode] Unknown mode '{mode}', falling back to 'load'")
+        return self.run()
