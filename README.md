@@ -1,121 +1,101 @@
 # Beacon
 
-**Beacon** is a modern API workspace and load testing tool with folder organization, Postman import, dynamic variables, extractors, live monitoring, and desktop support.
+**Beacon** is a modern API workspace for building requests, chaining API flows, validating responses, and running authorized load and rate-limit tests.
+
+Built with React, TypeScript, Vite, shadcn/ui, FastAPI, and an optional Tauri desktop shell.
+
+![Beacon API workspace and testing features](./assets/beacon-feature-banner.png)
 
 ## Product Preview
 
-### Landing Page (with Interactive Network Node Animation)
-![Landing Page](./assets/landing.png)
+### Organized API workspace
 
-### App Dashboard & Live Load Monitor
-![Dashboard Page](./assets/dashboard.png)
+Manage multiple projects and environments, group endpoints in nested folders, select a test mode, and monitor runs from one workspace.
 
+![Beacon API workspace](./assets/screenshots/workspace.png)
 
-## Documentation
+### Dynamic request builder
 
-Full documentation is available using VitePress:
+Build JSON, form, multipart, or raw requests with environment variables, generated values, authentication helpers, headers, cookies, and response extractors.
 
-- Run locally: `npm run docs:dev`
-- Built docs live at: (will be deployed)
+![Beacon request builder](./assets/screenshots/request-builder.png)
 
-See the [Documentation](./docs/index.md) or visit the docs site when deployed.
+### Send and inspect a response
+
+Send a single request before starting a load test. Inspect status, latency, size, headers, parsed JSON, extracted variables, and assertion results. JSON fields can be promoted to extractors directly from the response.
+
+![Beacon response inspector](./assets/screenshots/response-inspector.png)
+
+### Assertions and chained scenarios
+
+Attach pass/fail rules to an endpoint, then run folders as ordered scenarios. Extracted values are carried into later steps, with retry and continue-on-error controls available for chained flows.
+
+![Beacon assertion results](./assets/screenshots/assertions.png)
+
+![Beacon chained scenario results](./assets/screenshots/scenario-results.png)
+
+### Projects and environments
+
+Keep base URLs and variables separate across development, staging, and other environments without duplicating endpoint definitions.
+
+![Beacon environment manager](./assets/screenshots/environments.png)
 
 ## Features
 
-- Nested folders (Postman-style)
-- Postman collection import
-- Dynamic variables and generators
-- Response extractors for chaining
-- Live load testing & monitoring
-- Desktop app via Tauri (with backend sidecar)
-- **MCP Server** — drive Beacon from any MCP client (Claude, Cursor, Windsurf, Cline, etc.)
-- And more...
-
-## MCP Server
-
-Beacon includes a full **standard MCP server** (not Claude-only).
-
-Any AI coding agent that supports MCP can:
-- List and manage endpoints/folders
-- Import collections
-- Run load tests against your APIs
-
-In the desktop app, open the **MCP** button to:
-- One-click register with Claude Desktop / Claude Code
-- Copy the config for Cursor, Windsurf, Cline, Continue, etc.
-
-See [docs/mcp.md](./docs/mcp.md) for details.
+- Project workspaces with nested, draggable request folders
+- Environment and global variables using `{{variable}}` templates
+- Fresh-per-request generators such as `{{random_email}}`, `{{uuid}}`, `{{timestamp}}`, and `{{random_string:12}}`
+- Postman collection import and redacted project export
+- JSON, form, multipart, and raw request bodies
+- Per-endpoint authentication, headers, cookies, extractors, and run overrides
+- Single Send with a structured Response Inspector and click-to-extract JSON fields
+- Assertions for status, response time, body content, JSON fields, and headers
+- Ordered scenarios with extractor-based state chaining and retries
+- Load, Ramp, Spike, Soak, Rate Probe, Fuzz, Benchmark, and Scenario test modes
+- Live attempts, successes, rate limits, errors, response logs, latency trend, and exportable results
+- Desktop app via Tauri with bundled FastAPI and MCP sidecars
+- Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
 
 ## Quick Start
 
+### One-time setup
+
 ```bash
-npm install
-npm run dev
-```
-
-Then open http://localhost:5173
-
-
-**Modern scalable version** — React (TypeScript) + shadcn/ui frontend + Python FastAPI backend.
-
-## Why this structure?
-
-- One file HTML + big script = unmaintainable.
-- Moved to proper separated frontend/backend.
-- React for nice, component-based, scalable UI (full page editor, proper forms).
-- FastAPI backend (more reliable WebSockets than old SocketIO on Windows).
-- Core tester logic stays in Python (powerful for concurrent requests).
-
-## Setup & Run (Recommended from ROOT)
-
-### 1. One-time Setup
-```bash
-# Option A: Using pnpm (recommended)
+# pnpm (recommended)
 pnpm run setup
 
-# Option B: Windows double-click
+# Windows alternative
 setup.bat
 ```
 
-This will:
-- Install root dependencies (concurrently)
-- Install frontend (pnpm)
-- Install backend (pip)
+### Start the app
 
-### 2. Run Both Together (one command)
 ```bash
 pnpm dev
 ```
 
-Or on Windows:
-```bash
-start-dev.bat
-```
+The launcher reads ports from the root `.env` and starts:
 
-This starts:
-- **Backend**  → http://localhost:8001 (FastAPI)  — now with colored startup banner [BACKEND]
-- **Frontend** → http://localhost:5173 (React + shadcn/ui)
+- FastAPI backend: <http://localhost:8000>
+- React frontend: <http://localhost:5173>
+- VitePress docs: <http://localhost:5174/docs/>
+- Landing page: <http://localhost:5175>
 
-Terminal output uses colored prefixes like:
-[BACKEND]  14:23:45  Uvicorn running...
-[FRONTEND] 14:23:45  VITE ready...
-
-### Available Root Scripts
+To start individual services:
 
 ```bash
-pnpm run setup          # install everything
-pnpm dev                # start backend + frontend together
-pnpm run dev:backend    # start only backend
-pnpm run dev:frontend   # start only frontend
+pnpm run dev:backend
+pnpm run dev:frontend
+pnpm run dev:docs
 ```
 
-## Manual (if you prefer cd)
+### Manual setup
 
 ```bash
 # Backend
 cd backend
 pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8001
+python -m uvicorn app.main:app --reload --port 8000
 
 # Frontend (new terminal)
 cd frontend
@@ -123,45 +103,22 @@ pnpm install
 pnpm dev
 ```
 
+## MCP Server
+
+Beacon includes a standard stdio MCP server that can list and manage projects, folders, and endpoints; import collections; send individual requests; and run endpoints or chained scenarios.
+
+In the desktop app, open **MCP Server** to register Beacon with a supported client or copy a ready-to-use configuration. See [MCP Server documentation](./docs/mcp.md) for setup and the available tools.
+
 ## Documentation
 
-Full documentation is powered by **VitePress** and lives in the `docs/` folder.
-
-### Run docs locally
+The full VitePress documentation lives in [`docs/`](./docs/index.md).
 
 ```bash
-npm run docs:dev
+pnpm run dev:docs
+pnpm run docs:build
+pnpm run docs:preview
 ```
 
-Open http://localhost:5174
+## Security
 
-### Link from Landing Page
-
-The main landing page already has a **"Docs"** link in the navigation that opens the documentation.
-
-When deploying:
-- You can host docs at a subpath (e.g. `/docs`)
-- Or use a custom domain (recommended: `docs.yourdomain.com`)
-- Update the link in `frontend/src/pages/LandingPage.tsx` accordingly
-```
-
-## UI Stack
-- React + TypeScript + Vite
-- shadcn/ui (Tailwind based, copy-paste components)
-- Full page editor instead of modals
-- Clean component structure for scalability
-
-## Features
-- Fully dynamic endpoints per project
-- Authorization header is dynamic (Bearer or custom per endpoint)
-- Random values: `{{random_string}}`, `{{random_number}}`, `{{random_phone}}`
-- Extractors for refreshing tokens from responses
-
-## Features carried over (improved):
-- Fully dynamic endpoints
-- Variables + {{random_string}}, {{random_number}}, {{random_phone}} etc.
-- Per-endpoint Authorization (Bearer / Cookie / custom) — now properly dynamic
-- Extractors for fresh tokens
-- Live stats + logs
-
-This is now much easier to extend (add history, multiple configs, auth, etc.).
+Use Beacon only against systems you own or are explicitly authorized to test. Local configuration can contain live URLs, cookies, bearer tokens, and other credentials; `config/tests.json` is ignored by Git and must remain private.

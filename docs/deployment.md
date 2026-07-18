@@ -1,5 +1,69 @@
 # Deployment & Server Specification
 
+## Recommended public setup (landing only)
+
+Beacon is currently distributed as a **local Windows desktop application**.
+The recommended public deployment does not run the FastAPI test engine on a
+shared server:
+
+```text
+Cloudflare Pages (landing)
+          │
+          └── Download CTA ──▶ GitHub Releases ──▶ Beacon Windows installer
+                                                       │
+                                                       ├── React desktop UI
+                                                       ├── local FastAPI sidecar
+                                                       ├── local MCP sidecar
+                                                       └── per-user local data
+```
+
+Requests and load tests originate from the user's machine. This keeps API
+credentials local and lets Beacon reach localhost, VPN, and private staging
+targets that a hosted service cannot reach.
+
+### Cloudflare Pages configuration
+
+Create one Pages project connected directly to this GitHub repository:
+
+| Setting | Value |
+|---------|-------|
+| Production branch | `main` |
+| Root directory | `/` (repository root) |
+| Build command | `corepack enable && pnpm --dir landing install --frozen-lockfile && pnpm --dir landing build` |
+| Build output directory | `landing/dist` |
+| Node.js | `20` |
+
+Set these build-time environment variables in the Cloudflare Pages dashboard:
+
+```text
+VITE_DOWNLOAD_URL=https://github.com/nannndev/beacon/releases/latest
+VITE_GITHUB_URL=https://github.com/nannndev/beacon
+VITE_DOCS_URL=https://YOUR-DOCS-DOMAIN/
+VITE_SUPPORT_URL=https://buymeacoffee.com/ekaprasety8
+VITE_DISCORD_URL=https://discord.gg/YOUR-INVITE
+```
+
+Only `VITE_DOWNLOAD_URL` is required for the installer flow. The landing build
+also ships `landing/public/_headers`, which Cloudflare copies into the static
+output to apply baseline security and cache headers.
+
+> Git integration is preferred here: Cloudflare watches `main` and deploys the
+> static bundle directly, so no Cloudflare API token is stored in GitHub.
+
+### Desktop release flow
+
+The verified shipping target is Windows NSIS (`.exe`). The release workflow:
+
+1. Builds the installer on every pull request and push to `main` for validation.
+2. Publishes a GitHub Release when a semantic version tag such as `v0.2.1` is pushed.
+3. Can create a draft release from **Actions → Release Desktop App → Run workflow**.
+4. Uploads only the Windows installer; Python, FastAPI, and the MCP server are bundled.
+
+The landing CTA uses `/releases/latest`, so it automatically follows the newest
+non-draft release without changing or rebuilding the landing site.
+
+---
+
 Beacon ships as **three independently deployable pieces** plus an optional
 desktop build. This page is the server/hosting spec for running them outside
 your laptop.
@@ -57,8 +121,8 @@ pnpm build          # → landing/dist/
 | `VITE_GITHUB_URL` | `https://github.com/nannndev/beacon` |
 | `VITE_DISCORD_URL` | *(set to your Discord invite)* |
 
-**Recommended hosts**: GitHub Pages, Vercel, Netlify, Cloudflare Pages, or any
-S3/NGINX static bucket.
+**Recommended host**: Cloudflare Pages using the Git integration described
+above. Vercel, Netlify, or any S3/NGINX static bucket also work.
 
 ---
 
@@ -184,15 +248,19 @@ A typical hosted setup:
 
 - Landing + Frontend + Docs → static hosting (Pages/Vercel/Netlify/Cloudflare).
 - Backend → one always-on instance with a persistent volume.
-- Desktop installers → published by GitHub Actions on a version tag (Opsi B):
+- Windows desktop installer → published by GitHub Actions on a version tag:
   1. After merging your changes, update version in `frontend/src-tauri/tauri.conf.json` + `Cargo.toml` if needed.
   2. `git tag vX.Y.Z`
   3. `git push origin vX.Y.Z`
-  - This triggers the full multi-platform build + attaches the installers (`.exe`, `.msi`, etc.) to a GitHub Release.
+  - This triggers the Windows NSIS build and attaches the `.exe` installer to a GitHub Release.
   - You can also manually trigger via Actions (with "publish_release" checked) if you don't want to tag immediately.
   See `.github/workflows/release-desktop.yml` for details. The landing page links to `/releases/latest`.
 
-## Checklist before going live
+## Checklist for a hosted web-app deployment
+
+The checklist below applies only if you later host the React dashboard and
+FastAPI backend as a web service. It is not required for the recommended
+landing-only + local-desktop setup.
 
 - [ ] Build frontend with `VITE_BACKEND_URL` pointing at the public backend.
 - [ ] Add the frontend origin to the backend CORS allowlist.

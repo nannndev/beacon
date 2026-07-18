@@ -28,6 +28,7 @@ import {
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { NetworkBackground } from '../components/NetworkBackground'
+import featureBanner from '../assets/beacon-feature-banner.webp'
 
 // URLs injected from the root .env via vite.config.ts (define block).
 const DOCS_URL = (import.meta as any).env?.VITE_DOCS_URL || 'http://localhost:5174/docs/'
@@ -394,6 +395,36 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section aria-labelledby="feature-overview-title" className="relative overflow-hidden border-b border-border/60 bg-slate-950 text-white">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(34,211,238,0.12),transparent_46%)]" />
+        <div className="relative mx-auto max-w-7xl px-5 py-16 lg:px-8 lg:py-24">
+          <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+            <div className="max-w-3xl">
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-cyan-400">The whole request lifecycle</p>
+              <h2 id="feature-overview-title" className="mt-3 text-balance text-3xl font-semibold tracking-tight md:text-5xl">
+                Build, validate, chain, and measure from one workspace.
+              </h2>
+            </div>
+            <p className="max-w-md text-sm leading-6 text-slate-400 md:text-right">
+              A modular workspace that grows with your API testing workflow—from a single response to sustained load.
+            </p>
+          </div>
+
+          <figure className="group relative overflow-hidden rounded-2xl border border-cyan-300/15 bg-slate-900 shadow-[0_30px_100px_-40px_rgba(34,211,238,0.45)]">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+            <img
+              src={featureBanner}
+              alt="Beacon workspace showing request flows, environments, response assertions, and latency monitoring"
+              width="1672"
+              height="941"
+              loading="lazy"
+              decoding="async"
+              className="block h-auto w-full transition-transform duration-700 ease-out motion-safe:group-hover:scale-[1.012]"
+            />
+          </figure>
+        </div>
+      </section>
+
       <section id="features" className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
           <div>
@@ -517,40 +548,33 @@ claude mcp add beacon -- <path-to>/mcp_server
             </p>
           </div>
 
-          <div className="mt-12 grid gap-4 md:grid-cols-3">
-            {[
-              { platform: 'Windows', version: 'x64', size: '48 MB', icon: '🖥️' },
-              { platform: 'macOS', version: 'Universal', size: '51 MB', icon: '' },
-              { platform: 'Linux', version: 'AppImage', size: '47 MB', icon: '🐧' },
-            ].map((item, i) => (
-              <div
-                key={i}
-                className="rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:border-cyan-500/30 hover:shadow-2xl"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-4xl">{item.icon}</span>
-                    <div className="mt-6 text-2xl font-semibold tracking-tight">{item.platform}</div>
-                    <div className="text-sm text-muted-foreground">{item.version}</div>
+          <div className="mx-auto mt-12 max-w-3xl rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:border-cyan-500/30 hover:shadow-2xl md:p-9">
+            <div className="flex flex-col gap-7 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-5">
+                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-3xl">🖥️</span>
+                <div>
+                  <div className="text-2xl font-semibold tracking-tight">Beacon for Windows</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Windows 10/11 · x64 · Current-user installer</div>
+                  <div className="mt-2 inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-500">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> backend + MCP included
                   </div>
-                  <div className="rounded-xl bg-muted px-3 py-1 font-mono text-xs text-muted-foreground">{item.size}</div>
                 </div>
-
-                <a
-                  href={DOWNLOAD_URL}
-                  target="_blank"
-                  rel="noopener"
-                  className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-foreground py-3 text-sm font-semibold text-background active:scale-[0.985] hover:bg-zinc-800 transition"
-                >
-                  <Download className="h-4 w-4" />
-                  Download for {item.platform}
-                </a>
               </div>
-            ))}
+
+              <a
+                href={DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener"
+                className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px hover:bg-zinc-800 active:scale-[0.985]"
+              >
+                <Download className="h-4 w-4" />
+                Latest release
+              </a>
+            </div>
           </div>
 
-          <div className="mt-10 text-center text-sm text-muted-foreground">
-            From <code>frontend</code>: <code>npm run desktop:build</code> produces a single .exe (UI + backend). Double-click it — everything starts automatically.
+          <div className="mt-8 text-center text-sm text-muted-foreground">
+            Install, open Beacon, and start testing locally. No Python runtime or hosted Beacon account required.
           </div>
         </div>
       </section>
