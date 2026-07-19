@@ -51,6 +51,12 @@
   }
 }
 
+@layer components {
+  .history-action {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium transition hover:bg-muted disabled:pointer-events-none disabled:opacity-50;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
