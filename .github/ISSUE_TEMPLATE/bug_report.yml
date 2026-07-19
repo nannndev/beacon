@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible problem in Beacon.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Remove tokens, JWTs, credentials, private URLs, and customer data before submitting."
+  - type: input
+    id: version
+    attributes:
+      label: Beacon version or commit
+      placeholder: "v0.4.0 or commit abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Desktop app
+        - React frontend
+        - FastAPI backend
+        - Legacy Flask app
+        - Landing site
+        - Documentation
+        - MCP server
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Platform and environment
+      placeholder: "Windows 11, desktop x64, Local environment"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest repeatable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized evidence
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, tokens, private endpoints, and customer data.
+          required: true
+        - label: Any target interaction described here was explicitly authorized.
+          required: true

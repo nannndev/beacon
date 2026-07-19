@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contribute to Beacon — Open-source API testing</title>
+    <meta
+      name="description"
+      content="Contribute code, docs, design, testing, bug reports, or security research to Beacon."
+    />
+    <meta property="og:title" content="Contribute to Beacon" />
+    <meta
+      property="og:description"
+      content="Choose a contribution path and help build a clearer API testing workspace."
+    />
+    <meta property="og:type" content="website" />
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('theme') || 'dark';
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        } catch (error) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/contributors.tsx"></script>
+  </body>
+</html>

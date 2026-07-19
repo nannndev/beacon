@@ -1,0 +1,46 @@
+name: Testing and QA report
+description: Share a reproducible release, platform, workflow, or edge-case test result.
+title: "[Testing]: "
+labels: ["testing", "triage"]
+body:
+  - type: input
+    id: build
+    attributes:
+      label: Build, version, or commit
+      placeholder: "v0.4.0 desktop x64"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Platform and environment
+      placeholder: "Windows 11, FastAPI backend, Local environment"
+    validations:
+      required: true
+  - type: textarea
+    id: area
+    attributes:
+      label: Area and test objective
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Test steps
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result and sanitized evidence
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, tokens, private endpoints, and customer data.
+          required: true
+        - label: Any target testing described here was explicitly authorized.
+          required: true

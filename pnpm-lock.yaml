@@ -14,6 +14,9 @@ devDependencies:
   vitepress:
     specifier: ^1.6.4
     version: 1.6.4(@algolia/client-search@5.55.1)(search-insights@2.17.3)
+  yaml:
+    specifier: 2.6.1
+    version: 2.6.1
 
 packages:
 
@@ -1643,6 +1646,12 @@ packages:
   /y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
+    dev: true
+
+  /yaml@2.6.1:
+    resolution: {integrity: sha512-7r0XPzioN/Q9kXBro/XPnA6kznR73DHq+GXh5ON7ZozRO6aMjbmiBuKste2wslTFkC5d1dw0GooOCepZXJ2SAg==}
+    engines: {node: '>= 14'}
+    hasBin: true
     dev: true
 
   /yargs-parser@21.1.1:

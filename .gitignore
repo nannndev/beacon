@@ -16,6 +16,8 @@ eggs/
 # ...but the frontend source lib dir is NOT a build artifact — keep it tracked.
 !frontend/src/lib/
 !frontend/src/lib/**
+!landing/src/lib/
+!landing/src/lib/**
 parts/
 sdist/
 var/

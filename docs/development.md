@@ -39,4 +39,11 @@ See [Desktop](/desktop) page.
 
 ## Contributing
 
-Pull requests are welcome. Please open an issue first for major changes.
+Start with the [contribution guide](https://github.com/nannndev/beacon/blob/main/CONTRIBUTING.md)
+for setup, safety, testing, and pull request expectations. Use the issue chooser
+for bugs, documentation, design proposals, and QA reports.
+
+Report vulnerabilities privately according to the
+[security policy](https://github.com/nannndev/beacon/blob/main/SECURITY.md), and
+follow the [Code of Conduct](https://github.com/nannndev/beacon/blob/main/CODE_OF_CONDUCT.md)
+in every project space.

@@ -12,11 +12,13 @@
     "start": "pnpm dev",
     "build:frontend": "cd frontend && pnpm build",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "test:community": "node scripts/validate-community-files.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "picocolors": "^1.1.1",
-    "vitepress": "^1.6.4"
+    "vitepress": "^1.6.4",
+    "yaml": "2.6.1"
   }
 }

@@ -210,6 +210,12 @@ export default function LandingPage() {
                 {link.label}
               </a>
             ))}
+            <a
+              href="/contributors/"
+              className="rounded-lg px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Contributors
+            </a>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -279,6 +285,13 @@ export default function LandingPage() {
                   {link.label}
                 </a>
               ))}
+              <a
+                href="/contributors/"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-xl px-3 py-3 text-base font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Contributors
+              </a>
               <a
                 href={DOCS_URL}
                 target="_blank"
@@ -588,10 +601,16 @@ claude mcp add beacon -- <path-to>/mcp_server
             Beacon is free &amp; open.
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Buy me a coffee to keep it moving, or join the community on Discord — ideas,
-            questions, and contributions welcome.
+            Fund the work, improve the code, sharpen the documentation, test a release, or
+            help the community find the next good idea.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
+            <a
+              href="/contributors/"
+              className="inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-bold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
+            >
+              <GitBranch className="h-5 w-5" /> Contribute to Beacon
+            </a>
             <a
               href={SUPPORT_URL}
               target="_blank"
@@ -622,6 +641,7 @@ claude mcp add beacon -- <path-to>/mcp_server
             <a href="#features" className="hover:text-foreground">Features</a>
             <a href="#workflow" className="hover:text-foreground">How it works</a>
             <a href="#desktop" className="hover:text-foreground">Desktop</a>
+            <a href="/contributors/" className="hover:text-foreground">Contributors</a>
             <a href="#support" className="hover:text-foreground">Support</a>
             <a href={DISCORD_URL} target="_blank" rel="noopener" className="hover:text-foreground">Discord</a>
             <a href={GITHUB_URL} target="_blank" rel="noopener" className="hover:text-foreground">GitHub</a>

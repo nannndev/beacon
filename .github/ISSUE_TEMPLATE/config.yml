@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/nannndev/beacon/security/advisories/new
+    about: Do not publish vulnerability details, credentials, or exploit evidence in an issue.
+  - name: Contribution guide
+    url: https://github.com/nannndev/beacon/blob/main/CONTRIBUTING.md
+    about: Read setup, safety, testing, and pull request expectations.
+  - name: Community conduct
+    url: https://github.com/nannndev/beacon/blob/main/CODE_OF_CONDUCT.md
+    about: Review the behavior expected in Beacon project spaces.

@@ -1,0 +1,31 @@
+name: Documentation improvement
+description: Report missing, incorrect, or unclear Beacon documentation.
+title: "[Docs]: "
+labels: ["documentation", "triage"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Affected page or file
+      placeholder: "docs/getting-started.md"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is unclear or incorrect?
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction or missing example
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a pull request for this documentation change.
+          required: false

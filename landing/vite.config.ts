@@ -30,6 +30,14 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_DOWNLOAD_URL': JSON.stringify(downloadUrl),
       'import.meta.env.VITE_APP_URL': JSON.stringify(appUrl),
     },
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          contributors: path.resolve(__dirname, 'contributors/index.html'),
+        },
+      },
+    },
     server: {
       port: LANDING_PORT,
       strictPort: true,
