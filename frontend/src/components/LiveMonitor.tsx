@@ -4,6 +4,14 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { JsonCodeEditor } from './JsonCodeEditor'
+import { OperationsChart } from './OperationsChart'
+import {
+  appendBounded,
+  deriveInstantRps,
+  percentile,
+  type ChartPoint,
+  type StatsSnapshot,
+} from './liveMonitorMetrics'
 import { RunResponse } from '../types'
 import { Copy, Check, Play, Pause, Download, ChevronDown } from 'lucide-react'
 import { useExport, ExportFormat } from '../hooks/useExport'
@@ -57,8 +65,9 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
   const [liveElapsed, setLiveElapsed] = useState(0)
   const [logFilter, setLogFilter] = useState<LogFilter>('all')
   const [showExportMenu, setShowExportMenu] = useState(false)
-  // Whole-run latency trend (a line over time, complementing the recent bars).
-  const [series, setSeries] = useState<number[]>([])
+  const [chartPoints, setChartPoints] = useState<ChartPoint[]>([])
+  const [chartExpanded, setChartExpanded] = useState(false)
+  const previousSnapshotRef = useRef<StatsSnapshot | null>(null)
 
   const { exportRun } = useExport()
 
@@ -88,15 +97,33 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
     return () => clearInterval(id)
   }, [status]) // reset when status changes
 
-  // Reset the trend line at the start of each run.
-  useEffect(() => { if (status === 'running') setSeries([]) }, [status])
-  // Append the latest latency sample as attempts advance (cap the history).
+  // Reset chart history when a new run starts.
+  useEffect(() => {
+    if (status === 'running') {
+      setChartPoints([])
+      previousSnapshotRef.current = null
+    }
+  }, [status])
+
+  // Append a bounded chart point as attempts advance.
   useEffect(() => {
     const last = stats.latency_ms?.last
-    if (status === 'running' && stats.attempts > 0 && last != null) {
-      setSeries((s) => (s.length > 400 ? [...s.slice(-400), last] : [...s, last]))
-    }
-  }, [stats.attempts]) // eslint-disable-line react-hooks/exhaustive-deps
+    const elapsed = stats.elapsed_s
+    if (status !== 'running' || stats.attempts <= 0 || last == null || elapsed == null) return
+
+    const current: StatsSnapshot = { attempts: stats.attempts, elapsed_s: elapsed }
+    const previous = previousSnapshotRef.current
+    const instantRps = previous ? deriveInstantRps(previous, current) : (stats.rps ?? 0)
+    previousSnapshotRef.current = current
+    if (instantRps == null || !Number.isFinite(last) || last < 0) return
+
+    setChartPoints((history) => appendBounded(history, {
+      attempt: stats.attempts,
+      elapsed,
+      latency: last,
+      rps: instantRps,
+    }, 180))
+  }, [stats.attempts, stats.elapsed_s, stats.latency_ms?.last, stats.rps, status])
 
   const selected = responses.find((r) => r.attempt === selectedAttempt) ?? null
   const successRate = stats.attempts > 0 ? Math.round((stats.success / stats.attempts) * 100) : 0
@@ -104,6 +131,14 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
   const badge = statusBadge[status]
   const lat = stats.latency_ms
   const showSummary = stats.attempts > 0
+  const p95 = percentile(chartPoints.map((point) => point.latency), 0.95, 5)
+  const currentRps = chartPoints[chartPoints.length - 1]?.rps ?? stats.rps ?? 0
+  const latestResponse = responses[responses.length - 1] ?? null
+  const slowestResponse = responses.reduce<RunResponse | null>((slowest, response) => {
+    if (response.time == null) return slowest
+    if (!slowest || slowest.time == null || response.time > slowest.time) return response
+    return slowest
+  }, null)
   const displayElapsed = status === 'running' ? liveElapsed : (stats.elapsed_s ?? 0)
   const filteredLogs = logs.filter((line) => logFilter === 'all' || classifyLogLine(line) === logFilter)
 
@@ -208,72 +243,46 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
           </div>
         ) : null}
 
-        {/* Stat cards — color-coded */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 text-sm">
-          <StatCard label="Attempts" value={stats.attempts} />
-          <StatCard
-            label="Success"
-            value={stats.success}
+        {/* Primary operational metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
+          <Metric label="Attempts" value={`${stats.attempts}`} sub={`${displayElapsed}s elapsed`} />
+          <Metric
+            label="Success rate"
+            value={`${successRate}%`}
+            sub={`${stats.success} successful`}
             tone="text-emerald-600 dark:text-emerald-400"
-            bg="bg-emerald-500/8"
-            sub={stats.attempts > 0 ? `${successRate}%` : undefined}
           />
-          <StatCard
-            label="Rate Limited"
-            value={stats.rate_limited}
-            tone="text-yellow-600 dark:text-yellow-400"
-            bg={stats.rate_limited > 0 ? 'bg-yellow-500/8' : undefined}
+          <Metric label="Current RPS" value={currentRps.toFixed(1)} tone="text-cyan-600 dark:text-cyan-400" />
+          <Metric label="Avg latency" value={`${Math.round(lat?.avg ?? 0)}ms`} />
+          <Metric
+            label="P95 latency"
+            value={p95 == null ? '—' : `${Math.round(p95)}ms`}
+            sub={p95 == null ? 'needs 5 samples' : 'slow tail'}
+            tone={p95 == null ? undefined : 'text-amber-600 dark:text-amber-400'}
           />
-          <StatCard
+          <Metric
             label="Errors"
-            value={stats.errors}
-            tone="text-red-600 dark:text-red-400"
-            bg={stats.errors > 0 ? 'bg-red-500/8' : undefined}
+            value={`${stats.errors}`}
+            sub={stats.rate_limited > 0 ? `${stats.rate_limited} rate limited` : 'none rate limited'}
+            tone={stats.errors > 0 ? 'text-red-600 dark:text-red-400' : undefined}
           />
         </div>
 
         {showSummary && (
-          <div className="mb-3 space-y-3">
-            {/* Metrics row — live elapsed */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              <Metric label="Avg" value={`${lat?.avg ?? 0}ms`} />
-              <Metric label="Min" value={`${lat?.min ?? 0}ms`} />
-              <Metric label="Max" value={`${lat?.max ?? 0}ms`} />
-              <Metric label="Last" value={`${lat?.last ?? 0}ms`} />
-              <Metric label="Req/s" value={`${stats.rps ?? 0}`} />
-              <Metric
-                label="Elapsed"
-                value={`${displayElapsed}s`}
-                highlight={status === 'running'}
-              />
-            </div>
-
-            {/* Colored bar chart for recent latencies */}
-            {stats.recent_ms && stats.recent_ms.length > 1 && (
-              <div>
-                <div className="text-[11px] text-muted-foreground mb-1">Response time (recent)</div>
-                <LatencyBars data={stats.recent_ms} />
-              </div>
-            )}
-
-            {/* Whole-run latency trend line */}
-            {series.length > 1 && (
-              <div>
-                <div className="text-[11px] text-muted-foreground mb-1 flex justify-between">
-                  <span>Latency trend (this run)</span>
-                  <span className="font-mono">{series.length} samples · max {Math.max(...series)}ms</span>
-                </div>
-                <TrendChart data={series} />
-              </div>
-            )}
-
-            {/* Status code distribution */}
-            {stats.status_codes && Object.keys(stats.status_codes).length > 0 && (
-              <div>
-                <div className="text-[11px] text-muted-foreground mb-1">Status codes</div>
-                <StatusBar codes={stats.status_codes} />
-              </div>
-            )}
+          <div className={`grid gap-2 mb-3 ${
+            chartExpanded ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(220px,1fr)]'
+          }`}>
+            <OperationsChart
+              points={chartPoints}
+              p95={p95}
+              expanded={chartExpanded}
+              onToggleExpanded={() => setChartExpanded((value) => !value)}
+            />
+            <OutcomePanel
+              codes={stats.status_codes || {}}
+              latest={latestResponse}
+              slowest={slowestResponse}
+            />
           </div>
         )}
 
@@ -431,29 +440,19 @@ function ResponseStatusBadge({ response: r }: { response: RunResponse }) {
   return <Badge className="h-4 px-1 text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400">{r.status}</Badge>
 }
 
-function StatCard({ label, value, tone, sub, bg }: {
-  label: string; value: number; tone?: string; sub?: string; bg?: string
+function Metric({ label, value, tone, sub }: {
+  label: string
+  value: string
+  tone?: string
+  sub?: string
 }) {
   return (
-    <div className={`p-2.5 rounded-lg border border-border transition-colors ${bg || 'bg-muted/50'} ${tone || ''}`}>
-      <div className="text-[11px] opacity-70">{label}</div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-mono font-semibold text-lg">{value}</span>
-        {sub && <span className="text-[11px] opacity-70">{sub}</span>}
-      </div>
-    </div>
-  )
-}
-
-function Metric({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className={`rounded-md border px-2 py-1.5 transition-colors ${
-      highlight ? 'border-emerald-500/40 bg-emerald-500/8' : 'border-border bg-muted/50'
-    }`}>
+    <div className="rounded-md border border-border bg-muted/50 px-2.5 py-2 transition-colors min-w-0">
       <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`font-mono font-semibold text-sm ${highlight ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+      <div className={`font-mono font-semibold text-base truncate ${tone || ''}`}>
         {value}
       </div>
+      {sub && <div className="text-[9px] text-muted-foreground truncate mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -493,53 +492,54 @@ function StatusBar({ codes }: { codes: Record<string, number> }) {
   )
 }
 
-// Colored bar chart: green = fast, yellow = moderate, red = slow
-function LatencyBars({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1)
-  // Show at most 60 bars to stay compact
-  const bars = data.slice(-60)
-
-  function barColor(v: number): string {
-    const ratio = v / max
-    if (ratio < 0.4) return 'bg-emerald-500'
-    if (ratio < 0.75) return 'bg-yellow-500'
-    return 'bg-red-500'
-  }
+function OutcomePanel({ codes, latest, slowest }: {
+  codes: Record<string, number>
+  latest: RunResponse | null
+  slowest: RunResponse | null
+}) {
+  const latestStatus = latest?.error ? 'ERR' : (latest?.status ?? '—')
+  const slowestStatus = slowest?.error ? 'ERR' : (slowest?.status ?? '—')
+  const latestMs = latest?.time == null ? null : Math.round(latest.time * 1000)
+  const slowestMs = slowest?.time == null ? null : Math.round(slowest.time * 1000)
 
   return (
-    <div className="flex items-end gap-px h-8 w-full">
-      {bars.map((v, i) => (
-        <div
-          key={i}
-          title={`${v}ms`}
-          className={`flex-1 rounded-sm transition-all ${barColor(v)}`}
-          style={{ height: `${Math.max(4, Math.round((v / max) * 32))}px` }}
-        />
-      ))}
-    </div>
-  )
-}
+    <section className="rounded-lg border border-border bg-muted/20 p-3 min-w-0">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="text-[11px] font-medium">Response outcomes</div>
+          <div className="text-[10px] text-muted-foreground">Status distribution</div>
+        </div>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          {Object.values(codes).reduce((sum, count) => sum + count, 0)} total
+        </span>
+      </div>
 
-// Whole-run latency line chart with a dashed p95 reference.
-function TrendChart({ data }: { data: number[] }) {
-  const w = 600, h = 48
-  const max = Math.max(...data, 1)
-  const n = data.length
-  const pts = data
-    .map((v, i) => {
-      const x = n === 1 ? 0 : (i / (n - 1)) * w
-      const y = h - (v / max) * (h - 4) - 2
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-  const sorted = [...data].sort((a, b) => a - b)
-  const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))]
-  const p95y = h - (p95 / max) * (h - 4) - 2
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-12 w-full rounded-md bg-muted/40">
-      <line x1="0" y1={p95y} x2={w} y2={p95y} className="stroke-amber-500/50" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-      <polyline points={pts} fill="none" className="stroke-cyan-500" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-    </svg>
+      {Object.keys(codes).length > 0 ? (
+        <StatusBar codes={codes} />
+      ) : (
+        <div className="h-12 flex items-center justify-center rounded-md border border-dashed border-border text-[10px] text-muted-foreground">
+          Waiting for responses
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 mt-3">
+        <div className="rounded-md border border-border bg-background/50 p-2 min-w-0">
+          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Latest</div>
+          <div className="flex items-baseline gap-1.5 mt-1 font-mono">
+            <span className="text-sm font-semibold">{latestStatus}</span>
+            <span className="text-[10px] text-muted-foreground">{latestMs == null ? '—' : `${latestMs}ms`}</span>
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-background/50 p-2 min-w-0">
+          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Slowest</div>
+          <div className="flex items-baseline gap-1.5 mt-1 font-mono">
+            <span className="text-sm font-semibold">{slowestStatus}</span>
+            <span className="text-[10px] text-muted-foreground">{slowestMs == null ? '—' : `${slowestMs}ms`}</span>
+          </div>
+          {slowest && <div className="text-[9px] text-muted-foreground mt-0.5">attempt #{slowest.attempt}</div>}
+        </div>
+      </div>
+    </section>
   )
 }
 

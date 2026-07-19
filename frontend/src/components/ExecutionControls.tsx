@@ -140,35 +140,37 @@ export function ExecutionControls({
         </div>
 
         {/* Footer row: target label + override + est + actions */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 border-t border-border/60">
-          <div>
-            <div className="text-[10px] text-muted-foreground">
-              {hasSelection
-                ? <><span>Target: </span><span className="text-foreground font-medium">{selectedName}</span></>
-                : 'Select an endpoint'}
-              {overrideEnabled && <span className="text-amber-500"> · override</span>}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/60">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+            <div>
+              <div className="text-[10px] text-muted-foreground">
+                {hasSelection
+                  ? <><span>Target: </span><span className="text-foreground font-medium">{selectedName}</span></>
+                  : 'Select an endpoint'}
+                {overrideEnabled && <span className="text-amber-500"> · override</span>}
+              </div>
+            </div>
+
+            {hasSelection && (
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={overrideEnabled}
+                  onChange={(e) => onToggleOverride(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-input accent-amber-500"
+                />
+                Override
+              </label>
+            )}
+
+            {/* Estimated duration pill */}
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 border border-border px-2 py-1 rounded-md h-8 font-mono select-none">
+              <span className="opacity-60">est.</span>
+              <span className="font-semibold text-foreground">{estimated}</span>
             </div>
           </div>
 
-          {hasSelection && (
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={overrideEnabled}
-                onChange={(e) => onToggleOverride(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-input accent-amber-500"
-              />
-              Override
-            </label>
-          )}
-
-          {/* Estimated duration pill */}
-          <div className="flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 border border-border px-2 py-1 rounded-md h-8 font-mono select-none">
-            <span className="opacity-60">est.</span>
-            <span className="font-semibold text-foreground">{estimated}</span>
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             <Button
               onClick={onRunAll}
               disabled={endpointCount === 0 || running}

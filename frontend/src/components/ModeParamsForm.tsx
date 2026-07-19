@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import {
@@ -10,13 +11,13 @@ import {
 // ---- Shared primitive input -----------------------------------------------
 
 function N({
-  label, value, onChange, disabled, min, step, unit, width = 'w-24',
+  label, value, onChange, disabled, min, step, unit,
 }: {
   label: string; value: number; onChange: (n: number) => void
-  disabled?: boolean; min?: number; step?: number; unit?: string; width?: string
+  disabled?: boolean; min?: number; step?: number; unit?: string
 }) {
   return (
-    <div className={width}>
+    <div className="min-w-0 w-full">
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}{unit ? <span className="normal-case ml-0.5 opacity-70">({unit})</span> : ''}
       </Label>
@@ -33,7 +34,24 @@ function N({
   )
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ label, checked, onChange, fieldLabel }: {
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  fieldLabel?: string
+}) {
+  if (fieldLabel) {
+    return (
+      <div className="min-w-0 w-full">
+        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{fieldLabel}</Label>
+        <label className="flex items-center gap-2 h-8 mt-0.5 px-2 rounded-md border border-input bg-background text-xs cursor-pointer select-none hover:bg-muted/40 transition-colors">
+          <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-input accent-primary" />
+          {label}
+        </label>
+      </div>
+    )
+  }
   return (
     <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none h-8 px-1">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
@@ -41,6 +59,17 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       {label}
     </label>
   )
+}
+
+const GRID_COLUMNS = {
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+} as const
+
+function ParameterGrid({ columns, children }: { columns: keyof typeof GRID_COLUMNS; children: ReactNode }) {
+  return <div className={`grid grid-cols-2 gap-2 ${GRID_COLUMNS[columns]}`}>{children}</div>
 }
 
 // ---- Per-mode forms -------------------------------------------------------
@@ -51,40 +80,38 @@ function LoadForm({ p, set }: { p: LoadParams; set: (v: LoadParams) => void }) {
     set({ ...p, delay_ms: r > 0 ? Math.round(1000 / r) : 0 })
   }
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2">
+    <ParameterGrid columns={5}>
       <N label="Workers"  value={p.concurrency}   onChange={(n) => set({ ...p, concurrency: Math.max(1, n) })} min={1} />
       <N label="Max Req"  value={p.max_requests}   onChange={(n) => set({ ...p, max_requests: Math.max(1, n) })} min={1} />
       <N label="Rate /s"  value={p.delay_ms > 0 ? Math.round(1000 / p.delay_ms) : 0} onChange={setRate} disabled={p.no_delay} />
       <N label="Delay"    value={p.delay_ms}        onChange={(n) => set({ ...p, delay_ms: Math.max(0, n) })} unit="ms" disabled={p.no_delay} />
-      <Toggle label="No delay" checked={p.no_delay} onChange={(v) => set({ ...p, no_delay: v })} />
-    </div>
+      <Toggle fieldLabel="Delivery" label="No delay" checked={p.no_delay} onChange={(v) => set({ ...p, no_delay: v })} />
+    </ParameterGrid>
   )
 }
 
 function RampForm({ p, set }: { p: RampParams; set: (v: RampParams) => void }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2">
+    <ParameterGrid columns={4}>
       <N label="Start Workers"  value={p.ramp_start}          onChange={(n) => set({ ...p, ramp_start: Math.max(1, n) })} min={1} />
       <N label="Max Workers"    value={p.ramp_end}            onChange={(n) => set({ ...p, ramp_end: Math.max(1, n) })} min={1} />
       <N label="Step Duration"  value={p.ramp_step_duration}  onChange={(n) => set({ ...p, ramp_step_duration: Math.max(1, n) })} unit="s" min={1} />
       <N label="Max Requests"   value={p.max_requests}        onChange={(n) => set({ ...p, max_requests: Math.max(1, n) })} min={1} />
-    </div>
+    </ParameterGrid>
   )
 }
 
 function SpikeForm({ p, set }: { p: SpikeParams; set: (v: SpikeParams) => void }) {
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-x-3 gap-y-2">
+      <ParameterGrid columns={3}>
         <N label="Baseline Workers" value={p.spike_baseline_workers} onChange={(n) => set({ ...p, spike_baseline_workers: Math.max(1, n) })} min={1} />
         <N label="Peak Workers"     value={p.spike_peak_workers}     onChange={(n) => set({ ...p, spike_peak_workers: Math.max(1, n) })} min={1} />
         <N label="Delay"            value={p.delay_ms}               onChange={(n) => set({ ...p, delay_ms: Math.max(0, n) })} unit="ms" />
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <N label="Baseline Reqs" value={p.spike_baseline_requests}  onChange={(n) => set({ ...p, spike_baseline_requests: Math.max(1, n) })} min={1} width="w-28" />
-        <N label="Peak Reqs"     value={p.spike_peak_requests}      onChange={(n) => set({ ...p, spike_peak_requests: Math.max(1, n) })} min={1} width="w-28" />
-        <N label="Recovery Reqs" value={p.spike_recovery_requests}  onChange={(n) => set({ ...p, spike_recovery_requests: Math.max(1, n) })} min={1} width="w-28" />
-      </div>
+        <N label="Baseline Reqs" value={p.spike_baseline_requests}  onChange={(n) => set({ ...p, spike_baseline_requests: Math.max(1, n) })} min={1} />
+        <N label="Peak Reqs"     value={p.spike_peak_requests}      onChange={(n) => set({ ...p, spike_peak_requests: Math.max(1, n) })} min={1} />
+        <N label="Recovery Reqs" value={p.spike_recovery_requests}  onChange={(n) => set({ ...p, spike_recovery_requests: Math.max(1, n) })} min={1} />
+      </ParameterGrid>
       <div className="text-[10px] text-muted-foreground px-1">
         Phase 1 (baseline) → Phase 2 (spike) → Phase 3 (recovery). Total: {p.spike_baseline_requests + p.spike_peak_requests + p.spike_recovery_requests} requests.
       </div>
@@ -94,22 +121,22 @@ function SpikeForm({ p, set }: { p: SpikeParams; set: (v: SpikeParams) => void }
 
 function SoakForm({ p, set }: { p: SoakParams; set: (v: SoakParams) => void }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2">
-      <N label="Duration" value={p.soak_duration_s}  onChange={(n) => set({ ...p, soak_duration_s: Math.max(10, n) })} unit="s" min={10} width="w-28" />
+    <ParameterGrid columns={3}>
+      <N label="Duration" value={p.soak_duration_s}  onChange={(n) => set({ ...p, soak_duration_s: Math.max(10, n) })} unit="s" min={10} />
       <N label="Req/s"    value={p.soak_rps}         onChange={(n) => set({ ...p, soak_rps: Math.max(0.1, n) })} step={0.5} min={0.1} />
       <N label="Workers"  value={p.soak_concurrency} onChange={(n) => set({ ...p, soak_concurrency: Math.max(1, n) })} min={1} />
-    </div>
+    </ParameterGrid>
   )
 }
 
 function RateProbeForm({ p, set }: { p: RateProbeParams; set: (v: RateProbeParams) => void }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2">
+    <ParameterGrid columns={4}>
       <N label="Start Req/s" value={p.probe_start_rps}    onChange={(n) => set({ ...p, probe_start_rps: Math.max(0.1, n) })} step={0.5} min={0.1} />
       <N label="Step Req/s"  value={p.probe_step_rps}     onChange={(n) => set({ ...p, probe_step_rps: Math.max(0.5, n) })} step={0.5} min={0.5} />
-      <N label="Reqs/step"   value={p.probe_step_requests} onChange={(n) => set({ ...p, probe_step_requests: Math.max(5, n) })} min={5} width="w-28" />
+      <N label="Reqs/step"   value={p.probe_step_requests} onChange={(n) => set({ ...p, probe_step_requests: Math.max(5, n) })} min={5} />
       <N label="Max Req/s"   value={p.probe_max_rps}      onChange={(n) => set({ ...p, probe_max_rps: Math.max(1, n) })} min={1} />
-    </div>
+    </ParameterGrid>
   )
 }
 
@@ -142,11 +169,11 @@ function FuzzForm({ p, set }: { p: FuzzParams; set: (v: FuzzParams) => void }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-x-3 gap-y-2">
+      <ParameterGrid columns={3}>
         <N label="Max Reqs" value={p.max_requests}  onChange={(n) => set({ ...p, max_requests: Math.max(1, n) })} min={1} />
         <N label="Workers"  value={p.concurrency}   onChange={(n) => set({ ...p, concurrency: Math.max(1, n) })} min={1} />
         <N label="Delay"    value={p.delay_ms}       onChange={(n) => set({ ...p, delay_ms: Math.max(0, n) })} unit="ms" />
-      </div>
+      </ParameterGrid>
 
       {/* Field list */}
       {p.fuzz_fields.length > 0 && (
@@ -195,10 +222,10 @@ function FuzzForm({ p, set }: { p: FuzzParams; set: (v: FuzzParams) => void }) {
 
 function BenchmarkForm({ p, set }: { p: BenchmarkParams; set: (v: BenchmarkParams) => void }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2">
-      <N label="Samples" value={p.benchmark_requests} onChange={(n) => set({ ...p, benchmark_requests: Math.max(10, n) })} min={10} width="w-28" />
+    <ParameterGrid columns={2}>
+      <N label="Samples" value={p.benchmark_requests} onChange={(n) => set({ ...p, benchmark_requests: Math.max(10, n) })} min={10} />
       <N label="Warmup"  value={p.benchmark_warmup}   onChange={(n) => set({ ...p, benchmark_warmup: Math.max(0, n) })} min={0} />
-    </div>
+    </ParameterGrid>
   )
 }
 
@@ -212,9 +239,6 @@ function ScenarioForm({ p, set }: { p: ScenarioParams; set: (v: ScenarioParams) 
     </div>
   )
 }
-
-// Needed for FuzzForm useState
-import { useState } from 'react'
 
 // ---- Public component -------------------------------------------------------
 

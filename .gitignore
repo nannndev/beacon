@@ -55,6 +55,8 @@ config.json
 *.swp
 *.swo
 .grok/
+.superpowers/
+.worktrees/
 
 # OS
 .DS_Store
