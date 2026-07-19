@@ -3,6 +3,7 @@ import { RunConfig, RunResponse } from '../types'
 import { RunStats, RunStatus } from '../components/LiveMonitor'
 import { api, getWsUrl } from '../lib/api'
 import { toast } from '../components/ui/toast'
+import { buildLoadRunPayload } from './runPayload'
 
 const EMPTY_STATS: RunStats = { attempts: 0, success: 0, rate_limited: 0, errors: 0 }
 
@@ -128,7 +129,7 @@ export function useRun() {
     const pos = (progress?.current ?? 0) + 1
     const total = progress?.total ?? pos
     setRunQueue({ current: pos, total })
-    const payload = next.payload ?? { test_id: next.testId, mode: 'load', ...next.cfg }
+    const payload = next.payload ?? buildLoadRunPayload(next.testId, next.cfg)
     startInternal(next.testId, next.name, payload, { fresh: false, queuePos: pos, queueTotal: total })
       .catch((e: any) => {
         runAllModeRef.current = false
@@ -228,7 +229,7 @@ export function useRun() {
     runAllModeRef.current = false
     queueRef.current = []
     setRunQueue(null)
-    const finalPayload = payload ?? { test_id: testId, mode: 'load', ...cfg }
+    const finalPayload = payload ?? buildLoadRunPayload(testId, cfg)
     setTotalMaxRequests((finalPayload.max_requests as number) ?? cfg.max_requests)
     try {
       await startInternal(testId, name, finalPayload, { fresh: true })
@@ -249,7 +250,9 @@ export function useRun() {
       queueRef.current = []
       setRunQueue(null)
       try {
-        await startInternal(items[0].testId, items[0].name, items[0].cfg, { fresh: true })
+        const first = items[0]
+        const payload = first.payload ?? buildLoadRunPayload(first.testId, first.cfg)
+        await startInternal(first.testId, first.name, payload, { fresh: true })
         toast.success('Run started')
       } catch (e: any) {
         setStatus('idle')
@@ -262,7 +265,9 @@ export function useRun() {
     queueRef.current = items.slice(1)
     setRunQueue({ current: 1, total: items.length })
     try {
-      await startInternal(items[0].testId, items[0].name, items[0].cfg, {
+      const first = items[0]
+      const payload = first.payload ?? buildLoadRunPayload(first.testId, first.cfg)
+      await startInternal(first.testId, first.name, payload, {
         fresh: true,
         queuePos: 1,
         queueTotal: items.length,
