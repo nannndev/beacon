@@ -13,7 +13,7 @@ import {
   type StatsSnapshot,
 } from './liveMonitorMetrics'
 import { RunResponse } from '../types'
-import { Copy, Check, Play, Pause, Download, ChevronDown } from 'lucide-react'
+import { Copy, Check, Play, Pause, Download, ChevronDown, History } from 'lucide-react'
 import { useExport, ExportFormat } from '../hooks/useExport'
 
 export interface RunStats {
@@ -46,6 +46,7 @@ interface Props {
   runningName?: string
   onStop: () => void
   onClear: () => void
+  onViewHistory?: () => void
 }
 
 const statusBadge: Record<RunStatus, { label: string; className: string }> = {
@@ -55,7 +56,7 @@ const statusBadge: Record<RunStatus, { label: string; className: string }> = {
   stopped:  { label: 'Stopped',   className: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' },
 }
 
-export default function LiveMonitor({ logs, responses, stats, status, maxRequests, runQueue, runningName, onStop, onClear }: Props) {
+export default function LiveMonitor({ logs, responses, stats, status, maxRequests, runQueue, runningName, onStop, onClear, onViewHistory }: Props) {
   const logRef = useRef<HTMLDivElement>(null)
   const responsesListRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
@@ -222,6 +223,11 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
             )}
           </div>
 
+          {onViewHistory && status !== 'idle' && status !== 'running' && (
+            <Button variant="outline" size="sm" onClick={onViewHistory} className="gap-1.5">
+              <History className="h-3.5 w-3.5" /> View in History
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={onClear} disabled={status === 'running'}>Clear</Button>
         </div>
       </CardHeader>

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..state import store
 from ..core.tester import EndpointTest
+from ..catalogs import JSONPLACEHOLDER_TEMPLATE_ID, build_jsonplaceholder_project
 
 router = APIRouter(tags=["projects"])
 
@@ -22,6 +23,7 @@ def list_projects():
             {
                 "id": p["id"],
                 "name": p["name"],
+                "template_id": p.get("template_id"),
                 "environments": p.get("environments", []),
                 "current_environment_id": p.get("current_environment_id"),
                 "items": p.get("items") or [
@@ -32,6 +34,36 @@ def list_projects():
         ],
         "global_variables": store.global_variables,
     }
+
+
+def ensure_jsonplaceholder_project(target_store, name="JSONPlaceholder API"):
+    """Create or select the built-in sample without matching display names."""
+    existing = next(
+        (
+            project
+            for project in target_store.projects
+            if project.get("template_id") == JSONPLACEHOLDER_TEMPLATE_ID
+        ),
+        None,
+    )
+    if existing:
+        target_store.current_project_id = existing["id"]
+        target_store.sync_current_config()
+        target_store.save()
+        return existing, False
+
+    project = build_jsonplaceholder_project(name=name)
+    target_store.projects.append(project)
+    target_store.current_project_id = project["id"]
+    target_store.sync_current_config()
+    target_store.save()
+    return project, True
+
+
+@router.post("/projects/samples/jsonplaceholder")
+def add_jsonplaceholder_sample():
+    project, created = ensure_jsonplaceholder_project(store)
+    return {"project_id": project["id"], "created": created}
 
 
 @router.post("/projects")

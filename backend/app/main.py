@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config as app_config
 from .state import store
-from .routers import config, projects, environments, tests, runs
+from .routers import config, projects, environments, tests, runs, history
 
 
 @asynccontextmanager
@@ -16,6 +16,8 @@ async def lifespan(app: FastAPI):
     # Capture the running loop so worker threads can dispatch WS sends safely.
     store.main_loop = asyncio.get_running_loop()
     store.load()
+    store.history.initialize()
+    store.history.mark_interrupted_runs()
     yield
 
 
@@ -30,7 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (config, projects, environments, tests, runs):
+for module in (config, projects, environments, tests, runs, history):
     app.include_router(module.router)
 
 

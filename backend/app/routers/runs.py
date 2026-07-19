@@ -4,6 +4,8 @@ import threading
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from ..core.tester import APITester
+from ..history.models import RunStart, RunStepStart
+from ..history.sanitize import sanitize_run_config
 from ..state import store
 from ..services import runner
 
@@ -65,6 +67,34 @@ async def start_run(data: dict):
     }
 
     run_id = str(os.urandom(8).hex())
+    history_id = str(data.get("history_id") or run_id)
+    try:
+        history_step_index = int(data.get("history_step_index", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="history_step_index must be a number")
+    is_history_group = bool(data.get("history_id"))
+    if not is_history_group:
+        active_project = next(
+            (p for p in store.projects if p.get("id") == store.current_project_id),
+            {"id": store.current_project_id or "unknown", "name": "Unknown project"},
+        )
+        history_persisted = store.history.start(
+            RunStart(
+                id=history_id,
+                workspace_id=store.history.workspace_id or "local",
+                project_id=active_project.get("id") or "unknown",
+                project_name=active_project.get("name") or "Unknown project",
+                origin_device_id=store.history.origin_device_id or "local",
+                source_type="endpoint",
+                target_id=test.id,
+                target_name=test.name,
+                mode=mode,
+                config_snapshot=sanitize_run_config(data, test),
+            ),
+            [RunStepStart(history_step_index, test.id, test.name, test.method, test.url)],
+        )
+    else:
+        history_persisted = True
     store.current_runs[run_id] = {
         "status": "running",
         "mode": mode,
@@ -75,15 +105,24 @@ async def start_run(data: dict):
     }
 
     def run_in_thread():
+        outcome = "completed"
         try:
+            def on_stats(stats):
+                store.history.record_stats(history_id, history_step_index, stats)
+                runner.dispatch(runner.broadcast_stats(run_id, stats))
+
+            def on_response(response):
+                store.history.record_response(history_id, history_step_index, response)
+                runner.dispatch(runner.broadcast_response(run_id, response))
+
             tester = APITester(
                 test, store.current_config,
                 concurrency=concurrency,
                 delay=delay if not use_min_delay else 0.001,
                 max_requests=max_requests,
                 log_callback=lambda m: runner.dispatch(runner.broadcast_log(run_id, m)),
-                stats_callback=lambda s: runner.dispatch(runner.broadcast_stats(run_id, s)),
-                response_callback=lambda r: runner.dispatch(runner.broadcast_response(run_id, r)),
+                stats_callback=on_stats,
+                response_callback=on_response,
                 stop_flag=store.current_runs[run_id]["stop_flag"],
             )
             results = tester.run_mode(mode, params)
@@ -94,15 +133,22 @@ async def start_run(data: dict):
             # edits made during a run.
             runner.dispatch(runner.broadcast_log(run_id, f"Finished: {results}"))
         except Exception as e:
+            outcome = "failed"
             runner.dispatch(runner.broadcast_log(run_id, f"Error: {e}"))
         finally:
+            if store.current_runs[run_id]["status"] == "stopped":
+                outcome = "stopped"
+            store.history.finish_step(history_id, history_step_index, outcome)
+            if not is_history_group:
+                store.history.finish_run(history_id, outcome)
             if store.current_runs[run_id]["status"] == "running":
                 store.current_runs[run_id]["status"] = "finished"
             runner.dispatch(runner.broadcast_log(run_id, "run_finished"))
             runner.dispatch(runner.broadcast_stats(run_id, store.current_runs[run_id]["stats"]))
 
     threading.Thread(target=run_in_thread, daemon=True).start()
-    return {"run_id": run_id, "mode": mode}
+    return {"run_id": run_id, "mode": mode,
+            "history_id": history_id if history_persisted else None}
 
 
 @router.post("/send")
@@ -172,9 +218,34 @@ def run_scenario(data: dict):
         raise HTTPException(status_code=400, detail="retries/retry_delay must be numbers")
 
     by_id = {t.id: t for t in store.current_config.tests}
+    history_id = str(os.urandom(8).hex())
+    active_project = next(
+        (p for p in store.projects if p.get("id") == store.current_project_id),
+        {"id": store.current_project_id or "unknown", "name": "Unknown project"},
+    )
+    history_steps = [
+        RunStepStart(index, by_id[tid].id, by_id[tid].name, by_id[tid].method, by_id[tid].url)
+        for index, tid in enumerate(ids)
+        if tid in by_id
+    ]
+    store.history.start(
+        RunStart(
+            id=history_id,
+            workspace_id=store.history.workspace_id or "local",
+            project_id=active_project.get("id") or "unknown",
+            project_name=active_project.get("name") or "Unknown project",
+            origin_device_id=store.history.origin_device_id or "local",
+            source_type="scenario",
+            target_id=None,
+            target_name=f"Scenario · {len(ids)} steps",
+            mode="scenario",
+            config_snapshot={"mode": "scenario"},
+        ),
+        history_steps,
+    )
     steps = []
     changed = False
-    for tid in ids:
+    for step_index, tid in enumerate(ids):
         test = by_id.get(tid)
         if not test:
             steps.append({"test_id": tid, "name": None, "ok": False, "success": False, "error": "Endpoint not found"})
@@ -182,17 +253,30 @@ def run_scenario(data: dict):
                 break
             continue
         result = APITester(test, store.current_config).send_once(retries=retries, retry_delay=retry_delay)
+        store.history.record_response(history_id, step_index, result)
         if result.get("extracted"):
             changed = True
         step = _scenario_step(test, result)
         step["success"] = _step_succeeded(result)  # got a response AND status<400 AND no failed assertion
         steps.append(step)
+        attempts = int(result.get("attempts") or 1)
+        store.history.record_stats(history_id, step_index, {
+            "attempts": attempts,
+            "success": attempts if step["success"] else 0,
+            "rate_limited": attempts if result.get("status") == 429 else 0,
+            "errors": 0 if step["success"] else attempts,
+        })
+        store.history.finish_step(
+            history_id, step_index, "completed" if step["success"] else "failed"
+        )
         if not step["success"] and not cont:
             break
     if changed:
         store.save()  # persist tokens refreshed along the chain
-    return {"steps": steps, "passed": bool(steps) and all(s.get("success") for s in steps),
-            "completed": len(steps), "total": len(ids)}
+    passed = bool(steps) and all(s.get("success") for s in steps)
+    store.history.finish_run(history_id, "completed" if passed else "failed")
+    return {"steps": steps, "passed": passed,
+            "completed": len(steps), "total": len(ids), "history_id": history_id}
 
 
 @router.post("/stop/{run_id}")

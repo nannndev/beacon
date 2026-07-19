@@ -43,6 +43,7 @@ Keep base URLs and variables separate across development, staging, and other env
 ## Features
 
 - Project workspaces with nested, draggable request folders
+- Ready-to-run JSONPlaceholder sample with 47 organized CRUD, filter, and relation requests
 - Environment and global variables using `{{variable}}` templates
 - Fresh-per-request generators such as `{{random_email}}`, `{{uuid}}`, `{{timestamp}}`, and `{{random_string:12}}`
 - Postman collection import and redacted project export
@@ -53,6 +54,7 @@ Keep base URLs and variables separate across development, staging, and other env
 - Ordered scenarios with extractor-based state chaining and retries
 - Load, Ramp, Spike, Soak, Rate Probe, Fuzz, Benchmark, and Scenario test modes
 - Live attempts, successes, rate limits, errors, response logs, latency trend, and exportable results
+- Local Run History with pinning, filters, expandable charts, and semantic two-run comparison
 - Desktop app via Tauri with bundled FastAPI and MCP sidecars
 - Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
 
@@ -80,6 +82,10 @@ The launcher reads ports from the root `.env` and starts:
 - React frontend: <http://localhost:5173>
 - VitePress docs: <http://localhost:5174/docs/>
 - Landing page: <http://localhost:5175>
+
+On a fresh install, Beacon opens a conservative JSONPlaceholder sample project
+with six resource folders and 47 requests. Existing workspaces are never
+replaced; use **Add Sample Project** in the sidebar to add or reopen it.
 
 To start individual services:
 

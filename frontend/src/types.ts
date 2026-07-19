@@ -44,6 +44,7 @@ export type CollectionItem =
 export interface Project {
   id: string
   name: string
+  template_id?: string
   environments: Environment[]
   current_environment_id?: string
   items: CollectionItem[]   // tree structure like Postman (supports folders)

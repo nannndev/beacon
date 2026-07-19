@@ -33,7 +33,8 @@ export default function Onboarding({ onGetStarted }: Props) {
           </h1>
           <p className="mt-4 max-w-lg text-pretty text-[15px] leading-relaxed text-muted-foreground">
             A focused workspace for API collections, environments, dynamic requests, and
-            high-fidelity load testing. Here's what you can do.
+            high-fidelity load testing. Your first workspace is preloaded with 47 safe
+            JSONPlaceholder CRUD examples, so you can run a test immediately.
           </p>
         </div>
 

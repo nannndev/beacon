@@ -4,6 +4,7 @@ import { RunStats, RunStatus } from '../components/LiveMonitor'
 import { api, getWsUrl } from '../lib/api'
 import { toast } from '../components/ui/toast'
 import { buildLoadRunPayload } from './runPayload'
+import { withHistoryStep } from './useAppView'
 
 const EMPTY_STATS: RunStats = { attempts: 0, success: 0, rate_limited: 0, errors: 0 }
 
@@ -18,6 +19,12 @@ export interface RunQueueItem {
 export interface RunQueueProgress {
   current: number
   total: number
+}
+
+export interface RunGroupContext {
+  sourceType: 'run_all' | 'folder'
+  targetId?: string
+  targetName: string
 }
 
 function mergeStats(base: RunStats, current: RunStats): RunStats {
@@ -64,6 +71,7 @@ export function useRun() {
   const [maxRequests, setMaxRequests] = useState(0)
   const [totalMaxRequests, setTotalMaxRequests] = useState(0)
   const [runQueue, setRunQueue] = useState<RunQueueProgress | null>(null)
+  const [lastHistoryId, setLastHistoryId] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -74,6 +82,7 @@ export function useRun() {
   const stoppedRef = useRef(false)
   const queueRef = useRef<RunQueueItem[]>([])
   const runQueueRef = useRef<RunQueueProgress | null>(null)
+  const historyGroupRef = useRef<string | null>(null)
 
   useEffect(() => { statusRef.current = status }, [status])
   useEffect(() => { statsRef.current = stats }, [stats])
@@ -119,6 +128,7 @@ export function useRun() {
 
     const data = await api.startRun(payload)
     runIdRef.current = data.run_id
+    setLastHistoryId(data.history_id || null)
     connectRef.current(data.run_id)
   }, [cleanupSockets])
 
@@ -129,9 +139,16 @@ export function useRun() {
     const pos = (progress?.current ?? 0) + 1
     const total = progress?.total ?? pos
     setRunQueue({ current: pos, total })
-    const payload = next.payload ?? buildLoadRunPayload(next.testId, next.cfg)
+    const rawPayload = next.payload ?? buildLoadRunPayload(next.testId, next.cfg)
+    const payload = historyGroupRef.current
+      ? withHistoryStep(rawPayload, historyGroupRef.current, pos - 1)
+      : rawPayload
     startInternal(next.testId, next.name, payload, { fresh: false, queuePos: pos, queueTotal: total })
       .catch((e: any) => {
+        if (historyGroupRef.current) {
+          void api.finishHistoryGroup(historyGroupRef.current, 'failed').catch(() => {})
+          historyGroupRef.current = null
+        }
         runAllModeRef.current = false
         queueRef.current = []
         setRunQueue(null)
@@ -148,6 +165,7 @@ export function useRun() {
         return
       }
       runAllModeRef.current = false
+      historyGroupRef.current = null
       setRunQueue(null)
       setLogs((prev) => [...prev, '', '─── Run All finished ───'])
     }
@@ -227,6 +245,7 @@ export function useRun() {
   ) => {
     stoppedRef.current = false
     runAllModeRef.current = false
+    historyGroupRef.current = null
     queueRef.current = []
     setRunQueue(null)
     const finalPayload = payload ?? buildLoadRunPayload(testId, cfg)
@@ -240,7 +259,7 @@ export function useRun() {
     }
   }, [startInternal])
 
-  const startAll = useCallback(async (items: RunQueueItem[]) => {
+  const startAll = useCallback(async (items: RunQueueItem[], context?: RunGroupContext) => {
     if (items.length === 0) return
     stoppedRef.current = false
     setTotalMaxRequests(items.reduce((sum, item) => sum + item.cfg.max_requests, 0))
@@ -261,12 +280,31 @@ export function useRun() {
       return
     }
 
+    historyGroupRef.current = null
+    try {
+      const firstPayload = items[0].payload ?? buildLoadRunPayload(items[0].testId, items[0].cfg)
+      const group = await api.createHistoryGroup({
+        source_type: context?.sourceType || 'run_all',
+        target_id: context?.targetId,
+        target_name: context?.targetName || 'Run all endpoints',
+        mode: firstPayload.mode || 'load',
+        endpoint_ids: items.map((item) => item.testId),
+      })
+      historyGroupRef.current = group.history_id
+      setLastHistoryId(group.history_id)
+    } catch {
+      // History is auxiliary: a database/API failure must not block the run.
+    }
+
     runAllModeRef.current = true
     queueRef.current = items.slice(1)
     setRunQueue({ current: 1, total: items.length })
     try {
       const first = items[0]
-      const payload = first.payload ?? buildLoadRunPayload(first.testId, first.cfg)
+      const rawPayload = first.payload ?? buildLoadRunPayload(first.testId, first.cfg)
+      const payload = historyGroupRef.current
+        ? withHistoryStep(rawPayload, historyGroupRef.current, 0)
+        : rawPayload
       await startInternal(first.testId, first.name, payload, {
         fresh: true,
         queuePos: 1,
@@ -274,6 +312,10 @@ export function useRun() {
       })
       toast.success(`Run All started (${items.length} endpoints)`)
     } catch (e: any) {
+      if (historyGroupRef.current) {
+        void api.finishHistoryGroup(historyGroupRef.current, 'failed').catch(() => {})
+        historyGroupRef.current = null
+      }
       runAllModeRef.current = false
       queueRef.current = []
       setRunQueue(null)
@@ -289,6 +331,10 @@ export function useRun() {
     setRunQueue(null)
     if (!runIdRef.current) return
     try { await api.stopRun(runIdRef.current) } catch {}
+    if (historyGroupRef.current) {
+      void api.finishHistoryGroup(historyGroupRef.current, 'stopped').catch(() => {})
+      historyGroupRef.current = null
+    }
     setStatus('stopped')
     toast.info('Stopping run…')
   }, [])
@@ -305,6 +351,7 @@ export function useRun() {
     baseStatsRef.current = EMPTY_STATS
     setStatus('idle')
     setRunningTestId(null)
+    setLastHistoryId(null)
     setTotalMaxRequests(0)
   }, [cleanupSockets])
 
@@ -317,6 +364,7 @@ export function useRun() {
     maxRequests,
     totalMaxRequests,
     runQueue,
+    lastHistoryId,
     start,
     startAll,
     stop,

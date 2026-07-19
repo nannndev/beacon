@@ -62,6 +62,8 @@ def _pin_data_dir() -> None:
 _pin_data_dir()
 
 from .core.tester import APITester, EndpointTest
+from .history.models import RunStart, RunStepStart
+from .history.sanitize import sanitize_run_config
 from .state import store
 
 # FastMCP runs sync tool functions in a threadpool, so parallel tool calls
@@ -94,6 +96,20 @@ def _reload() -> None:
     """Sync in-memory state with tests.json on disk before every operation, so
     edits made in the web app / desktop app are reflected here."""
     store.load()
+
+
+def _prepare_history() -> None:
+    """Lazily initialize history in the standalone MCP process."""
+    if store.history.workspace_id is None and store.history.available:
+        store.history.initialize()
+        store.history.mark_interrupted_runs()
+
+
+def _history_project() -> dict:
+    return _active_project() or {
+        "id": store.current_project_id or "unknown",
+        "name": "Unknown project",
+    }
 
 
 def _active_project() -> Optional[dict]:
@@ -300,11 +316,40 @@ def run_endpoint(
     if not test:
         return {"error": f"Endpoint not found: {name_or_id}"}
 
+    _prepare_history()
+    history_id = str(uuid.uuid4())
+    project = _history_project()
+    history_payload = {
+        "mode": "load",
+        "concurrency": max(1, int(concurrency)),
+        "max_requests": int(count),
+        "delay": 0.001 if use_min_delay else float(delay),
+        "use_min_delay": bool(use_min_delay),
+    }
+    store.history.start(
+        RunStart(
+            id=history_id,
+            workspace_id=store.history.workspace_id or "local",
+            project_id=project.get("id") or "unknown",
+            project_name=project.get("name") or "Unknown project",
+            origin_device_id=store.history.origin_device_id or "local",
+            source_type="endpoint",
+            target_id=test.id,
+            target_name=test.name,
+            mode="load",
+            config_snapshot=sanitize_run_config(history_payload, test),
+        ),
+        [RunStepStart(0, test.id, test.name, test.method, test.url)],
+    )
     snapshot: dict = {}
 
     def on_stats(s: dict) -> None:
         snapshot.clear()
         snapshot.update(s)
+        store.history.record_stats(history_id, 0, s)
+
+    def on_response(response: dict) -> None:
+        store.history.record_response(history_id, 0, response)
 
     tester = APITester(
         test,
@@ -313,10 +358,20 @@ def run_endpoint(
         delay=0.001 if use_min_delay else float(delay),
         max_requests=int(count),
         stats_callback=on_stats,
+        response_callback=on_response,
         stop_flag={"stop": False},
     )
-    results = tester.run()
+    outcome = "completed"
+    try:
+        results = tester.run()
+    except Exception:
+        outcome = "failed"
+        raise
+    finally:
+        store.history.finish_step(history_id, 0, outcome)
+        store.history.finish_run(history_id, outcome)
     return {
+        "history_id": history_id,
         "endpoint": test.name,
         "target": _resolved_target(store.current_config.base_url, test.url),
         "config": {"concurrency": concurrency, "count": count, "delay": delay},
@@ -357,10 +412,33 @@ def run_scenario(name_or_ids: list, continue_on_error: bool = False,
     Stops at the first failed step unless continue_on_error. Returns a compact
     per-step summary (status, time_ms, passed, extracted) — not full bodies."""
     _reload()
+    _prepare_history()
+    history_id = str(uuid.uuid4())
+    resolved = [(_find_test(str(ref)), ref) for ref in (name_or_ids or [])]
+    project = _history_project()
+    valid_steps = [
+        RunStepStart(index, test.id, test.name, test.method, test.url)
+        for index, (test, _) in enumerate(resolved)
+        if test is not None
+    ]
+    store.history.start(
+        RunStart(
+            id=history_id,
+            workspace_id=store.history.workspace_id or "local",
+            project_id=project.get("id") or "unknown",
+            project_name=project.get("name") or "Unknown project",
+            origin_device_id=store.history.origin_device_id or "local",
+            source_type="scenario",
+            target_id=None,
+            target_name=f"MCP scenario · {len(name_or_ids or [])} steps",
+            mode="scenario",
+            config_snapshot={"mode": "scenario"},
+        ),
+        valid_steps,
+    )
     steps = []
     changed = False
-    for ref in name_or_ids or []:
-        test = _find_test(str(ref))
+    for step_index, (test, ref) in enumerate(resolved):
         if not test:
             steps.append({"ref": ref, "ok": False, "success": False, "error": "Endpoint not found"})
             if not continue_on_error:
@@ -368,6 +446,7 @@ def run_scenario(name_or_ids: list, continue_on_error: bool = False,
             continue
         result = APITester(test, store.current_config).send_once(
             retries=max(0, int(retries)), retry_delay=float(retry_delay))
+        store.history.record_response(history_id, step_index, result)
         if result.get("extracted"):
             changed = True
         # A step succeeds when it got a response, no assertion failed, status < 400.
@@ -380,11 +459,23 @@ def run_scenario(name_or_ids: list, continue_on_error: bool = False,
             "attempts": result.get("attempts"),
             **({"error": result.get("error")} if not result.get("ok") else {}),
         })
+        attempts = int(result.get("attempts") or 1)
+        store.history.record_stats(history_id, step_index, {
+            "attempts": attempts,
+            "success": attempts if success else 0,
+            "rate_limited": attempts if result.get("status") == 429 else 0,
+            "errors": 0 if success else attempts,
+        })
+        store.history.finish_step(
+            history_id, step_index, "completed" if success else "failed"
+        )
         if not success and not continue_on_error:
             break
     if changed:
         store.save()
-    return {"steps": steps, "passed": bool(steps) and all(s.get("success") for s in steps),
+    passed = bool(steps) and all(s.get("success") for s in steps)
+    store.history.finish_run(history_id, "completed" if passed else "failed")
+    return {"history_id": history_id, "steps": steps, "passed": passed,
             "completed": len(steps), "total": len(name_or_ids or [])}
 
 

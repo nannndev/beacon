@@ -37,10 +37,12 @@ ENV/
 # Keep it local; commit config/tests.example.json instead.
 config/tests.json
 config/*.local.json
+config/history.db*
 
 # Backend (FastAPI) also stores operational state relative to its cwd
 backend/config/tests.json
 backend/config/*.local.json
+backend/config/history.db*
 *.log
 results/
 

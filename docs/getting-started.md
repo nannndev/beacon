@@ -32,9 +32,17 @@ Open the frontend in your browser.
 
 ## First Steps
 
-1. Create a new **Project**
-2. Create **Folders** to organize your endpoints (highly recommended)
-3. Add your first endpoint manually or **Import from Postman**
+Fresh installs start with a ready-to-run **Default Project** targeting the
+public JSONPlaceholder API. Its 47 requests cover GET, filters, POST, PUT,
+PATCH, DELETE, and nested relations across Posts, Comments, Albums, Photos,
+Todos, and Users. Defaults are intentionally conservative: one worker, ten
+requests, and two requests per second.
+
+1. Select any sample endpoint and use **Single Send** or a test mode.
+2. Create folders and endpoints for your own API, or **Import from Postman**.
+3. If you already had a Beacon workspace before this sample was introduced,
+   use **Add Sample Project** in the project sidebar. The action is idempotent
+   and never overwrites an existing project.
 
 ## Using Folders
 
@@ -57,6 +65,7 @@ See the [Desktop App](./desktop.md) section for how to build and use the native 
 - [Assertions](./features/assertions.md) — attach pass/fail rules to endpoints
 - [Scenarios](./features/scenarios.md) — run ordered multi-step flows with state carried by extractors
 - [Send & Response Inspector](./features/send-inspect.md) — fire one request and inspect everything (with click-to-extract)
+- [Run History](./features/run-history.md) — retain, pin, expand charts, and compare two test runs
 
 See the full list under `docs/features/`.
 

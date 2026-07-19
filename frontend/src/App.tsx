@@ -21,6 +21,9 @@ import { api } from './lib/api'
 import { isDesktop } from './lib/platform'
 import { toast } from './components/ui/toast'
 import Onboarding from './pages/Onboarding'
+import { hasJsonPlaceholderSample } from './lib/sampleProject'
+import { useAppView } from './hooks/useAppView'
+import { HistoryPage } from './pages/HistoryPage'
 
 function loadGlobalSettings(): ExecSettings {
   try {
@@ -70,6 +73,7 @@ function App() {
   const [showProjectSettings, setShowProjectSettings] = useState(false)
   const [showMcpDialog, setShowMcpDialog] = useState(false)
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
+  const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
 
   // Execution settings: a global default (persisted) + an active view that may
   // be a per-endpoint override.
@@ -79,6 +83,7 @@ function App() {
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null)
 
   const run = useRun()
+  const appView = useAppView()
 
   const currentProject = projects.find((p) => p.id === currentProjectId)
   const currentEnv = currentProject?.environments?.find((e) => e.id === currentProject?.current_environment_id)
@@ -140,6 +145,25 @@ function App() {
     }
   }
 
+  const addSampleProject = async () => {
+    setSampleProjectBusy(true)
+    try {
+      const result = await api.addJsonPlaceholderSample()
+      await fetchAll()
+      setCurrentProjectId(result.project_id)
+      setSelectedTestId(null)
+      toast.success(
+        result.created
+          ? 'JSONPlaceholder sample project added'
+          : 'JSONPlaceholder sample project opened',
+      )
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add sample project')
+    } finally {
+      setSampleProjectBusy(false)
+    }
+  }
+
   const createFolder = async () => {
     if (!currentProjectId) return
     const folderName = window.prompt('New folder name', 'New Folder')
@@ -198,6 +222,7 @@ function App() {
         name: ep.name,
         cfg: ep.run_config ?? settingsToConfig(globalSettings),
       })),
+      { sourceType: 'folder', targetId: folderId, targetName: 'Folder run' },
     )
   }
 
@@ -429,11 +454,24 @@ function App() {
         name: ep.name,
         cfg: ep.run_config ?? settingsToConfig(globalSettings),
       })),
+      { sourceType: 'run_all', targetName: `Run all · ${currentProject?.name || 'Project'}` },
     )
   }
 
   if (showIntro) {
     return <Onboarding onGetStarted={finishIntro} />
+  }
+
+  if (appView.view === 'history') {
+    return (
+      <div className="h-screen bg-background text-foreground">
+        <HistoryPage
+          projectId={currentProjectId}
+          initialRunId={appView.runId}
+          onBack={appView.openWorkspace}
+        />
+      </div>
+    )
   }
 
   return (
@@ -447,6 +485,9 @@ function App() {
         onToggleCollapse={() => setSidebarCollapsed((c) => { localStorage.setItem('sidebar_collapsed', String(!c)); return !c })}
         onSwitchProject={switchProject}
         onNewProject={() => setShowProjectDialog(true)}
+        onAddSampleProject={addSampleProject}
+        sampleProjectExists={hasJsonPlaceholderSample(projects)}
+        sampleProjectBusy={sampleProjectBusy}
         onSwitchEnv={switchEnv}
         onManageEnv={() => setShowEnvDialog(true)}
         onGlobalVars={() => setShowGlobalDialog(true)}
@@ -454,6 +495,8 @@ function App() {
         onRunAll={runAll}
         runAllDisabled={run.status === 'running'}
         onOpenMcp={() => setShowMcpDialog(true)}
+        onOpenHistory={() => appView.openHistory()}
+        activeView={appView.view}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -525,6 +568,7 @@ function App() {
                 runningName={effectiveTests.find((t) => t.id === run.runningTestId)?.name || (config.tests as any[]).find((t) => t.id === run.runningTestId)?.name}
                 onStop={run.stop}
                 onClear={run.clear}
+                onViewHistory={run.lastHistoryId ? () => appView.openHistory(run.lastHistoryId) : undefined}
               />
             </>
           )}
