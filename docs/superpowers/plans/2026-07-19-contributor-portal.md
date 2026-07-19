@@ -1937,11 +1937,10 @@ Run:
 ~~~powershell
 if (-not (Test-Path landing/dist/index.html)) { throw 'Missing landing build' }
 if (-not (Test-Path landing/dist/contributors/index.html)) { throw 'Missing contributors build' }
-$securityFiles = @(
-  'landing/src/pages/ContributorPage.tsx',
-  '.github/ISSUE_TEMPLATE/config.yml',
-  'SECURITY.md'
-)
+if (-not (Select-String -Path landing/src/pages/ContributorPage.tsx -SimpleMatch "'/security/advisories/new'")) {
+  throw 'Contributor page is missing the private advisory path'
+}
+$securityFiles = @('.github/ISSUE_TEMPLATE/config.yml', 'SECURITY.md')
 foreach ($file in $securityFiles) {
   if (-not (Select-String -Path $file -SimpleMatch 'https://github.com/nannndev/beacon/security/advisories/new')) {
     throw ('Missing private advisory URL in ' + $file)
