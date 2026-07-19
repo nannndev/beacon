@@ -28,7 +28,7 @@ features:
     details: Use {{random_email}}, {{uuid}}, timestamps and more. Extract tokens from responses to chain requests.
   - icon: 📊
     title: Live Load Testing & Inspection
-    details: Real-time monitoring, rate limit detection, concurrency control, single-request Send with full Response Inspector, and latency trends.
+    details: Real-time monitoring, rate limit detection, concurrency control, single-request Send with full Response Inspector, expandable latency trends, and local run comparison.
   - icon: ✅
     title: Assertions & Scenarios
     details: Per-endpoint pass/fail rules (status, time, JSONPath, headers, body contains). Run ordered multi-step scenarios where extractors carry state between steps.

@@ -54,6 +54,7 @@ Keep base URLs and variables separate across development, staging, and other env
 - Ordered scenarios with extractor-based state chaining and retries
 - Load, Ramp, Spike, Soak, Rate Probe, Fuzz, Benchmark, and Scenario test modes
 - Live attempts, successes, rate limits, errors, response logs, latency trend, and exportable results
+- Local Run History with pinning, filters, expandable charts, and semantic two-run comparison
 - Desktop app via Tauri with bundled FastAPI and MCP sidecars
 - Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
 

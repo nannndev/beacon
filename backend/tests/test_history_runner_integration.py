@@ -6,6 +6,7 @@ from unittest.mock import patch
 from backend.app.core.tester import EndpointTest, TestConfig
 from backend.app.routers import runs
 from backend.app import mcp_server
+from backend.app.history.service import HistoryService
 
 
 class RecordingHistory:
@@ -35,6 +36,11 @@ class RecordingHistory:
 
     def finish_run(self, history_id, status):
         self.finished.append((history_id, status))
+
+
+class FailingHistoryRepository:
+    def initialize(self):
+        raise RuntimeError("history unavailable")
 
 
 class ImmediateThread:
@@ -147,6 +153,21 @@ class HistoryRunnerIntegrationTests(unittest.TestCase):
         self.assertIn("history_id", run_result)
         self.assertNotIn("history_id", send_result)
         self.assertEqual(len(history.started), 1)
+
+    def test_unavailable_history_never_blocks_a_live_run(self):
+        history = HistoryService(FailingHistoryRepository())
+        history.initialize()
+        fake_store = target_store(history)
+        with (
+            patch.object(runs, "store", fake_store),
+            patch.object(runs, "APITester", FakeTester),
+            patch.object(runs.threading, "Thread", ImmediateThread),
+            patch.object(runs.runner, "dispatch", lambda coroutine: coroutine.close()),
+        ):
+            response = asyncio.run(runs.start_run({"test_id": "e1", "max_requests": 2}))
+
+        self.assertIsNone(response["history_id"])
+        self.assertEqual(fake_store.current_runs[response["run_id"]]["status"], "finished")
 
 
 if __name__ == "__main__":

@@ -65,6 +65,7 @@ See the [Desktop App](./desktop.md) section for how to build and use the native 
 - [Assertions](./features/assertions.md) — attach pass/fail rules to endpoints
 - [Scenarios](./features/scenarios.md) — run ordered multi-step flows with state carried by extractors
 - [Send & Response Inspector](./features/send-inspect.md) — fire one request and inspect everything (with click-to-extract)
+- [Run History](./features/run-history.md) — retain, pin, expand charts, and compare two test runs
 
 See the full list under `docs/features/`.
 
