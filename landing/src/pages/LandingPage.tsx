@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import {
   Activity,
+  Apple,
   ArrowRight,
   Bot,
   Braces,
@@ -15,6 +16,7 @@ import {
   History,
   Menu,
   MessagesSquare,
+  PanelsTopLeft,
   Play,
   Repeat,
   RotateCcw,
@@ -23,12 +25,20 @@ import {
   Sparkles,
   StopCircle,
   Terminal,
+  Users,
   X,
 } from 'lucide-react'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { NetworkBackground } from '../components/NetworkBackground'
+import { ContributorWall } from '../components/ContributorWall'
 import featureBanner from '../assets/beacon-feature-banner.webp'
+import workspaceShot from '../assets/features/workspace.png'
+import requestBuilderShot from '../assets/features/request-builder.png'
+import responseInspectorShot from '../assets/features/response-inspector.png'
+import assertionsShot from '../assets/features/assertions.png'
+import environmentsShot from '../assets/features/environments.png'
+import scenarioResultsShot from '../assets/features/scenario-results.png'
 
 // URLs injected from the root .env via vite.config.ts (define block).
 const DOCS_URL =
@@ -50,7 +60,7 @@ const NAV_LINKS = [
   { id: 'workflow', label: 'Workflow' },
   { id: 'mcp', label: 'AI' },
   { id: 'desktop', label: 'Desktop' },
-  { id: 'support', label: 'Support' },
+  { id: 'contributors', label: 'Contributors' },
 ]
 
 const REQUESTS = [
@@ -73,7 +83,6 @@ export default function LandingPage() {
   }
   const [running, setRunning] = useState(false)
   const [selected, setSelected] = useState(0)
-  const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<string>('product-preview')
   const [logs, setLogs] = useState<string[]>([
@@ -84,7 +93,6 @@ export default function LandingPage() {
 
   const current = REQUESTS[selected]
   const successCount = REQUESTS.filter((r) => r.status >= 200 && r.status < 300).length
-  const avgTime = Math.round(REQUESTS.reduce((sum, r) => sum + r.time, 0) / REQUESTS.length)
 
   const response = useMemo(() => {
     if (current.status === 429) {
@@ -105,13 +113,6 @@ export default function LandingPage() {
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [logs])
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
 
   useEffect(() => {
     const sections = NAV_LINKS
@@ -180,17 +181,9 @@ export default function LandingPage() {
       {/* Modern subtle background */}
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(#111_0.6px,transparent_1px)] bg-[length:3px_3px] dark:bg-[radial-gradient(#222_0.6px,transparent_1px)]" />
       <NetworkBackground />
-      <header
-        className={`sticky top-0 z-50 border-b transition-all duration-300 ${
-          scrolled
-            ? 'border-border/70 bg-background/85 backdrop-blur-2xl shadow-sm'
-            : 'border-transparent bg-background/40 backdrop-blur-md'
-        }`}
-      >
+      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 shadow-sm backdrop-blur-2xl">
         <div
-          className={`mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-300 lg:px-8 ${
-            scrolled ? 'h-14' : 'h-16'
-          }`}
+          className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-5 lg:px-8"
         >
           <a href="#" className="flex items-center gap-2.5" aria-label="Beacon home">
             <BrandMark size="md" />
@@ -211,12 +204,6 @@ export default function LandingPage() {
                 {link.label}
               </a>
             ))}
-            <a
-              href="/contributors/"
-              className="rounded-lg px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Contributors
-            </a>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -287,13 +274,6 @@ export default function LandingPage() {
                 </a>
               ))}
               <a
-                href="/contributors/"
-                onClick={() => setMobileOpen(false)}
-                className="rounded-xl px-3 py-3 text-base font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                Contributors
-              </a>
-              <a
                 href={DOCS_URL}
                 target="_blank"
                 rel="noopener"
@@ -336,13 +316,12 @@ export default function LandingPage() {
             FOR API TEAMS &amp; SECURITY RESEARCHERS
           </div>
 
-          <h1 className="text-balance text-6xl font-semibold leading-none tracking-[-3.5px] md:text-[84px] md:tracking-[-4.5px]">
+          <h1 className="text-balance text-6xl font-semibold leading-[0.98] tracking-[-3.5px] md:text-[68px] md:tracking-[-4px]">
             Clarity for<br /> every API call.
           </h1>
 
           <p className="mt-6 max-w-xl text-pretty text-[17px] leading-relaxed text-muted-foreground">
-            Send a request and read the response. Assert it, chain it, and load-test it —
-            collections, environments, and dynamic variables included. Built for speed and precision.
+            Build requests, inspect responses, chain scenarios, and load-test APIs from one local workspace.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -350,7 +329,7 @@ export default function LandingPage() {
               onClick={download}
               className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-semibold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
             >
-              Download for Windows
+              Download Beacon
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </button>
 
@@ -365,9 +344,9 @@ export default function LandingPage() {
 
           <div className="mt-10 grid max-w-lg grid-cols-3 gap-3">
             {[
-              { label: 'Requests', value: '128k' },
-              { label: 'Avg run', value: `${avgTime}ms` },
-              { label: 'Passed', value: `${successCount}/${REQUESTS.length}` },
+              { label: 'Data', value: 'Local' },
+              { label: 'Runtime', value: 'Bundled' },
+              { label: 'Account', value: 'None' },
             ].map((item) => (
               <div key={item.label} className="rounded-lg border border-border bg-card/70 px-3 py-3">
                 <div className="font-mono text-xl font-bold tabular-nums">{item.value}</div>
@@ -409,22 +388,22 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section aria-labelledby="feature-overview-title" className="relative overflow-hidden border-b border-border/60 bg-slate-950 text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(34,211,238,0.12),transparent_46%)]" />
+      <section aria-labelledby="feature-overview-title" className="relative overflow-hidden border-b border-border/60 bg-muted/15">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(34,211,238,0.08),transparent_46%)]" />
         <div className="relative mx-auto max-w-7xl px-5 py-16 lg:px-8 lg:py-24">
           <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div className="max-w-3xl">
-              <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-cyan-400">The whole request lifecycle</p>
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-cyan-500">The whole request lifecycle</p>
               <h2 id="feature-overview-title" className="mt-3 text-balance text-3xl font-semibold tracking-tight md:text-5xl">
                 Build, validate, chain, and measure from one workspace.
               </h2>
             </div>
-            <p className="max-w-md text-sm leading-6 text-slate-400 md:text-right">
-              A modular workspace that grows with your API testing workflow—from a single response to sustained load.
+            <p className="max-w-md text-sm leading-6 text-muted-foreground">
+              Move from one response to a repeatable scenario and sustained load without leaving the workspace.
             </p>
           </div>
 
-          <figure className="group relative overflow-hidden rounded-2xl border border-cyan-300/15 bg-slate-900 shadow-[0_30px_100px_-40px_rgba(34,211,238,0.45)]">
+          <figure className="group relative overflow-hidden rounded-2xl border border-border bg-card shadow-[0_30px_100px_-40px_rgba(34,211,238,0.32)]">
             <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
             <img
               src={featureBanner}
@@ -438,6 +417,8 @@ export default function LandingPage() {
           </figure>
         </div>
       </section>
+
+      <FeatureGallery />
 
       <section id="features" className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
@@ -453,12 +434,12 @@ export default function LandingPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             {[
-              { icon: Send, title: 'Send & inspect', body: 'Fire one request and read the full response — status, timing, headers, and a pretty JSON / XML / HTML viewer.' },
-              { icon: ShieldCheck, title: 'Assertions', body: 'Pass/fail rules on status, response time, body text, JSON fields, or headers — checked on every send.' },
-              { icon: GitBranch, title: 'Scenarios', body: 'Chain endpoints in order; tokens extracted from one step flow into the next. Login → use → repeat.' },
-              { icon: FileCode2, title: 'Any content type', body: 'JSON, form, multipart file upload, or raw text / XML / GraphQL — all with variable templating.' },
+              { icon: Send, title: 'Send & inspect', body: 'Fire one request and read status, timing, headers, and formatted response bodies.' },
+              { icon: ShieldCheck, title: 'Assertions', body: 'Check status, response time, body text, JSON fields, or headers on every send.' },
+              { icon: GitBranch, title: 'Scenarios', body: 'Chain endpoints in order and pass extracted tokens into the next request.' },
+              { icon: FileCode2, title: 'Any content type', body: 'Use JSON, forms, multipart uploads, raw text, XML, or GraphQL with variables.' },
               { icon: Activity, title: 'Live load testing', body: 'Watch attempts, success, rate limits, errors, latency percentiles, and a live trend chart as runs execute.' },
-              { icon: Repeat, title: 'Retry & rate control', body: 'Auto-retry on errors or non-2xx, and tune concurrency, delays, and max requests per endpoint.' },
+              { icon: Repeat, title: 'Retry & rate control', body: 'Retry failures and tune concurrency, delays, and request limits per endpoint.' },
             ].map(({ icon: Icon, title, body }) => (
               <article key={title} className="rounded-xl border border-border bg-card/55 p-5">
                 <div className="flex items-center gap-3">
@@ -491,14 +472,13 @@ export default function LandingPage() {
 
           <div className="grid gap-4 pt-8 md:grid-cols-4">
             {[
-              ['01', 'Create', 'Method, URL, headers, body, auth, and dynamic variables.'],
-              ['02', 'Send & inspect', 'Fire once, read the response, click a field to save a token.'],
-              ['03', 'Assert', 'Add pass/fail rules on status, time, body, or JSON.'],
-              ['04', 'Chain & scale', 'Run a scenario end-to-end, or load-test at concurrency.'],
-            ].map(([step, title, body]) => (
-              <div key={step} className="rounded-2xl border border-border/50 bg-background/60 p-6">
-                <div className="font-mono text-xs font-bold tracking-widest text-cyan-500">{step}</div>
-                <div className="mt-4 text-xl font-semibold tracking-tight">{title}</div>
+              ['Create', 'Method, URL, headers, body, auth, and dynamic variables.'],
+              ['Send & inspect', 'Fire once, read the response, then save a field as a token.'],
+              ['Assert', 'Add pass/fail rules on status, time, body, or JSON.'],
+              ['Chain & scale', 'Run a complete scenario or load-test with concurrency.'],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-2xl border border-border/50 bg-background/60 p-6">
+                <div className="text-xl font-semibold tracking-tight">{title}</div>
                 <p className="mt-2 text-[15px] leading-snug text-muted-foreground">{body}</p>
               </div>
             ))}
@@ -510,16 +490,16 @@ export default function LandingPage() {
         <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
-              <Bot className="h-3.5 w-3.5 text-cyan-400" /> MCP · AI INTEGRATION
+              <Bot className="h-3.5 w-3.5 text-cyan-400" /> MCP INTEGRATION
             </div>
             <h2 className="mt-4 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
               Drive Beacon with your AI.
             </h2>
             <p className="mt-5 max-w-lg text-pretty leading-7 text-muted-foreground">
-              Beacon ships a bundled MCP server — one click in the desktop app registers it
+              Beacon ships a bundled MCP server. One click in the desktop app registers it
               with Claude. Assistants get <span className="font-semibold text-foreground">17 tools</span> to
               create, organize, import, send &amp; inspect, assert, chain scenarios, and
-              load-test endpoints — through the same engine, no glue code.
+              load-test endpoints through the same engine, with no glue code.
             </p>
             <a
               href={DOCS_URL.replace(/\/$/, '') + '/mcp'}
@@ -537,7 +517,7 @@ export default function LandingPage() {
               <span className="h-3 w-3 rounded-full bg-amber-400" />
               <span className="h-3 w-3 rounded-full bg-emerald-400" />
             </div>
-            <pre className="overflow-auto"><code>{`# Desktop app → MCP panel → one click to register
+            <pre className="overflow-auto"><code>{`# Desktop app > MCP panel > one click to register
 # (or Claude Code, pointing at the bundled binary)
 claude mcp add beacon -- <path-to>/mcp_server
 
@@ -551,70 +531,87 @@ claude mcp add beacon -- <path-to>/mcp_server
       <section id="desktop" className="border-t border-border/60 bg-muted/20">
         <div className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
           <div className="mx-auto max-w-2xl text-center">
-            <div className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-1 text-xs font-medium tracking-widest text-muted-foreground ring-1 ring-border">
-              NATIVE DESKTOP APP (TAURI)
-            </div>
             <h2 className="mt-4 text-balance text-5xl font-semibold tracking-tighter">
-              Take Beacon offline.<br /> Run it anywhere.
+              Your workspace stays on your machine.
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
-              The same beautiful interface, now as a native desktop application. Full filesystem access, local network testing, and system integrations.
+              Beacon bundles the interface, FastAPI backend, and MCP server. No hosted Beacon account or Python installation required.
             </p>
           </div>
 
-          <div className="mx-auto mt-12 max-w-3xl rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:border-cyan-500/30 hover:shadow-2xl md:p-9">
-            <div className="flex flex-col gap-7 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-auto mt-12 grid max-w-5xl gap-5 md:grid-cols-2">
+            <article className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
               <div className="flex items-center gap-5">
-                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-3xl">🖥️</span>
+                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-cyan-500/20 bg-cyan-500/10">
+                  <PanelsTopLeft className="h-8 w-8 text-cyan-500" strokeWidth={1.8} />
+                </span>
                 <div>
                   <div className="text-2xl font-semibold tracking-tight">Beacon for Windows</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Windows 10/11 · x64 · Current-user installer</div>
-                  <div className="mt-2 inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-500">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> backend + MCP included
-                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">Windows 10/11, x64 installer</div>
                 </div>
               </div>
-
               <a
                 href={DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener"
-                className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px hover:bg-zinc-800 active:scale-[0.985]"
+                className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"
               >
                 <Download className="h-4 w-4" />
-                Latest release
+                Download EXE
               </a>
-            </div>
-          </div>
+            </article>
 
-          <div className="mx-auto mt-5 max-w-3xl rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:border-cyan-500/30 hover:shadow-2xl md:p-9">
-            <div className="flex flex-col gap-7 sm:flex-row sm:items-center sm:justify-between">
+            <article className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
               <div className="flex items-center gap-5">
-                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-3xl">🍎</span>
+                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-border bg-foreground text-background">
+                  <Apple className="h-8 w-8" strokeWidth={1.8} />
+                </span>
                 <div>
                   <div className="text-2xl font-semibold tracking-tight">Beacon for macOS</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Apple Silicon · Unsigned preview · DMG</div>
-                  <div className="mt-2 text-xs leading-relaxed text-amber-600 dark:text-amber-400">
-                    First launch: right-click Beacon → Open → Open
-                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">Apple Silicon, unsigned DMG</div>
                 </div>
               </div>
-
+              <p className="mt-6 text-sm leading-6 text-muted-foreground">First launch: right-click Beacon, choose Open, then confirm Open.</p>
               <a
                 href={DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener"
-                className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px hover:bg-zinc-800 active:scale-[0.985]"
+                className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"
               >
                 <Download className="h-4 w-4" />
                 Download DMG
               </a>
-            </div>
+            </article>
           </div>
 
           <div className="mt-8 text-center text-sm text-muted-foreground">
             Install, open Beacon, and start testing locally. No Python runtime or hosted Beacon account required.
           </div>
+        </div>
+      </section>
+
+      <section id="contributors" className="border-t border-border/60 bg-muted/15">
+        <div className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-24">
+          <div className="max-w-3xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-500">
+              <Users className="h-5 w-5" />
+            </div>
+            <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+              Built in the open, improved together.
+            </h2>
+            <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
+              Code, testing, documentation, design, and careful bug reports all move Beacon forward.
+            </p>
+          </div>
+          <div className="mt-10">
+            <ContributorWall />
+          </div>
+          <a
+            href="/contributors/"
+            className="mt-8 inline-flex h-12 items-center gap-2 rounded-2xl border border-border bg-card px-6 text-sm font-semibold transition-all hover:-translate-y-px hover:bg-muted active:scale-[0.985]"
+          >
+            See how to contribute <ArrowRight className="h-4 w-4" />
+          </a>
         </div>
       </section>
 
@@ -680,6 +677,100 @@ claude mcp add beacon -- <path-to>/mcp_server
   )
 }
 
+function FeatureGallery() {
+  return (
+    <section id="product-preview" className="mx-auto max-w-7xl scroll-mt-20 px-5 py-20 lg:px-8 lg:py-28">
+      <div className="max-w-3xl">
+        <h2 className="text-balance text-4xl font-semibold tracking-tight md:text-6xl">
+          Every part of the testing loop, visible.
+        </h2>
+        <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
+          Configure requests, inspect real responses, keep environments clean, and see chained runs finish step by step.
+        </p>
+      </div>
+
+      <div className="mt-12 space-y-6 md:space-y-8">
+        <FeatureFigure
+          src={workspaceShot}
+          alt="Beacon workspace with endpoint collections, load test controls, and live monitoring"
+          title="One workspace for the full collection"
+          body="Projects, endpoints, run controls, and live results stay in one continuous view."
+          priority
+        />
+
+        <div className="grid gap-6 md:grid-cols-2 md:gap-8">
+          <FeatureFigure
+            src={requestBuilderShot}
+            alt="Beacon request builder showing payload, authorization, headers, and response extractors"
+            title="Build the request precisely"
+            body="Set auth, payloads, headers, extractors, and dynamic helpers without hiding important details."
+          />
+          <FeatureFigure
+            src={responseInspectorShot}
+            alt="Beacon response inspector showing status, latency, extracted data, and JSON response"
+            title="Read what came back"
+            body="Inspect status, latency, headers, extracted values, and formatted response bodies together."
+          />
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-[1.18fr_0.82fr] md:gap-8">
+          <FeatureFigure
+            src={assertionsShot}
+            alt="Beacon assertions panel validating status code and response time"
+            title="Turn expectations into checks"
+            body="Validate response status and timing, then keep pass or fail evidence beside the response."
+          />
+          <FeatureFigure
+            src={environmentsShot}
+            alt="Beacon environment editor with base URL and reusable variables"
+            title="Switch context safely"
+            body="Keep base URLs, tokens, and variables isolated by environment."
+            imageClassName="object-cover object-center md:aspect-[4/5]"
+          />
+        </div>
+
+        <FeatureFigure
+          src={scenarioResultsShot}
+          alt="Beacon scenario result showing a login and profile request passing in sequence"
+          title="See the chain complete"
+          body="Run dependent endpoints in order and verify every extracted value and completed step."
+        />
+      </div>
+    </section>
+  )
+}
+
+interface FeatureFigureProps {
+  src: string
+  alt: string
+  title: string
+  body: string
+  priority?: boolean
+  imageClassName?: string
+}
+
+function FeatureFigure({ src, alt, title, body, priority = false, imageClassName = '' }: FeatureFigureProps) {
+  return (
+    <figure className="group min-w-0">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_70px_-42px_rgba(6,182,212,0.45)]">
+        <img
+          src={src}
+          alt={alt}
+          width="1440"
+          height="1000"
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          className={`block h-auto w-full transition-transform duration-700 ease-out motion-safe:group-hover:scale-[1.01] ${imageClassName}`}
+        />
+      </div>
+      <figcaption className="px-1 pt-5">
+        <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{body}</p>
+      </figcaption>
+    </figure>
+  )
+}
+
 interface ProductPreviewProps {
   current: typeof REQUESTS[number]
   selected: number
@@ -694,7 +785,7 @@ interface ProductPreviewProps {
 
 function ProductPreview({ current, selected, response, logs, running, logRef, onSelect, onRun, onReset }: ProductPreviewProps) {
   return (
-    <div id="product-preview" className="relative min-w-0 scroll-mt-24">
+    <div id="interactive-demo" className="relative min-w-0 scroll-mt-24">
       <div className="absolute -inset-4 -z-10 rounded-[2rem] border border-cyan-500/10 bg-cyan-500/5 blur-2xl" />
       <div className="w-full min-w-0 overflow-hidden rounded-3xl border border-border/70 bg-card shadow-xl">
         <div className="flex items-center justify-between border-b border-border bg-muted/30 px-5 py-3.5">
