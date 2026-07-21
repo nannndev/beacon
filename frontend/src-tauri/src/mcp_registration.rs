@@ -84,6 +84,49 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// A GUI app launched from Finder/Dock on macOS inherits a bare PATH
+/// (`/usr/bin:/bin:/usr/sbin:/sbin`) — it does NOT see the user's shell PATH,
+/// so `claude` installed in `~/.local/bin`, Homebrew, or an npm global dir is
+/// invisible. Build a PATH that prepends the common install locations to
+/// whatever we did inherit, used both to locate `claude` and as the child's
+/// PATH (the CLI itself may shell out to `node`).
+#[cfg(not(windows))]
+fn enriched_path() -> String {
+    let mut dirs: Vec<String> = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        for suffix in [".local/bin", ".npm-global/bin", ".bun/bin", ".deno/bin", ".volta/bin"] {
+            dirs.push(format!("{home}/{suffix}"));
+        }
+    }
+    for d in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+        dirs.push(d.to_string());
+    }
+    if let Ok(existing) = std::env::var("PATH") {
+        dirs.push(existing);
+    }
+    dirs.join(":")
+}
+
+/// Resolve an absolute path to the `claude` binary from the common install
+/// locations, falling back to the bare name (PATH lookup) if none match.
+#[cfg(not(windows))]
+fn resolve_claude() -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        for suffix in [".local/bin/claude", ".npm-global/bin/claude", ".bun/bin/claude", ".volta/bin/claude"] {
+            let candidate = format!("{home}/{suffix}");
+            if std::path::Path::new(&candidate).is_file() {
+                return candidate;
+            }
+        }
+    }
+    for d in ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"] {
+        if std::path::Path::new(d).is_file() {
+            return d.to_string();
+        }
+    }
+    "claude".to_string()
+}
+
 /// Build a std::process::Command that invokes the `claude` CLI, resolving the
 /// `.cmd`/`.ps1` npm shim on Windows (CreateProcess doesn't search PATHEXT for
 /// a bare program name, so we go through `cmd /C`). `extra` are the args after
@@ -99,8 +142,12 @@ fn claude_command(extra: &[&str]) -> std::process::Command {
     }
     #[cfg(not(windows))]
     {
-        let mut c = std::process::Command::new("claude");
+        let mut c = std::process::Command::new(resolve_claude());
         c.args(extra);
+        // Give the child the enriched PATH so a node-backed `claude` shim can
+        // still find `node`, and so PATH lookup works when we fell back to the
+        // bare name.
+        c.env("PATH", enriched_path());
         c
     }
 }
@@ -135,22 +182,30 @@ pub async fn mcp_status(app: tauri::AppHandle) -> McpStatus {
 
     // Claude Code: offload to blocking thread + timeout so a slow/hanging
     // `claude` CLI never makes the MCP dialog appear stuck.
+    //
+    // NOTE: we deliberately avoid `claude mcp list` — it health-checks EVERY
+    // configured server (remote claude.ai servers included), which routinely
+    // takes 20-30s and made detection time out and report "CLI not installed"
+    // even when the CLI was present. Instead: `--version` for presence (fast,
+    // no health check), then `mcp get beacon` for registration.
     let claude_code = tauri::async_runtime::spawn_blocking(|| {
-        let list_output = run_with_timeout(
-            || claude_command(&["mcp", "list"]).output().ok(),
-            Duration::from_secs(3),
+        let present = run_with_timeout(
+            || claude_command(&["--version"]).output().ok().map(|o| o.status.success()),
+            Duration::from_secs(6),
         );
-
-        match list_output {
-            Some(Some(out)) => {
-                let text = String::from_utf8_lossy(&out.stdout);
-                if text.lines().any(|l| l.trim_start().to_lowercase().starts_with("beacon")) {
-                    "registered".to_string()
-                } else {
-                    "not_registered".to_string()
-                }
-            }
-            _ => "cli_missing".to_string(),
+        if present != Some(Some(true)) {
+            return "cli_missing".to_string();
+        }
+        // CLI is present. Is beacon registered? `mcp get` starts the one server
+        // so it's slower than `--version`; a timeout here just means we couldn't
+        // confirm — treat as not_registered rather than falsely "cli_missing".
+        let registered = run_with_timeout(
+            || claude_command(&["mcp", "get", "beacon"]).output().ok().map(|o| o.status.success()),
+            Duration::from_secs(15),
+        );
+        match registered {
+            Some(Some(true)) => "registered".to_string(),
+            _ => "not_registered".to_string(),
         }
     })
     .await

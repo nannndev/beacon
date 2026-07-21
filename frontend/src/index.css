@@ -224,6 +224,54 @@
   animation: text-shine 4s linear infinite;
 }
 
+/* Indeterminate progress sweep for the boot / loading screen. */
+@keyframes indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(360%); }
+}
+
+.animate-indeterminate {
+  animation: indeterminate 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.24s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in { animation: none; }
+}
+
+/* Elegant, low-contrast "aurora" backdrop so main surfaces aren't flat.
+   Two faint radial glows (cyan + indigo) layered over the theme background. */
+.app-surface {
+  background:
+    radial-gradient(55rem 38rem at 12% -8%, hsl(199 89% 48% / 0.06), transparent 62%),
+    radial-gradient(48rem 34rem at 108% 2%, hsl(255 70% 62% / 0.05), transparent 60%),
+    hsl(var(--background));
+}
+.dark .app-surface {
+  background:
+    radial-gradient(55rem 38rem at 12% -8%, hsl(190 95% 52% / 0.09), transparent 62%),
+    radial-gradient(48rem 34rem at 108% 2%, hsl(258 82% 66% / 0.08), transparent 60%),
+    hsl(var(--background));
+}
+
+/* Subtle vertical sheen on the sidebar so it reads as a distinct, layered panel. */
+.sidebar-surface {
+  background:
+    linear-gradient(180deg, hsl(var(--primary) / 0.035), transparent 22%),
+    hsl(var(--card));
+}
+.dark .sidebar-surface {
+  background:
+    linear-gradient(180deg, hsl(190 95% 52% / 0.05), transparent 24%),
+    hsl(var(--card));
+}
+
 .endpoint-editor-grid {
   display: grid;
   gap: 1rem;

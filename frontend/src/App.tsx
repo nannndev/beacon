@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TestConfig, Project, Endpoint, RunConfig, CollectionItem } from './types'
+import { TestConfig, Project, Endpoint, RunConfig, CollectionItem, ProjectNotifications } from './types'
 import { flattenItems, collectRequestsUnderFolder } from './lib/utils'
 import { insertIntoFolder, renameItem, duplicateFolder, removeItem } from './lib/tree'
 import { Sidebar } from './components/Sidebar'
@@ -13,12 +13,16 @@ import { ImportDialog } from './components/dialogs/ImportDialog'
 import { EnvironmentsDialog } from './components/dialogs/EnvironmentsDialog'
 import { GlobalVarsDialog } from './components/dialogs/GlobalVarsDialog'
 import { ProjectSettingsDialog } from './components/dialogs/ProjectSettingsDialog'
-import McpSettingsDialog from './components/dialogs/McpSettingsDialog'
+import { SettingsDialog } from './components/dialogs/SettingsDialog'
+import { LoadingScreen } from './components/LoadingScreen'
+import { McpPage } from './pages/McpPage'
+import { CommandPalette, type Command } from './components/CommandPalette'
+import { applyThemePref, resolveTheme } from './lib/theme'
+import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
 import { ScenarioResultsDialog } from './components/ScenarioResultsDialog'
 import type { ScenarioResult } from './lib/api'
 import { useRun } from './hooks/useRun'
 import { api } from './lib/api'
-import { isDesktop } from './lib/platform'
 import { toast } from './components/ui/toast'
 import Onboarding from './pages/Onboarding'
 import { hasJsonPlaceholderSample } from './lib/sampleProject'
@@ -65,6 +69,7 @@ function App() {
   const [globalVariables, setGlobalVariables] = useState<Record<string, string>>({})
   const [initializing, setInitializing] = useState(true)
   const [initializationError, setInitializationError] = useState(false)
+  const [retryToken, setRetryToken] = useState(0)
 
   const [showEditor, setShowEditor] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -76,7 +81,8 @@ function App() {
   const [showEnvDialog, setShowEnvDialog] = useState(false)
   const [showGlobalDialog, setShowGlobalDialog] = useState(false)
   const [showProjectSettings, setShowProjectSettings] = useState(false)
-  const [showMcpDialog, setShowMcpDialog] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
   const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
 
@@ -106,13 +112,16 @@ function App() {
     const bootstrap = async () => {
       setInitializing(true)
       setInitializationError(false)
-      for (let attempt = 0; attempt < 40 && !cancelled; attempt += 1) {
+      // The bundled Python sidecar can cold-start slowly on a first launch
+      // (macOS Gatekeeper scanning a freshly-built binary, PyInstaller onefile
+      // unpacking), so poll generously — ~30s — before surfacing an error.
+      for (let attempt = 0; attempt < 60 && !cancelled; attempt += 1) {
         try {
           await fetchAll()
           if (!cancelled) setInitializing(false)
           return
         } catch {
-          await new Promise((resolve) => setTimeout(resolve, 250))
+          await new Promise((resolve) => setTimeout(resolve, 500))
         }
       }
       if (!cancelled) {
@@ -122,7 +131,7 @@ function App() {
     }
     void bootstrap()
     return () => { cancelled = true }
-  }, [])
+  }, [retryToken])
 
   // ---- Data loading -----------------------------------------------------
   const fetchAll = async () => {
@@ -281,15 +290,16 @@ function App() {
     }
   }
 
-  const renameProject = async (name: string) => {
+  const saveProjectSettings = async (name: string, notifications: ProjectNotifications) => {
     if (!currentProjectId || !name) return
     try {
-      await api.renameProject(currentProjectId, name)
-      toast.success('Project renamed')
+      await api.updateNotifications(currentProjectId, notifications)
+      if (name !== currentProject?.name) await api.renameProject(currentProjectId, name)
+      toast.success('Project settings saved')
       setShowProjectSettings(false)
       await fetchAll()
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to rename project')
+      toast.error(e?.message || 'Failed to save project settings')
     }
   }
 
@@ -516,26 +526,46 @@ function App() {
     )
   }
 
+  // ⌘K / Ctrl+K toggles the command palette from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setShowPalette((p) => !p)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const paletteCommands: Command[] = [
+    { id: 'new-endpoint', label: 'New endpoint', hint: '⌘N', icon: FilePlus, keywords: 'create request add', run: () => openNewEditor() },
+    { id: 'new-folder', label: 'New folder', icon: FolderPlus, keywords: 'group', run: () => createFolder() },
+    { id: 'new-project', label: 'New project', icon: FilePlus, keywords: 'workspace', run: () => setShowProjectDialog(true) },
+    ...(selectedTestId ? [{ id: 'run-selected', label: `Run “${selectedName || 'selected'}”`, icon: Play, keywords: 'test load', run: () => runSelected() } as Command] : []),
+    { id: 'run-all', label: 'Run all endpoints', icon: ListVideo, keywords: 'test load', run: () => runAll() },
+    ...(run.status === 'running' ? [{ id: 'stop', label: 'Stop run', icon: Square, keywords: 'cancel halt', run: () => run.stop() } as Command] : []),
+    { id: 'history', label: 'Open Run History', icon: HistoryIcon, keywords: 'runs past results', run: () => appView.openHistory() },
+    { id: 'mcp', label: 'Open MCP Server', icon: PlugIcon, keywords: 'ai agent claude cursor', run: () => appView.openMcp() },
+    { id: 'settings', label: 'Open Settings', icon: SlidersHorizontal, keywords: 'preferences config', run: () => setShowSettings(true) },
+    { id: 'environments', label: 'Manage environments', icon: Globe, keywords: 'env base url variables', run: () => setShowEnvDialog(true) },
+    { id: 'global-vars', label: 'Global variables', icon: Braces, keywords: 'template', run: () => setShowGlobalDialog(true) },
+    { id: 'import', label: 'Import project', icon: UploadIcon, keywords: 'postman json', run: () => setShowImportDialog(true) },
+    ...(currentProject ? [{ id: 'export', label: 'Export project', icon: DownloadIcon, keywords: 'save json', run: () => exportProject() } as Command] : []),
+    { id: 'theme', label: 'Toggle light / dark', icon: SunMoon, keywords: 'appearance mode', run: () => applyThemePref(resolveTheme() === 'dark' ? 'light' : 'dark') },
+  ]
+
   if (showIntro) {
     return <Onboarding onGetStarted={finishIntro} />
   }
 
   if (initializing || initializationError) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background text-foreground">
-        <div className="max-w-sm text-center">
-          <div className="text-lg font-semibold">{initializationError ? 'Beacon backend did not start' : 'Loading your workspace…'}</div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {initializationError ? 'Close and reopen Beacon. If this keeps happening, check the desktop logs.' : 'Starting the local backend and loading the default project.'}
-          </p>
-        </div>
-      </div>
-    )
+    return <LoadingScreen error={initializationError} onRetry={() => setRetryToken((t) => t + 1)} />
   }
 
   if (appView.view === 'history') {
     return (
-      <div className="h-screen bg-background text-foreground">
+      <div className="app-surface animate-fade-in h-screen text-foreground">
         <HistoryPage
           projectId={currentProjectId}
           initialRunId={appView.runId}
@@ -545,8 +575,16 @@ function App() {
     )
   }
 
+  if (appView.view === 'mcp') {
+    return (
+      <div className="app-surface animate-fade-in h-screen text-foreground">
+        <McpPage onBack={appView.openWorkspace} />
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="app-surface flex h-screen text-foreground">
       <Sidebar
         projects={projects}
         currentProjectId={currentProjectId}
@@ -565,7 +603,7 @@ function App() {
         onNewEndpoint={openNewEditor}
         onRunAll={() => runAll()}
         runAllDisabled={run.status === 'running'}
-        onOpenMcp={() => setShowMcpDialog(true)}
+        onOpenMcp={() => appView.openMcp()}
         onOpenHistory={() => appView.openHistory()}
         activeView={appView.view}
       />
@@ -576,7 +614,8 @@ function App() {
           onProjectSettings={() => setShowProjectSettings(true)}
           onImport={() => setShowImportDialog(true)}
           onExport={exportProject}
-          onOpenMcp={() => setShowMcpDialog(true)}
+          onOpenMcp={() => appView.openMcp()}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         <div className={`flex-1 overflow-auto ${showEditor ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
@@ -651,8 +690,9 @@ function App() {
       <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} onImport={doImport} fetchTemplate={api.projectTemplate} />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
-      <ProjectSettingsDialog open={showProjectSettings} onOpenChange={setShowProjectSettings} project={currentProject} onRename={renameProject} onDelete={deleteProject} />
-      {isDesktop() && <McpSettingsDialog open={showMcpDialog} onOpenChange={setShowMcpDialog} />}
+      <ProjectSettingsDialog open={showProjectSettings} onOpenChange={setShowProjectSettings} project={currentProject} onSave={saveProjectSettings} onDelete={deleteProject} />
+      <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />
+      <CommandPalette open={showPalette} onOpenChange={setShowPalette} commands={paletteCommands} />
       <ScenarioResultsDialog result={scenarioResult} onClose={() => setScenarioResult(null)} />
       {confirmationDialog}
     </div>

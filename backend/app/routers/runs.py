@@ -73,11 +73,15 @@ async def start_run(data: dict):
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="history_step_index must be a number")
     is_history_group = bool(data.get("history_id"))
+    notif_settings: dict = {}
+    notif_project_name = None
     if not is_history_group:
         active_project = next(
             (p for p in store.projects if p.get("id") == store.current_project_id),
             {"id": store.current_project_id or "unknown", "name": "Unknown project"},
         )
+        notif_settings = active_project.get("notifications") or {}
+        notif_project_name = active_project.get("name")
         history_persisted = store.history.start(
             RunStart(
                 id=history_id,
@@ -145,6 +149,21 @@ async def start_run(data: dict):
                 store.current_runs[run_id]["status"] = "finished"
             runner.dispatch(runner.broadcast_log(run_id, "run_finished"))
             runner.dispatch(runner.broadcast_stats(run_id, store.current_runs[run_id]["stats"]))
+            # Best-effort Discord notification for a finished standalone run.
+            # Scenario/folder groups notify at their own coordination layer.
+            if not is_history_group and notif_settings:
+                try:
+                    from ..services.notify_discord import maybe_notify
+                    maybe_notify(
+                        notif_settings,
+                        target_name=test.name,
+                        mode=mode,
+                        stats=store.current_runs[run_id]["stats"],
+                        outcome=outcome,
+                        project_name=notif_project_name,
+                    )
+                except Exception:
+                    pass
 
     threading.Thread(target=run_in_thread, daemon=True).start()
     return {"run_id": run_id, "mode": mode,

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from ..state import store
 from ..core.tester import EndpointTest
 from ..catalogs import JSONPLACEHOLDER_TEMPLATE_ID, build_jsonplaceholder_project
+from ..services.notify_discord import send_test_message
 
 router = APIRouter(tags=["projects"])
 
@@ -26,6 +27,7 @@ def list_projects():
                 "template_id": p.get("template_id"),
                 "environments": p.get("environments", []),
                 "current_environment_id": p.get("current_environment_id"),
+                "notifications": p.get("notifications", {}),
                 "items": p.get("items") or [
                     {"type": "request", **t} for t in p.get("tests", [])
                 ],
@@ -118,12 +120,31 @@ def update_project(project_id: str, data: dict):
                 proj["current_environment_id"] = proj["environments"][0]["id"]
     if "items" in data:
         proj["items"] = data["items"]  # allow updating the full tree (for folder mgmt)
+    if "notifications" in data and isinstance(data["notifications"], dict):
+        n = data["notifications"]
+        proj["notifications"] = {
+            "discord_webhook": str(n.get("discord_webhook", "") or "").strip(),
+            "mode": n.get("mode") if n.get("mode") in ("off", "on_failure", "always") else "off",
+        }
     # Sync FIRST so current_config reflects the new env data, THEN persist —
     # otherwise save_active_project() would clobber the just-updated env vars
     # with the stale current_config (this is what wiped saved tokens).
     store.sync_current_config()
     store.save()
     return {"status": "updated", "project": proj}
+
+
+@router.post("/projects/{project_id}/notifications/test")
+def test_notification(project_id: str, data: dict):
+    """Send a one-off 'Beacon connected' message to a Discord webhook so the
+    user can confirm the URL works before saving. Always returns 200 with an
+    {ok, error} body — the UI shows the message rather than treating it as a
+    request failure. Tests the URL from the body so it works before saving."""
+    if not any(p.get("id") == project_id for p in store.projects):
+        raise HTTPException(status_code=404, detail="Project not found")
+    webhook = (data or {}).get("webhook_url", "")
+    ok, error = send_test_message(webhook)
+    return {"ok": ok, "error": error}
 
 
 @router.delete("/projects/{project_id}")

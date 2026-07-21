@@ -1,6 +1,6 @@
 import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
-import { Settings, Download, Upload, Activity, Plug } from 'lucide-react'
+import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal } from 'lucide-react'
 import { Project } from '../types'
 import { BrandMark } from './BrandMark'
 import { isDesktop } from '../lib/platform'
@@ -11,9 +11,10 @@ interface Props {
   onImport: () => void
   onExport: () => void
   onOpenMcp: () => void
+  onOpenSettings: () => void
 }
 
-export function Header({ currentProject, onProjectSettings, onImport, onExport, onOpenMcp }: Props) {
+export function Header({ currentProject, onProjectSettings, onImport, onExport, onOpenMcp, onOpenSettings }: Props) {
   return (
     <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background/95 backdrop-blur">
       <div className="flex items-center gap-3">
@@ -79,6 +80,16 @@ export function Header({ currentProject, onProjectSettings, onImport, onExport, 
             <span className="hidden sm:inline">MCP</span>
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={onOpenSettings}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SlidersHorizontal className="h-4 w-4 opacity-70" />
+        </Button>
         <ThemeToggle />
       </div>
     </div>

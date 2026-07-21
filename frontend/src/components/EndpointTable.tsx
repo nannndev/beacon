@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { usePersistentState } from '../hooks/usePersistentState'
+import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import { Button } from './ui/button'
@@ -51,7 +53,15 @@ export function EndpointTable({
 }: Props) {
   const [search, setSearch] = useState('')
   const [methodFilter, setMethodFilter] = useState<string | null>(null)
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  // Whether the whole Endpoints section is expanded. Persisted so it survives
+  // navigating to History/MCP (which unmount this) and app restarts.
+  const [sectionOpen, setSectionOpen] = usePersistentState('beacon.ui.endpointsOpen', true)
+
+  // We track COLLAPSED folder ids (persisted), not expanded ones. Default =
+  // nothing collapsed = everything expanded, so new folders show automatically
+  // AND the user's collapse choices survive reloads/navigation.
+  const [collapsedFolders, setCollapsedFolders] = usePersistentState<string[]>('beacon.ui.collapsedFolders', [])
+  const collapsedSet = new Set(collapsedFolders)
 
   const collectFolderIds = (nodes: CollectionItem[] = []): string[] => {
     const ids: string[] = []
@@ -67,13 +77,7 @@ export function EndpointTable({
     return ids
   }
 
-  // Auto-expand all folders by default when items load (good UX).
-  useEffect(() => {
-    if (items && items.length > 0) {
-      setExpandedFolders(new Set(collectFolderIds(items)))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items])
+  const expandedFolders = new Set(collectFolderIds(items || []).filter((id) => !collapsedSet.has(id)))
 
   const filtered = tests.filter((t) => {
     const matchesSearch =
@@ -89,18 +93,11 @@ export function EndpointTable({
   )
 
   const toggleFolder = (id: string) => {
-    setExpandedFolders((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setCollapsedFolders((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  const expandAll = () => {
-    if (items) setExpandedFolders(new Set(collectFolderIds(items)))
-  }
-  const collapseAll = () => setExpandedFolders(new Set())
+  const expandAll = () => setCollapsedFolders([])
+  const collapseAll = () => setCollapsedFolders(items ? collectFolderIds(items) : [])
 
   // Stats for the side pane.
   const getTreeStats = (nodes: CollectionItem[] = []) => {
@@ -128,14 +125,22 @@ export function EndpointTable({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between py-2.5 px-4">
-        <CardTitle className="text-sm">
-          Endpoints{' '}
-          <span className="text-muted-foreground font-normal">
-            {items && items.length > 0 && treeStats
-              ? `${treeStats.requests} requests in ${treeStats.folders} folders`
-              : `${filtered.length}${filtered.length !== tests.length ? `/${tests.length}` : ''}`}
-          </span>
-        </CardTitle>
+        <button
+          type="button"
+          onClick={() => setSectionOpen((v) => !v)}
+          className="group flex items-center gap-1.5 text-sm font-semibold"
+          title={sectionOpen ? 'Collapse endpoints' : 'Expand endpoints'}
+        >
+          <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform duration-300', sectionOpen ? '' : '-rotate-90')} />
+          <CardTitle className="text-sm">
+            Endpoints{' '}
+            <span className="text-muted-foreground font-normal">
+              {items && items.length > 0 && treeStats
+                ? `${treeStats.requests} requests in ${treeStats.folders} folders`
+                : `${filtered.length}${filtered.length !== tests.length ? `/${tests.length}` : ''}`}
+            </span>
+          </CardTitle>
+        </button>
         <div className="flex gap-2">
           {items && items.length > 0 && (
             <>
@@ -151,6 +156,9 @@ export function EndpointTable({
           <Button size="sm" className="h-7" onClick={onNew}>New Endpoint</Button>
         </div>
       </CardHeader>
+
+      <div className={cn('grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,0.85,0.25,1)] motion-reduce:transition-none', sectionOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
+        <div className="min-h-0 overflow-hidden">
 
       {/* Search + filter bar */}
       {(tests.length > 0 || (items && items.length > 0)) && (
@@ -358,6 +366,8 @@ export function EndpointTable({
           </Table>
         )}
       </CardContent>
+        </div>
+      </div>
     </Card>
   )
 }

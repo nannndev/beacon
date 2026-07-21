@@ -3,6 +3,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo, Activity, Database, Layers3, Sparkles, Plug, History } from 'lucide-react'
 import { Project, TestConfig } from '../types'
 import { BrandMark } from './BrandMark'
+import { useAppVersion } from '../hooks/useAppVersion'
+import { cn } from '@/lib/utils'
 
 interface Props {
   projects: Project[]
@@ -34,11 +36,20 @@ export function Sidebar({
   onOpenMcp, onOpenHistory, activeView = 'workspace',
 }: Props) {
   const envs = currentProject?.environments || []
+  const version = useAppVersion()
 
-  // ---- Collapsed rail --------------------------------------------------
-  if (collapsed) {
-    return (
-      <aside className="w-14 bg-card border-r border-border flex flex-col items-center py-2.5 gap-1.5 animate-sidebar-in">
+  // One persistent <aside> whose WIDTH animates between rail and full — so
+  // collapse/expand glides instead of snapping between two separate trees.
+  return (
+    <aside
+      className={cn(
+        'sidebar-surface relative flex shrink-0 flex-col overflow-hidden border-r border-border animate-sidebar-in',
+        'transition-[width] duration-300 ease-[cubic-bezier(0.22,0.85,0.25,1)] motion-reduce:transition-none',
+        collapsed ? 'w-14' : 'w-64',
+      )}
+    >
+      {collapsed ? (
+        <div className="flex h-full w-14 flex-col items-center gap-1.5 py-2.5">
         <Button size="icon" variant="ghost" className="h-8 w-8" title="Expand sidebar" onClick={onToggleCollapse}>
           <PanelLeftOpen className="h-4 w-4" />
         </Button>
@@ -88,13 +99,9 @@ export function Sidebar({
             <Plug className="h-4 w-4" />
           </Button>
         )}
-      </aside>
-    )
-  }
-
-  // ---- Full sidebar ----------------------------------------------------
-  return (
-    <aside className="flex w-64 flex-col border-r border-border bg-card animate-sidebar-in">
+        </div>
+      ) : (
+        <div className="flex h-full w-64 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
         <a href="#" className="flex min-w-0 flex-1 items-center gap-2 transition-opacity hover:opacity-90" title="Go to home page">
           <BrandMark size="sm" />
@@ -240,7 +247,12 @@ export function Sidebar({
             <span className="ml-auto text-[9px]">AI clients</span>
           </button>
         )}
+        <div className="pt-0.5 text-center text-[9px] text-muted-foreground/70">
+          Beacon{version ? ` v${version}` : ''}
+        </div>
       </div>
+        </div>
+      )}
     </aside>
   )
 }

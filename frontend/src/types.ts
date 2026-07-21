@@ -43,12 +43,20 @@ export type CollectionItem =
       type: 'request'
     })
 
+export type NotifyMode = 'off' | 'on_failure' | 'always'
+
+export interface ProjectNotifications {
+  discord_webhook?: string
+  mode?: NotifyMode
+}
+
 export interface Project {
   id: string
   name: string
   template_id?: string
   environments: Environment[]
   current_environment_id?: string
+  notifications?: ProjectNotifications
   items: CollectionItem[]   // tree structure like Postman (supports folders)
   // legacy flat support during migration
   tests?: Endpoint[]

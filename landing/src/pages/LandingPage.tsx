@@ -32,6 +32,7 @@ import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { NetworkBackground } from '../components/NetworkBackground'
 import { ContributorWall } from '../components/ContributorWall'
+import { HeroStats } from '../components/HeroStats'
 import {
   CountUp,
   Reveal,
@@ -372,6 +373,10 @@ export default function LandingPage() {
               <Download className="h-4 w-4" />
               Download Desktop
             </a>
+          </RevealItem>
+
+          <RevealItem>
+            <HeroStats />
           </RevealItem>
 
           <RevealItem className="mt-10 grid max-w-lg grid-cols-3 gap-3">

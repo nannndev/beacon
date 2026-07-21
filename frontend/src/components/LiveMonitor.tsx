@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { VirtualList } from './VirtualList'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -412,18 +413,32 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
                 </span>
               )}
             </div>
-            <div
-              ref={logRef}
-              className="log-container h-56 overflow-auto bg-muted/50 border border-border rounded-lg p-3 text-xs font-mono scroll-smooth"
-            >
-              {logs.length === 0 ? (
-                <div className="text-muted-foreground">Run an endpoint to see live output here.</div>
-              ) : filteredLogs.length === 0 ? (
-                <div className="text-muted-foreground">No logs match this filter.</div>
-              ) : (
-                filteredLogs.map((line, i) => <div key={i} className={`py-0.5 ${lineColor(line)}`}>{line}</div>)
-              )}
-            </div>
+            {logs.length === 0 ? (
+              <div className="log-container h-56 overflow-auto rounded-lg border border-border bg-muted/50 p-3 text-xs font-mono text-muted-foreground">
+                Run an endpoint to see live output here.
+              </div>
+            ) : filteredLogs.length === 0 ? (
+              <div className="log-container h-56 overflow-auto rounded-lg border border-border bg-muted/50 p-3 text-xs font-mono text-muted-foreground">
+                No logs match this filter.
+              </div>
+            ) : (
+              <VirtualList
+                ref={logRef}
+                items={filteredLogs}
+                rowHeight={20}
+                className="log-container h-56 overflow-auto rounded-lg border border-border bg-muted/50 py-1 text-xs font-mono scroll-smooth"
+                render={(line: string, i: number) => (
+                  <div
+                    key={i}
+                    style={{ height: 20 }}
+                    className={`flex items-center truncate px-3 leading-5 ${lineColor(line)}`}
+                    title={line}
+                  >
+                    {line}
+                  </div>
+                )}
+              />
+            )}
           </TabsContent>
         </Tabs>
       </CardContent>

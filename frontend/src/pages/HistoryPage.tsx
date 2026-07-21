@@ -91,7 +91,7 @@ export function HistoryPage({ projectId, onBack, initialRunId, client = api }: P
           <DatabaseZap className="mx-auto h-9 w-9 text-amber-500" />
           <h2 className="mt-4 text-xl font-bold">Run History is unavailable</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Your endpoint editor and tests still work normally. Only saved history is paused until the local database is rebuilt.</p>
-          {health.backup_available && <p className="mt-2 text-xs text-muted-foreground">A previous database backup is available.</p>}
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Resetting does <span className="font-medium text-foreground">not delete your data</span> — the current database is saved as a timestamped <code className="rounded bg-muted px-1">.backup-*.db</code> file next to it, then a fresh one is created.{health.backup_available && ' An earlier backup already exists.'}</p>
           <div className="mt-5 rounded-xl bg-muted/50 p-3 text-left"><label className="text-xs font-medium">Type RESET HISTORY to create a fresh database</label><input value={resetText} onChange={(event) => setResetText(event.target.value)} className="mt-2 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" /></div>
           <div className="mt-4 flex justify-center gap-2"><button onClick={onBack} className="history-action"><ArrowLeft className="h-3.5 w-3.5" /> Back to workspace</button><button disabled={resetText !== 'RESET HISTORY'} onClick={async () => { await client.rebuildHistory(resetText); setHealth(null); setResetText(''); await load(false) }} className="history-action bg-red-500 text-white disabled:opacity-40"><RefreshCw className="h-3.5 w-3.5" /> Reset History Database</button></div>
         </div>
@@ -100,7 +100,7 @@ export function HistoryPage({ projectId, onBack, initialRunId, client = api }: P
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-center gap-3"><button onClick={onBack} className="history-action"><ArrowLeft className="h-3.5 w-3.5" /> Workspace</button><div className="h-6 border-l border-border" /><HistoryIcon className="h-5 w-5 text-cyan-500" /><div><h1 className="text-sm font-bold">Run History</h1><p className="text-[10px] text-muted-foreground">Inspect trends and compare exactly two runs</p></div></div>
         <button onClick={() => load(false)} className="history-action"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button>

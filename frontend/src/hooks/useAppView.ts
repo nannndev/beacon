@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 
-export type AppView = 'workspace' | 'history'
+export type AppView = 'workspace' | 'history' | 'mcp'
 
 export function parseAppView(pathname: string, search: string): { view: AppView; runId: string | null } {
   const params = new URLSearchParams(search)
-  return pathname === '/history'
-    ? { view: 'history', runId: params.get('run') }
-    : { view: 'workspace', runId: null }
+  if (pathname === '/history') return { view: 'history', runId: params.get('run') }
+  if (pathname === '/mcp') return { view: 'mcp', runId: null }
+  return { view: 'workspace', runId: null }
 }
 
 export function withHistoryStep(
@@ -31,7 +31,9 @@ export function useAppView() {
   const navigate = useCallback((view: AppView, runId?: string | null) => {
     const url = view === 'history'
       ? `/history${runId ? `?run=${encodeURIComponent(runId)}` : ''}`
-      : '/'
+      : view === 'mcp'
+        ? '/mcp'
+        : '/'
     window.history.pushState({}, '', url)
     setState({ view, runId: view === 'history' ? runId || null : null })
   }, [])
@@ -40,5 +42,6 @@ export function useAppView() {
     ...state,
     openHistory: (runId?: string | null) => navigate('history', runId),
     openWorkspace: () => navigate('workspace'),
+    openMcp: () => navigate('mcp'),
   }
 }

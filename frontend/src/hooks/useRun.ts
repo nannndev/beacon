@@ -9,6 +9,20 @@ import { notifyRunFinished } from '../lib/notify'
 
 const EMPTY_STATS: RunStats = { attempts: 0, success: 0, rate_limited: 0, errors: 0 }
 
+// Live-view caps + flush cadence. At high RPS the backend emits a log + a
+// response event per request; appending each to state one-by-one caused a
+// re-render storm and unbounded DOM growth (the freeze/jank users saw). We
+// instead buffer incoming events and flush them in one batched update a few
+// times per second, and keep only the most recent N in the live view. Full
+// data is always preserved in Run History / export — these caps are display-only.
+const LIVE_LOG_CAP = 1000
+const LIVE_RESPONSE_CAP = 500
+const FLUSH_INTERVAL_MS = 120
+
+function capTail<T>(arr: T[], cap: number): T[] {
+  return arr.length > cap ? arr.slice(arr.length - cap) : arr
+}
+
 export interface RunQueueItem {
   testId: string
   name: string
@@ -91,9 +105,40 @@ export function useRun() {
 
   const baseStatsRef = useRef<RunStats>(EMPTY_STATS)
 
+  // Coalesce high-frequency stream events into batched, capped state updates.
+  const logBufRef = useRef<string[]>([])
+  const respBufRef = useRef<RunResponse[]>([])
+  const pendingStatsRef = useRef<RunStats | null>(null)
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const applyStatsRef = useRef<(s: RunStats) => void>(() => {})
+
+  const flushBuffers = useCallback(() => {
+    if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
+    if (pendingStatsRef.current) {
+      applyStatsRef.current(pendingStatsRef.current)
+      pendingStatsRef.current = null
+    }
+    if (logBufRef.current.length) {
+      const batch = logBufRef.current
+      logBufRef.current = []
+      setLogs((prev) => capTail(prev.concat(batch), LIVE_LOG_CAP))
+    }
+    if (respBufRef.current.length) {
+      const batch = respBufRef.current
+      respBufRef.current = []
+      setResponses((prev) => capTail(prev.concat(batch), LIVE_RESPONSE_CAP))
+    }
+  }, [])
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) return
+    flushTimerRef.current = setTimeout(() => { flushTimerRef.current = null; flushBuffers() }, FLUSH_INTERVAL_MS)
+  }, [flushBuffers])
+
   const cleanupSockets = useCallback(() => {
     if (wsRef.current) { try { wsRef.current.close() } catch {} wsRef.current = null }
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
   }, [])
 
   useEffect(() => cleanupSockets, [cleanupSockets])
@@ -105,6 +150,7 @@ export function useRun() {
       setStats(incoming)
     }
   }, [])
+  useEffect(() => { applyStatsRef.current = applyStats }, [applyStats])
 
   const startInternal = useCallback(async (
     testId: string,
@@ -120,6 +166,9 @@ export function useRun() {
     const line = formatStartLine(name, payload, opts.queuePos, opts.queueTotal)
     if (opts.fresh) {
       baseStatsRef.current = EMPTY_STATS
+      logBufRef.current = []
+      respBufRef.current = []
+      pendingStatsRef.current = null
       setStats(EMPTY_STATS)
       setResponses([])
       setLogs([line])
@@ -159,6 +208,7 @@ export function useRun() {
   }, [startInternal])
 
   const finish = useCallback(() => {
+    flushBuffers() // drain any buffered logs/responses so the final ones show
     let finalStats = statsRef.current
     if (runAllModeRef.current && !stoppedRef.current) {
       baseStatsRef.current = mergeStats(baseStatsRef.current, statsRef.current)
@@ -180,7 +230,7 @@ export function useRun() {
     if (!stoppedRef.current && finalStats.attempts > 0) {
       void notifyRunFinished(finalStats)
     }
-  }, [advanceQueue, cleanupSockets])
+  }, [advanceQueue, cleanupSockets, flushBuffers])
 
   const finishRef = useRef(finish)
   useEffect(() => { finishRef.current = finish }, [finish])
@@ -200,7 +250,7 @@ export function useRun() {
           })
         }
         if (st.responses) {
-          setResponses((prev) => runAllModeRef.current ? [...prev, ...st.responses] : st.responses)
+          setResponses((prev) => capTail(runAllModeRef.current ? [...prev, ...st.responses] : st.responses, LIVE_RESPONSE_CAP))
         }
         if (st.status && st.status !== 'running') finishRef.current()
       } catch {}
@@ -222,11 +272,14 @@ export function useRun() {
             if (msg.run_id && msg.run_id !== runIdRef.current) return
             if (msg.type === 'log') {
               if (typeof msg.message === 'string' && msg.message.includes('run_finished')) finishRef.current()
-              else setLogs((prev) => [...prev, msg.message])
+              else { logBufRef.current.push(msg.message); scheduleFlush() }
             } else if (msg.type === 'stats') {
-              applyStats(msg.stats)
+              // Keep only the latest snapshot; flush coalesces it into one render.
+              pendingStatsRef.current = msg.stats
+              scheduleFlush()
             } else if (msg.type === 'response' && msg.response) {
-              setResponses((prev) => [...prev, msg.response])
+              respBufRef.current.push(msg.response)
+              scheduleFlush()
             }
           } catch {}
         }
@@ -237,7 +290,7 @@ export function useRun() {
         startPolling(rid)
       }
     })()
-  }, [applyStats, startPolling])
+  }, [scheduleFlush, startPolling])
 
   const connectRef = useRef(connect)
   useEffect(() => { connectRef.current = connect }, [connect])
@@ -354,6 +407,10 @@ export function useRun() {
     queueRef.current = []
     setRunQueue(null)
     cleanupSockets()
+    if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
+    logBufRef.current = []
+    respBufRef.current = []
+    pendingStatsRef.current = null
     setLogs([])
     setResponses([])
     setStats(EMPTY_STATS)

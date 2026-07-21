@@ -1,4 +1,5 @@
 import path from 'path'
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -7,6 +8,13 @@ export default defineConfig(({ mode }) => {
   // Read the single source-of-truth .env at the repo root (one level up).
   const rootDir = path.resolve(__dirname, '..')
   const env = loadEnv(mode, rootDir, '')
+
+  // Bake the app version from tauri.conf.json at build time so the UI never
+  // depends on a runtime IPC call (getVersion() can fail / lag → showed "—").
+  let appVersion = ''
+  try {
+    appVersion = JSON.parse(readFileSync(path.resolve(__dirname, 'src-tauri/tauri.conf.json'), 'utf8')).version || ''
+  } catch { /* keep empty */ }
 
   const BACKEND_PORT = env.BACKEND_PORT || '8000'
   const FRONTEND_PORT = Number(env.FRONTEND_PORT) || 5173
@@ -34,6 +42,7 @@ export default defineConfig(({ mode }) => {
     // Docs link URL derived from DOCS_PORT — single knob, no drift.
     define: {
       'import.meta.env.VITE_DOCS_URL': JSON.stringify(docsUrl),
+      __APP_VERSION__: JSON.stringify(appVersion),
     },
     // Tauri expects a fixed port in dev
     server: {
@@ -41,6 +50,18 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       host: '0.0.0.0',
       proxy,
+    },
+    // Pre-bundle the lazily-imported Tauri modules so Vite doesn't discover them
+    // mid-session and trigger a full page reload — that reload can race the
+    // desktop backend handshake and surface a false "backend did not start".
+    optimizeDeps: {
+      include: [
+        '@tauri-apps/api/app',
+        '@tauri-apps/api/core',
+        '@tauri-apps/plugin-notification',
+        '@tauri-apps/plugin-updater',
+        '@tauri-apps/plugin-process',
+      ],
     },
   }
 })

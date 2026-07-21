@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowLeft,
   BadgeCheck,
@@ -13,6 +13,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Shuffle,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -22,6 +23,8 @@ import { PayloadEditor } from './PayloadEditor'
 import { toast } from './ui/toast'
 import { TestConfig, Endpoint } from '../types'
 import { api, type SendResponse } from '../lib/api'
+import { toCurl } from '../lib/curl'
+import { Terminal } from 'lucide-react'
 import ResponseInspector from './ResponseInspector'
 import { AssertionsEditor } from './AssertionsEditor'
 
@@ -54,7 +57,27 @@ const METHOD_STYLES: Record<string, string> = {
   DELETE: 'text-red-600 dark:text-red-400',
 }
 
-const DYNAMIC_TOKENS = ['{{random_email}}', '{{uuid}}', '{{timestamp}}', '{{random_string:12}}']
+// Client-side mirrors of the backend generators (core/tester.py `_generate_dynamic`)
+// purely to show an illustrative sample — the real value is generated per request.
+const _rand = (n: number) =>
+  Array.from({ length: n }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('')
+const _uuid = () =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+const _digits = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('')
+
+interface DynamicHelper { token: string; label: string; sample: () => string }
+const DYNAMIC_HELPERS: DynamicHelper[] = [
+  { token: '{{random_email}}', label: 'Random email', sample: () => `user_${_rand(6)}@example.com` },
+  { token: '{{random_phone}}', label: 'Phone (+62)', sample: () => `+62812${_digits(8)}` },
+  { token: '{{uuid}}', label: 'UUID v4', sample: _uuid },
+  { token: '{{timestamp}}', label: 'Unix seconds', sample: () => String(Math.floor(Date.now() / 1000)) },
+  { token: '{{random_string:12}}', label: 'Random string · N chars', sample: () => _rand(12) },
+  { token: '{{random_int:1:100}}', label: 'Random int · min:max', sample: () => String(1 + Math.floor(Math.random() * 100)) },
+  { token: '{{random_number}}', label: 'Random number', sample: () => String(Math.floor(Math.random() * 1_000_000)) },
+]
 const WEB_ACCEPT = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8'
 const WEB_ASSERTIONS = [
   { type: 'status', op: 'eq', value: 200 },
@@ -84,6 +107,7 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
   const [sending, setSending] = useState(false)
   const [response, setResponse] = useState<SendResponse | null>(null)
   const [retries, setRetries] = useState(0)
+  const [helperSamples, setHelperSamples] = useState<string[]>(() => DYNAMIC_HELPERS.map((h) => h.sample()))
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -222,6 +246,20 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
     }
   }
 
+  // Cmd/Ctrl+Enter sends the request from anywhere in the editor.
+  const handleSendRef = useRef(handleSend)
+  handleSendRef.current = handleSend
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && testId) {
+        e.preventDefault()
+        handleSendRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [testId])
+
   // Click-to-extract: add `varName <- path` to the endpoint's extractors and
   // persist. The value is captured on the next 2xx Send (standard extractor flow).
   const handleExtract = async (varName: string, path: string) => {
@@ -297,6 +335,15 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => navigator.clipboard?.writeText(toCurl(form, absoluteUrl)).then(() => toast.success('Copied as cURL')).catch(() => toast.error('Copy failed'))}
+              title="Copy this request as a curl command"
+            >
+              <Terminal className="h-3.5 w-3.5" /> cURL
+            </Button>
             <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
             {testId && (
               <div className="flex items-center gap-1.5">
@@ -457,15 +504,34 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
           </Panel>
 
           <Panel title="Dynamic helpers" icon={<Sparkles className="h-4 w-4" />}>
-            <div className="flex flex-wrap gap-2">
-              {DYNAMIC_TOKENS.map((token) => (
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[10px] leading-relaxed text-muted-foreground">
+                Regenerated fresh on every request. Click to copy the token.
+              </p>
+              <button
+                type="button"
+                onClick={() => setHelperSamples(DYNAMIC_HELPERS.map((h) => h.sample()))}
+                title="Shuffle sample values"
+                className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Shuffle className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="space-y-1">
+              {DYNAMIC_HELPERS.map((h, i) => (
                 <button
-                  key={token}
+                  key={h.token}
                   type="button"
-                  onClick={() => navigator.clipboard?.writeText(token).then(() => toast.success(`Copied ${token}`)).catch(() => {})}
-                  className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                  onClick={() => navigator.clipboard?.writeText(h.token).then(() => toast.success(`Copied ${h.token}`)).catch(() => {})}
+                  className="group flex w-full items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5 text-left transition-colors hover:border-cyan-500/40"
                 >
-                  {token}
+                  <div className="min-w-0">
+                    <div className="truncate font-mono text-[11px] text-foreground">{h.token}</div>
+                    <div className="text-[9px] text-muted-foreground">{h.label}</div>
+                  </div>
+                  <code className="max-w-[45%] shrink-0 truncate font-mono text-[10px] text-cyan-600 dark:text-cyan-400" title={helperSamples[i]}>
+                    {helperSamples[i]}
+                  </code>
                 </button>
               ))}
             </div>

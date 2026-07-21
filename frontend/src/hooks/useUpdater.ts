@@ -58,7 +58,15 @@ export function useUpdater(): Updater {
         setState({ status: 'idle', progress: 0, error: opts?.silent ? undefined : 'up-to-date' })
       }
     } catch (e: any) {
-      setState({ status: 'error', progress: 0, error: String(e?.message || e) })
+      const msg = String(e?.message || e)
+      // The release manifest lists no build for this OS/arch (e.g. macOS isn't
+      // in latest.json yet). That's not a real error — treat it as "nothing to
+      // update to for your platform" so the UI doesn't show a scary message.
+      if (/platform/i.test(msg) && /were found|not\s*found/i.test(msg)) {
+        setState({ status: 'idle', progress: 0, error: opts?.silent ? undefined : 'no-platform' })
+      } else {
+        setState({ status: 'error', progress: 0, error: msg })
+      }
     }
   }, [])
 

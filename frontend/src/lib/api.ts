@@ -1,6 +1,6 @@
 // Centralized backend calls. All paths are proxied to the FastAPI backend by Vite.
 // For desktop builds (Tauri production), we use a full backend URL.
-import { TestConfig, Endpoint, RunConfig } from '../types'
+import { TestConfig, Endpoint, RunConfig, ProjectNotifications } from '../types'
 import { isDesktop } from './platform'
 import type {
   HistoryCompareResult,
@@ -154,6 +154,13 @@ export const api = {
     ),
   switchProject: (id: string) => req(`/projects/${id}/switch`, jsonInit('POST')),
   renameProject: (id: string, name: string) => req(`/projects/${id}`, jsonInit('PUT', { name })),
+  updateNotifications: (id: string, notifications: ProjectNotifications) =>
+    req(`/projects/${id}`, jsonInit('PUT', { notifications })),
+  testNotification: (id: string, webhook_url: string) =>
+    req<{ ok: boolean; error?: string }>(
+      `/projects/${id}/notifications/test`,
+      jsonInit('POST', { webhook_url }),
+    ),
   updateProjectItems: (id: string, items: any[]) => req(`/projects/${id}`, jsonInit('PUT', { items })),
   updateEnvironments: (id: string, environments: any[]) =>
     req(`/projects/${id}`, jsonInit('PUT', { environments })),

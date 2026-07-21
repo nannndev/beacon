@@ -22,6 +22,29 @@ export const SUPPORTED_MCP_CLIENTS = [
 
 export type SupportedMcpClient = (typeof SUPPORTED_MCP_CLIENTS)[number]['name']
 
+// Clients configured by hand (no one-click): where their MCP config lives and
+// which JSON key wraps the server list. Used to render tailored setup cards.
+export interface ManualClient {
+  name: string
+  /** Where the user edits config, per-OS hint. */
+  configPath: string
+  /** Top-level key the server entry goes under. */
+  rootKey: 'mcpServers' | 'servers' | 'context_servers'
+}
+
+export const MANUAL_MCP_CLIENTS: ManualClient[] = [
+  { name: 'Cursor', configPath: '~/.cursor/mcp.json', rootKey: 'mcpServers' },
+  { name: 'Windsurf', configPath: '~/.codeium/windsurf/mcp_config.json', rootKey: 'mcpServers' },
+  { name: 'Cline', configPath: 'VS Code → Cline → MCP Servers → Configure', rootKey: 'mcpServers' },
+  { name: 'VS Code', configPath: '.vscode/mcp.json (workspace)', rootKey: 'servers' },
+  { name: 'Zed', configPath: '~/.config/zed/settings.json', rootKey: 'context_servers' },
+]
+
+/** Build the exact JSON snippet a manual client needs for the Beacon server. */
+export function mcpConfigSnippet(binaryPath: string, rootKey: ManualClient['rootKey']): string {
+  return JSON.stringify({ [rootKey]: { beacon: { command: binaryPath || '<beacon-mcp-path>', args: [] } } }, null, 2)
+}
+
 export type ClientState =
   | 'registered'
   | 'not_registered'

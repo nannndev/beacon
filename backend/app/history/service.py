@@ -1,5 +1,6 @@
 """Failure-isolated active-run recorder and aggregation service."""
 
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
@@ -12,6 +13,40 @@ from .sanitize import sanitize_response_event
 
 SAMPLE_CAP = 300
 EVENT_CAP = 200
+
+# Retry policy for transient SQLite contention (WAL locks when another process
+# or thread holds the DB briefly). Short exponential backoff; the repository
+# already sets busy_timeout=5s, so this only kicks in on genuine cross-process
+# contention that outlives that window.
+_MAX_ATTEMPTS = 4
+_BACKOFF_BASE = 0.05
+
+# Substrings that mark a genuinely broken database file (a rebuild IS required)
+# vs. a transient lock (retry, don't nuke history).
+_CORRUPT_MARKERS = (
+    "malformed", "corrupt", "not a database",
+    "file is encrypted", "encrypted or is not a database",
+)
+_TRANSIENT_MARKERS = ("locked", "busy")
+
+
+def _classify_error(err: Exception) -> str:
+    """Bucket a failure so the service can react proportionately:
+    - "input":     caller error (bad cursor, etc.) — never a storage fault.
+    - "transient": DB briefly locked/busy — retry, keep history alive.
+    - "corrupt":   the DB file is broken — only this warrants a reset.
+    - "other":     unknown — disable but allow later auto-recovery.
+    """
+    if isinstance(err, (ValueError, TypeError, KeyError)):
+        return "input"
+    message = str(err).lower()
+    if any(marker in message for marker in _CORRUPT_MARKERS):
+        return "corrupt"
+    if isinstance(err, sqlite3.OperationalError) and any(
+        marker in message for marker in _TRANSIENT_MARKERS
+    ):
+        return "transient"
+    return "other"
 
 
 @dataclass
@@ -46,50 +81,93 @@ class HistoryService:
         self.repository = repository
         self.available = True
         self.error_code: Optional[str] = None
+        # Whether the last disable was due to genuine corruption. Fatal =>
+        # only an explicit rebuild recovers; non-fatal => auto-recover on the
+        # next request. This is the flag that stops the "reset forever" trap.
+        self._fatal = False
         self.workspace_id: Optional[str] = None
         self.origin_device_id: Optional[str] = None
         self._active: dict[str, _RunBuffer] = {}
         self._lock = threading.RLock()
 
-    def _disable(self) -> None:
+    def _disable(self, *, fatal: bool = False) -> None:
         self.available = False
-        self.error_code = "history_unavailable"
+        self.error_code = "history_corrupt" if fatal else "history_unavailable"
+        self._fatal = fatal
+
+    def _attempt(self, operation):
+        """Run a repository call with transient-lock retries and proportionate
+        failure handling. Re-raises on failure; the caller decides what to
+        return. Only real corruption permanently disables history — a transient
+        lock that outlasts our retries leaves `available` untouched so the very
+        next request succeeds instead of hitting a dead service."""
+        delay = _BACKOFF_BASE
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                return operation()
+            except Exception as err:
+                kind = _classify_error(err)
+                if kind == "input":
+                    raise  # caller/input error — not a storage failure
+                if kind == "transient" and attempt < _MAX_ATTEMPTS - 1:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+                if kind == "corrupt":
+                    self._disable(fatal=True)
+                elif kind == "other":
+                    self._disable(fatal=False)
+                # transient exhaustion: deliberately do NOT disable.
+                raise
+
+    def _recover_if_possible(self) -> bool:
+        """Return True if history can serve a request now, re-opening a
+        non-fatally-disabled database on demand. Genuine corruption stays down
+        until an explicit rebuild."""
+        if self.available:
+            return True
+        if self._fatal:
+            return False
+        self.initialize()
+        return self.available
 
     def initialize(self) -> None:
         try:
-            self.repository.initialize()
-            metadata = self.repository.metadata()
+            self._attempt(self.repository.initialize)
+            metadata = self._attempt(self.repository.metadata)
             self.workspace_id = metadata["workspace_id"]
             self.origin_device_id = metadata["origin_device_id"]
             self.available = True
             self.error_code = None
+            self._fatal = False
         except Exception:
-            self._disable()
+            # _attempt already set corrupt/other state; if it was transient
+            # exhaustion it left us "available", so mark a recoverable outage.
+            if self.available:
+                self._disable(fatal=False)
 
     def mark_interrupted_runs(self) -> int:
-        if not self.available or not self.origin_device_id:
+        if not self.origin_device_id or not self._recover_if_possible():
             return 0
         try:
-            return self.repository.mark_interrupted(self.origin_device_id)
+            return self._attempt(lambda: self.repository.mark_interrupted(self.origin_device_id))
         except Exception:
-            self._disable()
             return 0
 
     def start(self, run: RunStart, steps: list[RunStepStart]) -> bool:
-        if not self.available:
+        if not self._recover_if_possible():
             return False
         try:
-            self.repository.create_run(run, steps)
-            with self._lock:
-                self._active[run.id] = _RunBuffer(
-                    project_id=run.project_id,
-                    started_monotonic=time.monotonic(),
-                    steps={step.sequence: _StepBuffer() for step in steps},
-                )
-            return True
+            self._attempt(lambda: self.repository.create_run(run, steps))
         except Exception:
-            self._disable()
             return False
+        with self._lock:
+            self._active[run.id] = _RunBuffer(
+                project_id=run.project_id,
+                started_monotonic=time.monotonic(),
+                steps={step.sequence: _StepBuffer() for step in steps},
+            )
+        return True
 
     def _elapsed(self, buffer: _RunBuffer, elapsed_ms: Optional[int]) -> int:
         if elapsed_ms is not None:
@@ -133,7 +211,7 @@ class HistoryService:
                 buffer.last_sample_elapsed = elapsed
                 buffer.last_sample_attempts = totals["attempts"]
         except Exception:
-            self._disable()
+            self._disable(fatal=False)
 
     def record_response(self, run_id: str, step_index: int, response: dict, elapsed_ms: Optional[int] = None) -> None:
         if not self.available:
@@ -150,7 +228,7 @@ class HistoryService:
                     step.latencies.append(event.latency_ms)
                 _append_downsampled(buffer.events, event, EVENT_CAP)
         except Exception:
-            self._disable()
+            self._disable(fatal=False)
 
     @staticmethod
     def _total_stats(buffer: _RunBuffer) -> dict[str, int]:
@@ -194,7 +272,7 @@ class HistoryService:
                     return
                 buffer.steps.setdefault(step_index, _StepBuffer()).status = status
                 metrics = self._metrics(buffer, step_index)
-            self.repository.finalize_step(run_id, step_index, status, metrics)
+            self._attempt(lambda: self.repository.finalize_step(run_id, step_index, status, metrics))
             with self._lock:
                 active = self._active.get(run_id)
                 statuses = [step.status for step in active.steps.values()] if active else []
@@ -206,7 +284,7 @@ class HistoryService:
                 )
                 self.finish_run(run_id, final_status)
         except Exception:
-            self._disable()
+            pass  # _attempt already set the right state; never lose a run silently forever
 
     def finish_run(self, run_id: str, status: str) -> None:
         if not self.available:
@@ -219,54 +297,70 @@ class HistoryService:
                 metrics = self._metrics(buffer)
                 samples = list(buffer.samples)
                 events = list(buffer.events)
-            self.repository.finalize_run(run_id, status, metrics, samples, events)
+            self._attempt(lambda: self.repository.finalize_run(run_id, status, metrics, samples, events))
             if status == "completed":
-                self.repository.enforce_retention(buffer.project_id)
+                # Retention is best-effort housekeeping — a failure here must
+                # not disable history or mask a successfully-recorded run.
+                try:
+                    self._attempt(lambda: self.repository.enforce_retention(buffer.project_id))
+                except Exception:
+                    pass
         except Exception:
-            self._disable()
+            pass
 
     def list_runs(self, filters=None, cursor=None, limit=30):
+        if not self._recover_if_possible():
+            raise RuntimeError("history_unavailable")
         try:
-            return self.repository.list_runs(filters or {}, cursor, limit)
-        except Exception as error:
-            self._disable()
+            return self._attempt(lambda: self.repository.list_runs(filters or {}, cursor, limit))
+        except ValueError:
+            raise  # invalid cursor → 400, not a storage failure
+        except Exception:
             raise RuntimeError("history_unavailable") from None
 
     def get_run(self, run_id: str):
+        if not self._recover_if_possible():
+            raise RuntimeError("history_unavailable")
         try:
-            return self.repository.get_run(run_id)
+            return self._attempt(lambda: self.repository.get_run(run_id))
         except Exception:
-            self._disable()
             raise RuntimeError("history_unavailable") from None
 
     def compare(self, baseline_id: str, candidate_id: str):
         from .compare import compare_details
 
+        if not self._recover_if_possible():
+            raise RuntimeError("history_unavailable")
         try:
-            baseline = self.repository.get_run(baseline_id)
-            candidate = self.repository.get_run(candidate_id)
+            baseline = self._attempt(lambda: self.repository.get_run(baseline_id))
+            candidate = self._attempt(lambda: self.repository.get_run(candidate_id))
         except Exception:
-            self._disable()
             raise RuntimeError("history_unavailable") from None
         if baseline is None or candidate is None:
             return None
         return compare_details(baseline, candidate)
 
     def update_run(self, run_id: str, label=None, is_pinned=None):
+        if not self._recover_if_possible():
+            raise RuntimeError("history_unavailable")
         try:
-            return self.repository.update_run(run_id, label=label, is_pinned=is_pinned)
+            return self._attempt(lambda: self.repository.update_run(run_id, label=label, is_pinned=is_pinned))
         except Exception:
-            self._disable()
             raise RuntimeError("history_unavailable") from None
 
     def delete_run(self, run_id: str):
+        if not self._recover_if_possible():
+            raise RuntimeError("history_unavailable")
         try:
-            return self.repository.delete_run(run_id)
+            return self._attempt(lambda: self.repository.delete_run(run_id))
         except Exception:
-            self._disable()
             raise RuntimeError("history_unavailable") from None
 
     def health(self) -> dict:
+        # Opportunistically self-heal a non-fatal outage so the UI banner clears
+        # on its own once the transient condition (e.g. a lock) has passed —
+        # the user shouldn't have to reset for something that already recovered.
+        self._recover_if_possible()
         try:
             backup_available = self.repository.backup_exists()
         except Exception:
@@ -282,4 +376,4 @@ class HistoryService:
             self.repository.rebuild()
             self.initialize()
         except Exception:
-            self._disable()
+            self._disable(fatal=True)
