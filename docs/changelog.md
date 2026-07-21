@@ -3,6 +3,16 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.3.1] - 2026-07-21
+
+### Added
+
+- In-app auto-updater: Beacon checks for new releases on launch and offers a one-click download, install, and relaunch (Windows).
+- Native "run finished" OS notifications so long soak, benchmark, and load runs surface their results while Beacon is in the background.
+- Shareable run reports: export any run from Run History as a self-contained HTML or Markdown report suitable for handing off as evidence.
+
+[Compare 0.3.0 → 0.3.1](https://github.com/nannndev/beacon/compare/v0.3.0...v0.3.1)
+
 ## [0.3.0] - 2026-07-20
 
 ### Added
