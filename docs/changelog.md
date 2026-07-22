@@ -3,6 +3,32 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.3.3] - 2026-07-22
+
+### Added
+
+- Command palette (Cmd/Ctrl+K) and Cmd/Ctrl+Enter to send a request.
+- Copy any request as a ready-to-run `curl` command.
+- System theme option that follows your OS.
+- Dedicated MCP page with a browser of every tool your AI agent can drive, plus per-client setup cards.
+- Anonymous, opt-out usage analytics (no URLs, payloads, or tokens).
+- Live latency/throughput chart now shows numeric axes and a stats readout.
+- One-click "Download" on the site now fetches the right installer for your OS directly.
+
+### Changed
+
+- Redesigned the update experience as a clear modal (available / downloading / restart), with a lightweight toast for "up to date".
+- MCP server can now create and switch projects, and the dashboard reflects endpoints created over MCP without a reload.
+- Smoother animations: sliding sidebar, fluid section collapse, page-transition fades.
+
+### Fixed
+
+- Endpoints created via MCP now appear in the dashboard (backend reloads shared state from disk).
+- The macOS auto-update artifact is now published, and the release announcement posts to Discord reliably.
+- Settings and MCP entry points no longer disappear in non-desktop builds.
+
+[Compare 0.3.2 → 0.3.3](https://github.com/nannndev/beacon/compare/v0.3.2...v0.3.3)
+
 ## [0.3.2] - 2026-07-22
 
 ### Added
