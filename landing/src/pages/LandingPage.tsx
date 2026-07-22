@@ -582,7 +582,10 @@ claude mcp add beacon -- <path-to>/mcp_server
                   <div className="mt-1 text-sm text-muted-foreground">Apple Silicon, unsigned DMG</div>
                 </div>
               </div>
-              <p className="mt-6 text-sm leading-6 text-muted-foreground">First launch: right-click Beacon, choose Open, then confirm Open.</p>
+              <div className="mt-6 space-y-2 text-sm leading-6 text-muted-foreground">
+                <p>First launch: Beacon isn't notarized yet, so macOS may say it's "damaged". It isn't — that's just Gatekeeper blocking an unsigned app. Clear it once in Terminal:</p>
+                <code className="block overflow-x-auto rounded-lg border border-border bg-muted/60 px-3 py-2 font-mono text-[12px] text-foreground">xattr -dr com.apple.quarantine /Applications/Beacon.app</code>
+              </div>
               <button
                 onClick={() => void startDownload('mac')}
                 className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"

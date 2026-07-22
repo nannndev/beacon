@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent, State};
+use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -230,11 +231,13 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // Kill the sidecar when the app is quitting so no orphan backend
-            // is left running. (Analytics is tracked from the frontend JS SDK,
-            // which runs inside Tauri's async runtime — calling the plugin's
-            // track_event here panics with "no reactor running".)
             if let RunEvent::ExitRequested { .. } = event {
+                // Flush buffered analytics before quitting — the plugin batches
+                // events on a timer, so a short session would otherwise lose them
+                // (e.g. `app_started` when the app is opened and closed quickly).
+                // Safe now that main() enters a Tokio runtime.
+                app_handle.flush_events_blocking();
+                // Kill the sidecar so no orphan backend is left running.
                 if let Some(child) = app_handle.state::<BackendChild>().0.lock().unwrap().take() {
                     kill_tree(child);
                 }
