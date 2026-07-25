@@ -171,6 +171,51 @@ class HistoryRunnerIntegrationTests(unittest.TestCase):
         self.assertEqual(result["steps"][0]["success_rate"], 100.0)
         self.assertEqual(fake_store.current_config.variables, {})
 
+    def test_async_scenario_exposes_result_through_run_status(self):
+        history = RecordingHistory()
+        fake_store = target_store(history)
+        with (
+            patch.object(runs, "store", fake_store),
+            patch.object(runs, "APITester", FakeTester),
+            patch.object(runs.threading, "Thread", ImmediateThread),
+        ):
+            started = runs.start_scenario({"test_ids": ["e1", "e2"]})
+            status = runs.get_status(started["run_id"])
+
+        self.assertEqual(status["status"], "finished")
+        self.assertTrue(status["result"]["passed"])
+        self.assertEqual(status["result"]["completed"], 2)
+
+    def test_stop_marks_scenario_as_stopping_and_sets_cancellation_flag(self):
+        history = RecordingHistory()
+        fake_store = target_store(history)
+        fake_store.current_runs["scenario-1"] = {
+            "status": "running", "stop_flag": {"stop": False},
+        }
+        with patch.object(runs, "store", fake_store):
+            response = runs.stop_run("scenario-1")
+
+        self.assertEqual(response["status"], "stopping")
+        self.assertEqual(fake_store.current_runs["scenario-1"]["status"], "stopping")
+        self.assertTrue(fake_store.current_runs["scenario-1"]["stop_flag"]["stop"])
+
+    def test_cancelled_scenario_is_never_reported_as_passed(self):
+        history = RecordingHistory()
+        fake_store = target_store(history)
+        with (
+            patch.object(runs, "store", fake_store),
+            patch.object(runs, "APITester", FakeTester),
+        ):
+            result = runs.run_scenario({
+                "test_ids": ["e1", "e2"],
+                "_stop_flag": {"stop": True},
+            })
+
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["stopped"])
+        self.assertEqual(result["completed"], 0)
+        self.assertEqual(history.finished[0][1], "stopped")
+
     def test_mcp_run_is_recorded_but_mcp_send_is_not(self):
         history = RecordingHistory()
         fake_store = target_store(history)

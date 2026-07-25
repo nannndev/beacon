@@ -26,9 +26,9 @@ Send a single request before starting a load test. Inspect status, latency, size
 
 ![Beacon response inspector](./assets/screenshots/response-inspector.png)
 
-### Assertions and chained scenarios
+### Assertions and scenarios
 
-Attach pass/fail rules to an endpoint, then run folders as ordered scenarios. Extracted values are carried into later steps, with retry and continue-on-error controls available for chained flows.
+Attach pass/fail rules to an endpoint, then run a selected API or Web request with virtual users or chain the full project in order. Extracted values carry into later steps, with retry and continue-on-error controls for chained flows.
 
 ![Beacon assertion results](./assets/screenshots/assertions.png)
 
@@ -39,6 +39,12 @@ Attach pass/fail rules to an endpoint, then run folders as ordered scenarios. Ex
 Keep base URLs and variables separate across development, staging, and other environments without duplicating endpoint definitions.
 
 ![Beacon environment manager](./assets/screenshots/environments.png)
+
+### Local run history
+
+Search, filter, pin, inspect, export, and compare saved runs. History stays local and keeps completed evidence available after the live monitor is cleared.
+
+![Beacon Run History](./assets/screenshots/run-history.png)
 
 ## Features
 

@@ -146,12 +146,14 @@ async def start_run(data: dict):
             outcome = "failed"
             runner.dispatch(runner.broadcast_log(run_id, f"Error: {e}"))
         finally:
-            if store.current_runs[run_id]["status"] == "stopped":
+            if store.current_runs[run_id]["stop_flag"].get("stop"):
                 outcome = "stopped"
             store.history.finish_step(history_id, history_step_index, outcome)
             if not is_history_group:
                 store.history.finish_run(history_id, outcome)
-            if store.current_runs[run_id]["status"] == "running":
+            if outcome == "stopped":
+                store.current_runs[run_id]["status"] = "stopped"
+            elif store.current_runs[run_id]["status"] == "running":
                 store.current_runs[run_id]["status"] = "finished"
             runner.dispatch(runner.broadcast_log(run_id, "run_finished"))
             runner.dispatch(runner.broadcast_stats(run_id, store.current_runs[run_id]["stats"]))
@@ -232,6 +234,10 @@ def run_scenario(data: dict):
     """Run a sequence of endpoints in order as one flow (login -> use token ->
     ...). Each step is a single send; variables refreshed by extractors carry
     into later steps. Stops at the first failed step unless continue_on_error."""
+    # `_stop_flag` is supplied only by the asynchronous /scenario/start
+    # wrapper. Keeping the executor here also preserves the synchronous route
+    # for older clients and MCP integrations.
+    external_stop_flag = data.get("_stop_flag") or {"stop": False}
     ids = data.get("test_ids")
     if not isinstance(ids, list) or not ids:
         raise HTTPException(status_code=400, detail="test_ids must be a non-empty list")
@@ -293,16 +299,17 @@ def run_scenario(data: dict):
         def run_virtual_user(user_index: int):
             nonlocal completed_flows, successful_flows, stopped_early
             if ramp_up_s > 0 and virtual_users > 1:
-                time.sleep((user_index / (virtual_users - 1)) * ramp_up_s)
+                scheduled_at = started + (user_index / (virtual_users - 1)) * ramp_up_s
+                stop_event.wait(max(0.0, scheduled_at - time.monotonic()))
             user_config = TestConfig.from_dict(base_config)
             user_tests = {test.id: test for test in user_config.tests}
 
             for iteration_index in range(iterations):
-                if stop_event.is_set():
+                if stop_event.is_set() or external_stop_flag.get("stop"):
                     break
                 flow_success = True
                 for step_index, tid in enumerate(ids):
-                    if stop_event.is_set():
+                    if stop_event.is_set() or external_stop_flag.get("stop"):
                         flow_success = False
                         break
                     test = user_tests.get(tid)
@@ -330,7 +337,7 @@ def run_scenario(data: dict):
                         if not cont:
                             break
                     if think_time_s > 0 and step_index < len(ids) - 1:
-                        time.sleep(think_time_s)
+                        stop_event.wait(think_time_s)
 
                 with state_lock:
                     completed_flows += 1
@@ -342,7 +349,10 @@ def run_scenario(data: dict):
                         stopped_early = True
                         stop_event.set()
 
-        with ThreadPoolExecutor(max_workers=virtual_users) as executor:
+        # A large virtual-user count must not create thousands of OS threads.
+        # The bounded pool still executes every virtual user while remaining
+        # responsive enough for the Stop action.
+        with ThreadPoolExecutor(max_workers=min(virtual_users, 64)) as executor:
             futures = [executor.submit(run_virtual_user, index) for index in range(virtual_users)]
             for future in as_completed(futures):
                 future.result()
@@ -382,12 +392,13 @@ def run_scenario(data: dict):
 
         failed_flows = completed_flows - successful_flows
         success_rate = round(successful_flows / completed_flows * 100.0, 1) if completed_flows else 0.0
-        passed = completed_flows == virtual_users * iterations and failed_flows == 0
+        stopped_by_user = bool(external_stop_flag.get("stop"))
+        passed = not stopped_by_user and completed_flows == virtual_users * iterations and failed_flows == 0
         bottleneck = max(
             (summary for summary in summaries if summary.get("p95_ms") is not None),
             key=lambda summary: summary["p95_ms"], default=None,
         )
-        store.history.finish_run(history_id, "completed" if passed else "failed")
+        store.history.finish_run(history_id, "stopped" if stopped_by_user else "completed" if passed else "failed")
         return {
             "steps": summaries, "passed": passed,
             "completed": len(summaries), "total": len(ids), "history_id": history_id,
@@ -398,12 +409,15 @@ def run_scenario(data: dict):
             "success_rate": success_rate,
             "duration_ms": round((time.monotonic() - started) * 1000),
             "stopped_early": stopped_early,
+            "stopped": stopped_by_user,
             "bottleneck": {"test_id": bottleneck["test_id"], "name": bottleneck["name"], "p95_ms": bottleneck["p95_ms"]} if bottleneck else None,
         }
 
     steps = []
     changed = False
     for step_index, tid in enumerate(ids):
+        if external_stop_flag.get("stop"):
+            break
         test = by_id.get(tid)
         if not test:
             steps.append({"test_id": tid, "name": None, "ok": False, "success": False, "error": "Endpoint not found"})
@@ -431,17 +445,43 @@ def run_scenario(data: dict):
             break
     if changed:
         store.save()  # persist tokens refreshed along the chain
-    passed = bool(steps) and all(s.get("success") for s in steps)
-    store.history.finish_run(history_id, "completed" if passed else "failed")
+    stopped_by_user = bool(external_stop_flag.get("stop"))
+    passed = not stopped_by_user and len(steps) == len(ids) and all(s.get("success") for s in steps)
+    store.history.finish_run(history_id, "stopped" if stopped_by_user else "completed" if passed else "failed")
     return {"steps": steps, "passed": passed,
-            "completed": len(steps), "total": len(ids), "history_id": history_id}
+            "completed": len(steps), "total": len(ids), "history_id": history_id,
+            "stopped": stopped_by_user}
+
+
+@router.post("/scenario/start")
+def start_scenario(data: dict):
+    """Start a cancellable scenario and return immediately with a run id."""
+    run_id = str(os.urandom(8).hex())
+    stop_flag = {"stop": False}
+    store.current_runs[run_id] = {
+        "status": "running", "mode": "scenario", "logs": [],
+        "responses": [], "stats": {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0},
+        "stop_flag": stop_flag, "result": None,
+    }
+
+    def run_in_thread():
+        try:
+            result = run_scenario({**data, "_stop_flag": stop_flag})
+            store.current_runs[run_id]["result"] = result
+            store.current_runs[run_id]["status"] = "stopped" if stop_flag["stop"] else "finished"
+        except Exception as exc:
+            store.current_runs[run_id]["result"] = {"passed": False, "error": str(exc), "steps": []}
+            store.current_runs[run_id]["status"] = "failed"
+
+    threading.Thread(target=run_in_thread, daemon=True).start()
+    return {"run_id": run_id, "mode": "scenario"}
 
 
 @router.post("/stop/{run_id}")
 def stop_run(run_id: str):
     if run_id in store.current_runs:
         store.current_runs[run_id]["stop_flag"]["stop"] = True
-        store.current_runs[run_id]["status"] = "stopped"
+        store.current_runs[run_id]["status"] = "stopping"
     return {"status": "stopping"}
 
 
@@ -455,6 +495,7 @@ def get_status(run_id: str):
         "stats": run["stats"],
         "logs": run["logs"][-100:],
         "responses": run.get("responses", [])[-100:],
+        "result": run.get("result"),
     }
 
 

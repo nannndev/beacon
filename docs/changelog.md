@@ -3,6 +3,30 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.3.9] - 2026-07-25
+
+### Added
+
+- Cancellable asynchronous Scenario runs with a responsive Stop action and explicit stopped results.
+- Separate Scenario actions for one selected API/Web endpoint and the full project journey.
+- Beginner-friendly explanations and request estimates for virtual users, iterations, ramp-up, think time, retries, and failure limits.
+- A Local Project Sharing technical design covering project-scoped LAN synchronization, revision history, private variables, roles, conflicts, and a cloud-compatible protocol.
+
+### Improved
+
+- Scenario workers now use a bounded pool and interruptible waits so large virtual-user configurations remain controllable.
+- The desktop and landing visual systems now use a consistent Electric Blue accent and meaningful request/response trace backgrounds.
+- The landing page uses a refined liquid-glass material, updated product screenshots, a current Run History capture, and refreshed feature banners.
+- README product images and scenario descriptions now match the current desktop application.
+
+### Fixed
+
+- Stopped Scenario runs no longer report as passed or remain stuck in an incorrect running state.
+- Scenario completion now requires every intended step or journey to finish successfully.
+- Run status polling now returns the final Scenario result to the desktop UI.
+
+[Compare 0.3.8 → 0.3.9](https://github.com/nannndev/beacon/compare/v0.3.8...v0.3.9)
+
 ## [0.3.8] - 2026-07-25
 
 ### Fixed

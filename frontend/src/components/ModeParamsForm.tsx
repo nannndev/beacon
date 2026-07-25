@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { CircleHelp } from 'lucide-react'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import {
@@ -11,15 +12,16 @@ import {
 // ---- Shared primitive input -----------------------------------------------
 
 function N({
-  label, value, onChange, disabled, min, step, unit,
+  label, value, onChange, disabled, min, step, unit, help,
 }: {
   label: string; value: number; onChange: (n: number) => void
-  disabled?: boolean; min?: number; step?: number; unit?: string
+  disabled?: boolean; min?: number; step?: number; unit?: string; help?: string
 }) {
   return (
     <div className="min-w-0 w-full">
-      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}{unit ? <span className="normal-case ml-0.5 opacity-70">({unit})</span> : ''}
+      <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <span>{label}{unit ? <span className="normal-case ml-0.5 opacity-70">({unit})</span> : ''}</span>
+        {help ? <CircleHelp className="h-3 w-3 cursor-help normal-case opacity-70" aria-label={`${label}: ${help}`} title={help} /> : null}
       </Label>
       <Input
         type="number"
@@ -248,7 +250,7 @@ function BenchmarkForm({ p, set }: { p: BenchmarkParams; set: (v: BenchmarkParam
   )
 }
 
-function ScenarioForm({ p, set }: { p: ScenarioParams; set: (v: ScenarioParams) => void }) {
+function ScenarioForm({ p, set, endpointCount }: { p: ScenarioParams; set: (v: ScenarioParams) => void; endpointCount: number }) {
   const presets: Array<{ name: string; hint: string; values: ScenarioParams }> = [
     {
       name: 'Quick check',
@@ -294,15 +296,15 @@ function ScenarioForm({ p, set }: { p: ScenarioParams; set: (v: ScenarioParams) 
         </div>
       </div>
       <ParameterGrid columns={4}>
-        <N label="Virtual users" value={p.virtual_users} onChange={(n) => set({ ...p, virtual_users: Math.max(1, n) })} min={1} />
-        <N label="Iterations / user" value={p.iterations} onChange={(n) => set({ ...p, iterations: Math.max(1, n) })} min={1} />
-        <N label="Ramp-up" value={p.ramp_up_s} onChange={(n) => set({ ...p, ramp_up_s: Math.max(0, n) })} unit="s" />
-        <N label="Think time" value={p.think_time_ms} onChange={(n) => set({ ...p, think_time_ms: Math.max(0, n) })} unit="ms" />
+        <N label="Virtual users" help="Simulated users that run in parallel. These are workers, not real browser windows." value={p.virtual_users} onChange={(n) => set({ ...p, virtual_users: Math.max(1, n) })} min={1} />
+        <N label="Iterations / user" help="How many times each virtual user repeats the selected endpoint or full journey." value={p.iterations} onChange={(n) => set({ ...p, iterations: Math.max(1, n) })} min={1} />
+        <N label="Ramp-up" help="Time used to gradually activate all virtual users instead of starting them at once." value={p.ramp_up_s} onChange={(n) => set({ ...p, ramp_up_s: Math.max(0, n) })} unit="s" />
+        <N label="Think time" help="Pause between endpoints in a multi-step journey. It has no effect on a single-endpoint run." value={p.think_time_ms} onChange={(n) => set({ ...p, think_time_ms: Math.max(0, n) })} unit="ms" />
       </ParameterGrid>
       <ParameterGrid columns={4}>
-        <N label="Retries / step" value={p.retries} onChange={(n) => set({ ...p, retries: Math.max(0, n) })} />
-        <N label="Retry delay" value={p.retry_delay_ms} onChange={(n) => set({ ...p, retry_delay_ms: Math.max(0, n) })} unit="ms" />
-        <N label="Stop above failures" value={p.stop_failure_pct} onChange={(n) => set({ ...p, stop_failure_pct: Math.min(100, Math.max(0, n)) })} unit="%" step={1} />
+        <N label="Retries / step" help="Extra attempts when an endpoint fails. Zero means do not retry." value={p.retries} onChange={(n) => set({ ...p, retries: Math.max(0, n) })} />
+        <N label="Retry delay" help="Pause before trying a failed endpoint again. Used only when retries is above zero." value={p.retry_delay_ms} onChange={(n) => set({ ...p, retry_delay_ms: Math.max(0, n) })} unit="ms" />
+        <N label="Stop above failures" help="Automatically stop when the percentage of failed journeys exceeds this value." value={p.stop_failure_pct} onChange={(n) => set({ ...p, stop_failure_pct: Math.min(100, Math.max(0, n)) })} unit="%" step={1} />
         <Toggle fieldLabel="Failure behavior" label="Continue failed flow" checked={p.continue_on_error} onChange={(v) => set({ ...p, continue_on_error: v })} />
       </ParameterGrid>
       <div className="grid gap-1 text-[10px] text-muted-foreground sm:grid-cols-3">
@@ -310,11 +312,12 @@ function ScenarioForm({ p, set }: { p: ScenarioParams; set: (v: ScenarioParams) 
         <span><strong className="text-foreground">Iterations</strong> repeat the full journey</span>
         <span><strong className="text-foreground">Think time</strong> pauses between steps</span>
       </div>
-      <div className="text-[10px] text-muted-foreground">
-        <strong className="text-foreground">Run project scenario</strong> chains every endpoint in list order · use a folder's <strong className="text-foreground">Chain</strong> action for a folder-only journey.
-      </div>
       <div className={`rounded-md border px-2.5 py-2 text-[10px] ${plannedJourneys > 10_000 ? 'border-red-500/35 bg-red-500/10 text-red-200' : plannedJourneys > 1_000 ? 'border-amber-500/35 bg-amber-500/10 text-amber-200' : 'border-border bg-muted/30 text-muted-foreground'}`}>
         <strong className="text-foreground">{plannedJourneys.toLocaleString()} planned journeys</strong> · each virtual user gets isolated variables and tokens.
+        <div className="mt-1.5 grid gap-1 sm:grid-cols-2">
+          <span className="rounded border border-border/70 bg-background/50 px-2 py-1"><strong className="text-foreground">Selected endpoint</strong> · {plannedJourneys.toLocaleString()} requests</span>
+          <span className="rounded border border-border/70 bg-background/50 px-2 py-1"><strong className="text-foreground">Project journey</strong> · up to {(plannedJourneys * endpointCount).toLocaleString()} requests across {endpointCount} endpoints</span>
+        </div>
         {plannedJourneys > 10_000 && <span className="block mt-0.5">Heavy traffic: lower the values unless this target is authorized and designed for this load.</span>}
         {plannedJourneys > 1_000 && plannedJourneys <= 10_000 && <span className="block mt-0.5">High traffic: verify the target and expected capacity before running.</span>}
       </div>
@@ -328,9 +331,10 @@ interface Props {
   mode: TestMode
   params: ModeParams['params']
   onChange: (p: ModeParams['params']) => void
+  endpointCount?: number
 }
 
-export function ModeParamsForm({ mode, params, onChange }: Props) {
+export function ModeParamsForm({ mode, params, onChange, endpointCount = 0 }: Props) {
   switch (mode) {
     case 'load':
       return <LoadForm p={params as LoadParams} set={onChange} />
@@ -349,7 +353,7 @@ export function ModeParamsForm({ mode, params, onChange }: Props) {
     case 'benchmark':
       return <BenchmarkForm p={params as BenchmarkParams} set={onChange} />
     case 'scenario':
-      return <ScenarioForm p={params as ScenarioParams} set={onChange} />
+      return <ScenarioForm p={params as ScenarioParams} set={onChange} endpointCount={endpointCount} />
     default:
       return null
   }

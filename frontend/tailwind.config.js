@@ -13,6 +13,7 @@ export default {
     },
     extend: {
       colors: {
+        cyan: Object.fromEntries([50,100,200,300,400,500,600,700,800,900,950].map((shade) => [shade, `rgb(var(--beacon-${shade}) / <alpha-value>)`])),
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

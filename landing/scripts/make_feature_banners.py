@@ -58,7 +58,7 @@ def make_banner(source: str, output: str, eyebrow: str, lines: list[str], featur
     box = (70, 665, 640, 735)
     draw.rounded_rectangle(box, radius=14, fill=(7, 20, 24, 235), outline=(22, 127, 133), width=2)
     draw.text((94, 686), features, font=feature_font, fill=CYAN)
-    draw.text((72, 900), "Open source  •  Windows & macOS", font=ImageFont.truetype(FONT, 28), fill=WHITE)
+    draw.text((72, 900), "Open source  /  Windows, macOS & Linux", font=ImageFont.truetype(FONT, 28), fill=WHITE)
     draw.text((72, 950), "github.com/nannndev/beacon", font=ImageFont.truetype(MONO, 22), fill=MUTED)
 
     # Screenshot is only resized and composited; its UI pixels/content are never redrawn.
@@ -75,7 +75,19 @@ def make_banner(source: str, output: str, eyebrow: str, lines: list[str], featur
     draw.rounded_rectangle((sx - 3, sy - 3, sx + target_w + 3, sy + target_h + 3), radius=18, fill=(18, 170, 180), width=1)
     canvas.alpha_composite(shot, (sx, sy))
 
-    canvas.convert("RGB").save(ASSETS / output, quality=95)
+    output_path = Path(output)
+    if not output_path.is_absolute():
+        output_path = ASSETS / output_path
+    canvas.convert("RGB").save(output_path, quality=95)
+
+
+make_banner(
+    "workspace.png",
+    str(ROOT / "assets" / "beacon-feature-banner.png"),
+    "Local API testing workspace",
+    ["SEND. ASSERT. SCALE.", "API & WEB REQUESTS."],
+    "9 test modes  /  Scenario  /  MCP server",
+)
 
 
 make_banner(

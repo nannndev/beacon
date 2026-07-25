@@ -184,11 +184,11 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="min-h-screen w-full max-w-full overflow-x-hidden bg-background text-foreground selection:bg-cyan-500/30">
-      {/* Modern subtle background */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(#111_0.6px,transparent_1px)] bg-[length:3px_3px] dark:bg-[radial-gradient(#222_0.6px,transparent_1px)]" />
+    <main className="landing-shell min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-background text-foreground selection:bg-cyan-500/30">
+      <div className="landing-atmosphere pointer-events-none fixed inset-0 -z-10" aria-hidden="true">
+      </div>
       <NetworkBackground />
-      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 shadow-sm backdrop-blur-2xl">
+      <header className="liquid-nav sticky top-0 z-50 border-b">
         <div
           className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-5 lg:px-8"
         >
@@ -335,7 +335,7 @@ export default function LandingPage() {
       </header>
 
       <section className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-14 pt-12 lg:px-8 lg:pb-20 lg:pt-20 xl:grid-cols-[0.82fr_1.18fr]">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,#0a0a0a_0%,transparent_70%)] dark:bg-[radial-gradient(ellipse_at_top,#111_0%,transparent_65%)]" />
+        <div className="hero-atmosphere absolute inset-0 -z-10" aria-hidden="true" />
 
         <RevealGroup className="max-w-2xl" stagger={0.08} delayChildren={0.05}>
           <RevealItem className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
@@ -386,7 +386,7 @@ export default function LandingPage() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="rounded-lg border border-border bg-card/70 px-3 py-3 transition-colors hover:border-cyan-500/30"
+                className="liquid-glass liquid-glass-interactive rounded-xl px-3 py-3"
               >
                 <div className="font-mono text-xl font-bold tabular-nums">{item.value}</div>
                 <div className="mt-1 text-[11px] font-semibold text-muted-foreground">{item.label}</div>
@@ -416,7 +416,7 @@ export default function LandingPage() {
             { icon: Braces, title: 'Templating', body: 'Use dynamic values like random email, UUID, timestamp, and tokens.' },
             { icon: History, title: 'Run history', body: 'Inspect response bodies, timing, status, and logs from every run.' },
           ].map(({ icon: Icon, title, body }) => (
-            <RevealItem key={title} as="article" className="group rounded-2xl border border-border/70 bg-background/90 p-6 transition-all hover:-translate-y-0.5 hover:border-cyan-500/30 hover:shadow-xl">
+            <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-6">
               <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
                 <Icon className="h-4.5 w-4.5" />
               </div>
@@ -450,7 +450,7 @@ export default function LandingPage() {
               { icon: Activity, title: 'Live load testing', body: 'Watch attempts, success, rate limits, errors, latency percentiles, and a live trend chart as runs execute.' },
               { icon: Repeat, title: 'Retry & rate control', body: 'Retry failures and tune concurrency, delays, and request limits per endpoint.' },
             ].map(({ icon: Icon, title, body }) => (
-              <RevealItem key={title} as="article" className="group rounded-xl border border-border bg-card/55 p-5 transition-all hover:-translate-y-0.5 hover:border-cyan-500/30 hover:bg-card">
+              <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-5">
                 <div className="flex items-center gap-3">
                   <div className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/10 to-teal-500/10 text-cyan-400 transition group-hover:scale-110 group-hover:-rotate-3">
                     <Icon className="h-4.5 w-4.5" />
@@ -465,7 +465,7 @@ export default function LandingPage() {
       </section>
 
       <section id="workflow" className="mx-auto max-w-7xl px-5 pb-20 lg:px-8">
-        <Reveal className="rounded-3xl border border-border bg-card/50 p-8 md:p-10">
+        <Reveal className="liquid-glass rounded-3xl p-8 md:p-10">
           <div className="flex flex-col justify-between gap-6 border-b border-border pb-8 md:flex-row md:items-end">
             <div>
               <div className="text-sm font-semibold tracking-widest text-cyan-400">WORKFLOW</div>
@@ -553,7 +553,7 @@ claude mcp add beacon -- <path-to>/mcp_server
           </Reveal>
 
           <RevealGroup className="mx-auto mt-12 grid max-w-7xl gap-5 md:grid-cols-3" stagger={0.1}>
-            <RevealItem as="article" className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
+            <RevealItem as="article" className="liquid-glass liquid-glass-interactive group flex min-h-72 flex-col rounded-3xl p-7 md:p-9">
               <div className="flex items-center gap-5">
                 <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-cyan-500/20 bg-cyan-500/10">
                   <PanelsTopLeft className="h-8 w-8 text-cyan-500" strokeWidth={1.8} />
@@ -572,7 +572,7 @@ claude mcp add beacon -- <path-to>/mcp_server
               </button>
             </RevealItem>
 
-            <RevealItem as="article" className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
+            <RevealItem as="article" className="liquid-glass liquid-glass-interactive group flex min-h-72 flex-col rounded-3xl p-7 md:p-9">
               <div className="flex items-center gap-5">
                 <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-border bg-foreground text-background">
                   <Apple className="h-8 w-8" strokeWidth={1.8} />
@@ -583,7 +583,7 @@ claude mcp add beacon -- <path-to>/mcp_server
                 </div>
               </div>
               <div className="mt-6 space-y-2 text-sm leading-6 text-muted-foreground">
-                <p>First launch: Beacon isn't notarized yet, so macOS may say it's "damaged". It isn't — that's just Gatekeeper blocking an unsigned app. Clear it once in Terminal:</p>
+                <p>First launch: Beacon isn't notarized yet, so macOS may say it's "damaged". It isn't. Gatekeeper is blocking an unsigned app. Clear it once in Terminal:</p>
                 <code className="block overflow-x-auto rounded-lg border border-border bg-muted/60 px-3 py-2 font-mono text-[12px] text-foreground">xattr -dr com.apple.quarantine /Applications/Beacon.app</code>
               </div>
               <button
@@ -595,7 +595,7 @@ claude mcp add beacon -- <path-to>/mcp_server
               </button>
             </RevealItem>
 
-            <RevealItem as="article" className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
+            <RevealItem as="article" className="liquid-glass liquid-glass-interactive group flex min-h-72 flex-col rounded-3xl p-7 md:p-9">
               <div className="flex items-center gap-5">
                 <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
                   <Terminal className="h-8 w-8 text-emerald-500" strokeWidth={1.8} />
@@ -725,13 +725,13 @@ function FeatureGallery() {
       <div className="relative mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-28">
         <Reveal className="grid gap-8 lg:grid-cols-[1fr_0.62fr] lg:items-end">
           <div className="max-w-3xl">
-            <p className="font-mono text-xs font-bold uppercase tracking-[0.24em] text-cyan-500">Beacon 0.3.6 · actual desktop capture</p>
+            <p className="font-mono text-xs font-bold uppercase tracking-[0.24em] text-cyan-500">Actual Beacon desktop capture</p>
             <h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.04em] md:text-6xl">
               See the whole request lifecycle.
             </h2>
           </div>
           <p className="max-w-xl text-lg leading-8 text-muted-foreground lg:pb-1">
-            This is the current desktop app—not concept art. Send from the list, turn a response into reusable variables, assert the contract, then scale the run.
+            This is the current desktop app, not concept art. Send from the list, turn a response into reusable variables, assert the contract, then scale the run.
           </p>
         </Reveal>
 
@@ -819,12 +819,12 @@ function FeatureGallery() {
         </div>
 
         <Reveal className="mt-24 grid gap-8 lg:grid-cols-[1.58fr_0.42fr] lg:items-center">
-          <ScreenFrame src={scenarioResultsShot} alt="Current Beacon run results with live metrics, responses, and logs" />
+          <ScreenFrame src={scenarioResultsShot} alt="Beacon Scenario result for a selected API endpoint with virtual users, iterations, and success metrics" />
           <div className="lg:pl-4">
             <GitBranch className="h-7 w-7 text-cyan-500" />
             <h3 className="mt-6 text-3xl font-semibold tracking-tight">Chain it, then scale it.</h3>
             <p className="mt-4 leading-7 text-muted-foreground">
-              Run dependent endpoints in sequence, refresh extracted tokens between steps, or move into load mode with fixed concurrency and rate controls.
+              Run one API or Web endpoint with virtual users, or chain the complete project in list order with isolated variables and tokens.
             </p>
           </div>
         </Reveal>

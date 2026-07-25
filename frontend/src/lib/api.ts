@@ -136,6 +136,8 @@ export interface ScenarioResult {
   success_rate?: number
   duration_ms?: number
   stopped_early?: boolean
+  stopped?: boolean
+  error?: string
   bottleneck?: { test_id: string; name?: string; p95_ms: number } | null
 }
 
@@ -218,6 +220,8 @@ export const api = {
   // Run endpoints in order as one flow (chaining); variables carry between steps.
   runScenario: (testIds: string[], opts?: ScenarioOptions) =>
     req<ScenarioResult>('/scenario', jsonInit('POST', { test_ids: testIds, ...opts })),
+  startScenario: (testIds: string[], opts?: ScenarioOptions) =>
+    req<{ run_id: string; mode: 'scenario' }>('/scenario/start', jsonInit('POST', { test_ids: testIds, ...opts })),
   updateTest: (id: string, test: Partial<Endpoint>) => req<Endpoint>(`/tests/${id}`, jsonInit('PUT', test)),
   deleteTest: (id: string) => req(`/tests/${id}`, jsonInit('DELETE')),
   duplicateTest: (id: string) => req<Endpoint>(`/tests/${id}/duplicate`, jsonInit('POST')),

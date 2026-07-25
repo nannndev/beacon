@@ -32,8 +32,6 @@ export function ScenarioMonitor({ busy, plan, result, endpoints, onClear }: Prop
   const iterations = result?.iterations ?? plan?.params.iterations ?? 1
   const plannedJourneys = virtualUsers * iterations
   const elapsedMs = result?.duration_ms ?? Math.max(0, now - (plan?.startedAt ?? now))
-  const status = busy ? 'running' : result?.passed ? 'passed' : 'failed'
-
   return (
     <section className={`overflow-hidden rounded-xl border ${busy ? 'border-indigo-400/30 bg-indigo-500/[0.035]' : result?.passed ? 'border-emerald-500/25 bg-emerald-500/[0.025]' : 'border-red-500/25 bg-red-500/[0.025]'}`} aria-live="polite">
       <div className="flex flex-wrap items-center gap-3 border-b border-border/70 px-4 py-3">
@@ -44,7 +42,7 @@ export function ScenarioMonitor({ busy, plan, result, endpoints, onClear }: Prop
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold">Scenario journey</h2>
             <span className={`rounded px-2 py-0.5 text-[9px] font-bold tracking-wide ${busy ? 'bg-indigo-500/15 text-indigo-300' : result?.passed ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'}`}>
-              {busy ? 'RUNNING' : result?.stopped_early ? 'STOPPED EARLY' : result?.passed ? 'PASSED' : 'FAILED'}
+              {busy ? 'RUNNING' : result?.stopped ? 'STOPPED' : result?.stopped_early ? 'STOPPED EARLY' : result?.passed ? 'PASSED' : 'FAILED'}
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">

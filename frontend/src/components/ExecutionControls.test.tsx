@@ -20,7 +20,7 @@ describe('ExecutionControls scenario scope', () => {
     localStorage.setItem(TEST_MODE_PREFERENCES_KEY, JSON.stringify(preferences))
   })
 
-  it('runs the full project journey instead of only the selected endpoint', () => {
+  it('offers separate selected-endpoint and project-journey actions', () => {
     const onRun = vi.fn()
     const onRunAll = vi.fn()
     render(
@@ -40,10 +40,40 @@ describe('ExecutionControls scenario scope', () => {
       />,
     )
 
-    expect(screen.getByText('Project journey · 3 endpoints')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /run project scenario/i }))
+    expect(screen.getByText('Protected profile')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Run selected' }))
+
+    expect(onRun).toHaveBeenCalledWith(expect.objectContaining({ __scenario: true, virtual_users: 1, iterations: 1 }))
+    expect(onRunAll).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run project journey' }))
 
     expect(onRunAll).toHaveBeenCalledWith('scenario', expect.objectContaining({ virtual_users: 1, iterations: 1 }))
-    expect(onRun).not.toHaveBeenCalled()
+  })
+
+  it('keeps Stop enabled while an asynchronous scenario is running', () => {
+    const onStop = vi.fn()
+    render(
+      <ExecutionControls
+        settings={DEFAULT_SETTINGS}
+        onChange={vi.fn()}
+        status="idle"
+        selectedName="Protected profile"
+        hasSelection
+        endpointCount={3}
+        overrideEnabled={false}
+        onToggleOverride={vi.fn()}
+        onRun={vi.fn()}
+        onRunAll={vi.fn()}
+        onStop={onStop}
+        selectedTestId="profile"
+        scenarioBusy
+      />,
+    )
+
+    const stop = screen.getByRole('button', { name: /stop/i })
+    expect(stop).toBeEnabled()
+    fireEvent.click(stop)
+    expect(onStop).toHaveBeenCalledOnce()
   })
 })

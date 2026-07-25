@@ -33,6 +33,7 @@ import { MODE_DEFAULTS, type ModeParams, type ScenarioParams, type TestMode } fr
 import { buildRunPayload } from './lib/modePayload'
 import { useConfirmDialog } from './components/ui/confirm-dialog'
 import { SendResponsePanel } from './components/SendResponsePanel'
+import { WorkspaceTraceBackground } from './components/WorkspaceTraceBackground'
 
 function loadGlobalSettings(): ExecSettings {
   try {
@@ -87,6 +88,7 @@ function App() {
   const [showPalette, setShowPalette] = useState(false)
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
   const [scenarioBusy, setScenarioBusy] = useState(false)
+  const [scenarioRunId, setScenarioRunId] = useState<string | null>(null)
   const [scenarioPlan, setScenarioPlan] = useState<{ params: ScenarioParams; startedAt: number } | null>(null)
   const [scenarioEndpoints, setScenarioEndpoints] = useState<Array<{ id: string; name: string; method?: string }>>([])
   const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
@@ -105,11 +107,40 @@ function App() {
   const appView = useAppView()
   const { confirm, confirmationDialog } = useConfirmDialog()
 
+  const executeScenario = async (testIds: string[], options: Parameters<typeof api.startScenario>[1]) => {
+    const started = await api.startScenario(testIds, options)
+    setScenarioRunId(started.run_id)
+    while (true) {
+      await new Promise((resolve) => window.setTimeout(resolve, 500))
+      const state = await api.getStatus(started.run_id) as { status?: string; result?: ScenarioResult }
+      if (state.status && state.status !== 'running' && state.status !== 'stopping') {
+        if (!state.result) throw new Error('Scenario finished without a result')
+        return state.result
+      }
+    }
+  }
+
+  const stopActiveRun = async () => {
+    if (scenarioBusy && scenarioRunId) {
+      try {
+        await api.stopRun(scenarioRunId)
+        toast.info('Stopping scenario…')
+      } catch (error: any) {
+        toast.error(error?.message || 'Failed to stop scenario')
+      }
+      return
+    }
+    await run.stop()
+  }
+
   const currentProject = projects.find((p) => p.id === currentProjectId)
   const currentEnv = currentProject?.environments?.find((e) => e.id === currentProject?.current_environment_id)
   const projectItems: CollectionItem[] = currentProject?.items || []
   const effectiveTests = flattenItems(projectItems).length ? flattenItems(projectItems) : (config.tests as Endpoint[])
   const selectedName = effectiveTests.find((t) => t.id === selectedTestId)?.name || (config.tests as any[]).find((t) => t.id === selectedTestId)?.name
+  const selectedTargetType = effectiveTests.find((t) => t.id === selectedTestId)?.target_type
+    || (config.tests as Endpoint[]).find((t) => t.id === selectedTestId)?.target_type
+    || 'api'
 
   // The backend sidecar is launched and supervised by the Tauri Rust layer
   // (see src-tauri/src/main.rs), not from here — the React unmount cleanup did
@@ -295,13 +326,14 @@ function App() {
       setScenarioPlan({ params, startedAt: Date.now() })
       setScenarioEndpoints(tests.map(({ id, name, method }) => ({ id, name, method })))
       setScenarioBusy(true)
-      const result = await api.runScenario(tests.map((ep) => ep.id), { continue_on_error: false })
+      const result = await executeScenario(tests.map((ep) => ep.id), { continue_on_error: false })
       setScenarioResult(result)
       await fetchAll() // pick up any tokens the chain refreshed
     } catch (e: any) {
       toast.error(e?.message || 'Scenario failed')
     } finally {
       setScenarioBusy(false)
+      setScenarioRunId(null)
     }
   }
 
@@ -517,15 +549,16 @@ function App() {
     const ep = effectiveTests.find((t) => t.id === selectedTestId) || (config.tests as any[]).find((t) => t.id === selectedTestId)
     if (!ep) return
 
-    // Scenario mode: delegate to the existing runFolderAsScenario-style flow
+    // Scenario mode on the primary action targets only the selected endpoint.
+    // The adjacent "Run project journey" action explicitly chains the project.
     if (payload?.__scenario) {
       const scenario = payload as unknown as ScenarioParams
       try {
         setScenarioResult(null)
         setScenarioPlan({ params: scenario, startedAt: Date.now() })
-        setScenarioEndpoints(effectiveTests.map(({ id, name, method }) => ({ id, name, method })))
+        setScenarioEndpoints([{ id: ep.id, name: ep.name, method: ep.method }])
         setScenarioBusy(true)
-        const result = await api.runScenario(effectiveTests.map((test) => test.id), {
+        const result = await executeScenario([ep.id], {
           continue_on_error: scenario.continue_on_error,
           virtual_users: scenario.virtual_users,
           iterations: scenario.iterations,
@@ -541,6 +574,7 @@ function App() {
         toast.error(e?.message || 'Scenario failed')
       } finally {
         setScenarioBusy(false)
+        setScenarioRunId(null)
       }
       return
     }
@@ -608,7 +642,7 @@ function App() {
       setScenarioPlan({ params: scenario, startedAt: Date.now() })
       setScenarioEndpoints(tests.map(({ id, name, method }) => ({ id, name, method })))
       setScenarioBusy(true)
-      void api.runScenario(tests.map((ep) => ep.id), {
+      void executeScenario(tests.map((ep) => ep.id), {
         continue_on_error: scenario.continue_on_error,
         virtual_users: scenario.virtual_users,
         iterations: scenario.iterations,
@@ -620,7 +654,7 @@ function App() {
       })
         .then((result) => setScenarioResult(result))
         .catch((e: any) => toast.error(e?.message || 'Scenario failed'))
-        .finally(() => setScenarioBusy(false))
+        .finally(() => { setScenarioBusy(false); setScenarioRunId(null) })
       return
     }
     run.startAll(
@@ -694,6 +728,7 @@ function App() {
   if (appView.view === 'history') {
     return (
       <div className="app-surface animate-fade-in h-screen text-foreground">
+        <WorkspaceTraceBackground />
         <HistoryPage
           projectId={currentProjectId}
           initialRunId={appView.runId}
@@ -706,6 +741,7 @@ function App() {
   if (appView.view === 'mcp') {
     return (
       <div className="app-surface animate-fade-in h-screen text-foreground">
+        <WorkspaceTraceBackground />
         <McpPage onBack={appView.openWorkspace} />
       </div>
     )
@@ -713,6 +749,7 @@ function App() {
 
   return (
     <div className="app-surface flex h-screen text-foreground">
+      <WorkspaceTraceBackground />
       <Sidebar
         projects={projects}
         currentProjectId={currentProjectId}
@@ -772,8 +809,9 @@ function App() {
                 onToggleOverride={onToggleOverride}
                 onRun={runSelected}
                 onRunAll={runAll}
-                onStop={run.stop}
+                onStop={stopActiveRun}
                 selectedTestId={selectedTestId}
+                selectedTargetType={selectedTargetType}
                 scenarioBusy={scenarioBusy}
               />
 

@@ -67,6 +67,7 @@ interface Props {
   onRunAll: (mode: TestMode, params: ModeParams['params']) => void
   onStop: () => void
   selectedTestId?: string | null
+  selectedTargetType?: 'api' | 'web'
   scenarioBusy?: boolean
 }
 
@@ -74,7 +75,7 @@ interface Props {
 
 export function ExecutionControls({
   settings, onChange, status, selectedName, hasSelection, endpointCount,
-  overrideEnabled, onToggleOverride, onRun, onRunAll, onStop, selectedTestId, scenarioBusy = false,
+  overrideEnabled, onToggleOverride, onRun, onRunAll, onStop, selectedTestId, selectedTargetType = 'api', scenarioBusy = false,
 }: Props) {
   const running = status === 'running' || scenarioBusy
 
@@ -124,7 +125,8 @@ export function ExecutionControls({
 
   const handleRun = () => {
     if (mode === 'scenario') {
-      onRunAll(mode, syncedParams)
+      if (!selectedTestId) return
+      onRun({ __scenario: true, ...syncedParams })
       return
     }
     if (!selectedTestId) return
@@ -157,6 +159,7 @@ export function ExecutionControls({
             mode={mode}
             params={syncedParams}
             onChange={handleParamsChange}
+            endpointCount={endpointCount}
           />
         </div>
 
@@ -166,7 +169,9 @@ export function ExecutionControls({
             <div>
               <div className="text-[10px] text-muted-foreground">
                 {mode === 'scenario'
-                  ? <><span>Target: </span><span className="text-foreground font-medium">Project journey · {endpointCount} endpoints</span></>
+                  ? hasSelection
+                    ? <><span>Selected: </span><span className="text-foreground font-medium">{selectedName}</span><span className={`ml-1 rounded px-1 py-0.5 font-mono text-[9px] ${selectedTargetType === 'web' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-blue-500/10 text-blue-400'}`}>{selectedTargetType.toUpperCase()}</span></>
+                    : 'Select an API or Web endpoint for a single-target run'
                   : hasSelection
                   ? <><span>Target: </span><span className="text-foreground font-medium">{selectedName}</span></>
                   : 'Select an endpoint'}
@@ -194,7 +199,7 @@ export function ExecutionControls({
           </div>
 
           <div className="flex items-center gap-2 ml-auto shrink-0">
-            {mode !== 'scenario' && (
+            {mode !== 'scenario' ? (
               <Button
                 onClick={handleRunAll}
                 disabled={endpointCount === 0 || running}
@@ -205,16 +210,27 @@ export function ExecutionControls({
               >
                 <ListVideo className="h-3.5 w-3.5" /> Run All
               </Button>
+            ) : (
+              <Button
+                onClick={handleRunAll}
+                disabled={endpointCount === 0 || running}
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5"
+                title="Chain every endpoint in the project in list order"
+              >
+                <ListVideo className="h-3.5 w-3.5" /> Run project journey
+              </Button>
             )}
             <Button
               onClick={handleRun}
-              disabled={(mode === 'scenario' ? endpointCount === 0 : !hasSelection) || running}
+              disabled={!hasSelection || running}
               size="sm"
               className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running scenario…' : mode === 'scenario' ? 'Run project scenario' : 'Run'}
+              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running scenario…' : mode === 'scenario' ? 'Run selected' : 'Run'}
             </Button>
-            <Button onClick={onStop} disabled={status !== 'running'} size="sm" variant="destructive" className="h-8 gap-1.5">
+            <Button onClick={onStop} disabled={!running} size="sm" variant="destructive" className="h-8 gap-1.5">
               <Square className="h-3 w-3" /> Stop
             </Button>
           </div>
