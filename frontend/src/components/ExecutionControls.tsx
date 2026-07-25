@@ -123,11 +123,11 @@ export function ExecutionControls({
   const estimated = estimateModeDuration(mode, syncedParams)
 
   const handleRun = () => {
-    if (!selectedTestId) return
     if (mode === 'scenario') {
-      onRun({ __scenario: true, ...(syncedParams as ScenarioParams) })
+      onRunAll(mode, syncedParams)
       return
     }
+    if (!selectedTestId) return
     const payload = buildRunPayload(selectedTestId, mode, syncedParams)
     onRun(payload)
   }
@@ -165,14 +165,16 @@ export function ExecutionControls({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
             <div>
               <div className="text-[10px] text-muted-foreground">
-                {hasSelection
+                {mode === 'scenario'
+                  ? <><span>Target: </span><span className="text-foreground font-medium">Project journey · {endpointCount} endpoints</span></>
+                  : hasSelection
                   ? <><span>Target: </span><span className="text-foreground font-medium">{selectedName}</span></>
                   : 'Select an endpoint'}
                 {overrideEnabled && <span className="text-amber-500"> · override</span>}
               </div>
             </div>
 
-            {hasSelection && (
+            {hasSelection && mode !== 'scenario' && (
               <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -192,23 +194,25 @@ export function ExecutionControls({
           </div>
 
           <div className="flex items-center gap-2 ml-auto shrink-0">
-            <Button
-              onClick={handleRunAll}
-              disabled={endpointCount === 0 || running}
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5"
-              title={mode === 'scenario' ? 'Run every endpoint in this project as one ordered journey' : "Run every endpoint in order (uses each endpoint's override if set)"}
-            >
-              <ListVideo className="h-3.5 w-3.5" /> {mode === 'scenario' ? 'Run project journey' : 'Run All'}
-            </Button>
+            {mode !== 'scenario' && (
+              <Button
+                onClick={handleRunAll}
+                disabled={endpointCount === 0 || running}
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5"
+                title="Run every endpoint in order (uses each endpoint's override if set)"
+              >
+                <ListVideo className="h-3.5 w-3.5" /> Run All
+              </Button>
+            )}
             <Button
               onClick={handleRun}
-              disabled={!hasSelection || running}
+              disabled={(mode === 'scenario' ? endpointCount === 0 : !hasSelection) || running}
               size="sm"
               className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running scenario…' : mode === 'scenario' ? 'Run selected' : 'Run'}
+              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running scenario…' : mode === 'scenario' ? 'Run project scenario' : 'Run'}
             </Button>
             <Button onClick={onStop} disabled={status !== 'running'} size="sm" variant="destructive" className="h-8 gap-1.5">
               <Square className="h-3 w-3" /> Stop

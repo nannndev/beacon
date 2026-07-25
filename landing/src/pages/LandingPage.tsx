@@ -757,7 +757,7 @@ function FeatureGallery() {
             <div className="mt-7 space-y-3 font-mono text-xs text-muted-foreground">
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>SEND</span><span className="text-foreground">Endpoint row / editor</span></div>
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>MODES</span><span className="text-foreground">Single / load / scenario</span></div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.3.7 desktop</span></div>
+              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.3.8 desktop</span></div>
             </div>
           </div>
         </Reveal>

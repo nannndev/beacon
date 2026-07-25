@@ -3,6 +3,16 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.3.8] - 2026-07-25
+
+### Fixed
+
+- Scenario runs once again execute the complete project journey in endpoint-list order, preserving authentication and extracted-token steps before protected requests.
+- Removed the ambiguous single-endpoint Scenario action that could finish instantly or return `403` after skipping the login step.
+- Scenario controls now show the exact project endpoint count; folder-only journeys remain available through each folder's Chain action.
+
+[Compare 0.3.7 → 0.3.8](https://github.com/nannndev/beacon/compare/v0.3.7...v0.3.8)
+
 ## [0.3.7] - 2026-07-25
 
 ### Added

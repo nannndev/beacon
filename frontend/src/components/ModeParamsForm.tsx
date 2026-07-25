@@ -311,7 +311,7 @@ function ScenarioForm({ p, set }: { p: ScenarioParams; set: (v: ScenarioParams) 
         <span><strong className="text-foreground">Think time</strong> pauses between steps</span>
       </div>
       <div className="text-[10px] text-muted-foreground">
-        <strong className="text-foreground">Run selected</strong> tests one endpoint · <strong className="text-foreground">Run project journey</strong> chains the full project · use a folder's <strong className="text-foreground">Chain</strong> action for a folder-only journey.
+        <strong className="text-foreground">Run project scenario</strong> chains every endpoint in list order · use a folder's <strong className="text-foreground">Chain</strong> action for a folder-only journey.
       </div>
       <div className={`rounded-md border px-2.5 py-2 text-[10px] ${plannedJourneys > 10_000 ? 'border-red-500/35 bg-red-500/10 text-red-200' : plannedJourneys > 1_000 ? 'border-amber-500/35 bg-amber-500/10 text-amber-200' : 'border-border bg-muted/30 text-muted-foreground'}`}>
         <strong className="text-foreground">{plannedJourneys.toLocaleString()} planned journeys</strong> · each virtual user gets isolated variables and tokens.

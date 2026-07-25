@@ -523,9 +523,9 @@ function App() {
       try {
         setScenarioResult(null)
         setScenarioPlan({ params: scenario, startedAt: Date.now() })
-        setScenarioEndpoints([{ id: ep.id, name: ep.name, method: ep.method }])
+        setScenarioEndpoints(effectiveTests.map(({ id, name, method }) => ({ id, name, method })))
         setScenarioBusy(true)
-        const result = await api.runScenario([ep.id], {
+        const result = await api.runScenario(effectiveTests.map((test) => test.id), {
           continue_on_error: scenario.continue_on_error,
           virtual_users: scenario.virtual_users,
           iterations: scenario.iterations,
