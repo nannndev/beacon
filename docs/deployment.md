@@ -2,7 +2,7 @@
 
 ## Recommended public setup (landing only)
 
-Beacon is distributed as a **local Windows and macOS desktop application**.
+Beacon is distributed as a **local Windows, macOS, and Linux desktop application**.
 The public landing page is a static Vite build on Vercel; it does not run the
 FastAPI test engine on a shared server:
 
@@ -10,7 +10,8 @@ FastAPI test engine on a shared server:
 Vercel (static landing)
           │
           └── Download CTA ──▶ GitHub Releases ──┬─▶ Windows x64 .exe
-                                                 └─▶ macOS arm64 .dmg
+                                                 ├─▶ macOS arm64 .dmg
+                                                 └─▶ Linux x64 .AppImage / .deb
                                                           │
                                                           ├── React desktop UI
                                                           ├── local FastAPI sidecar
@@ -52,13 +53,13 @@ need a deployment token or a hosted Beacon backend.
 
 ### Desktop release flow
 
-The release workflow builds Windows NSIS (`.exe`) and an unsigned macOS Apple
-Silicon disk image (`.dmg`):
+The release workflow builds Windows NSIS (`.exe`), an unsigned macOS Apple
+Silicon disk image (`.dmg`), and Linux x64 `.AppImage` and `.deb` packages:
 
 1. Builds the installer on every pull request and push to `main` for validation.
 2. Publishes a GitHub Release when a semantic version tag such as `v0.2.4` is pushed.
 3. Can create a draft release from **Actions → Release Desktop App → Run workflow**.
-4. Uploads the Windows `.exe` and unsigned Apple Silicon `.dmg`; Python, FastAPI, and the MCP server are bundled.
+4. Uploads installers for all three platforms; Python, FastAPI, and the MCP server are bundled.
 
 The landing CTA uses `/releases/latest`, so it automatically follows the newest
 non-draft release without changing or rebuilding the landing site.

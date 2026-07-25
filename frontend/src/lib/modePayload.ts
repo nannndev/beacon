@@ -1,5 +1,6 @@
 import type {
   BenchmarkParams,
+  CapacityParams,
   FuzzParams,
   LoadParams,
   ModeParams,
@@ -45,6 +46,19 @@ export function buildRunPayload(
     case 'rate_probe': {
       const p = params as RateProbeParams
       return { ...common, start_rps: p.probe_start_rps, step_rps: p.probe_step_rps, step_requests: p.probe_step_requests, max_rps: p.probe_max_rps }
+    }
+    case 'capacity': {
+      const p = params as CapacityParams
+      return {
+        ...common,
+        start_rps: p.capacity_start_rps,
+        step_rps: p.capacity_step_rps,
+        step_requests: p.capacity_step_requests,
+        max_rps: p.capacity_max_rps,
+        p95_limit_ms: p.capacity_p95_limit_ms,
+        error_limit_pct: p.capacity_error_limit_pct,
+        success_min_pct: p.capacity_success_min_pct,
+      }
     }
     case 'fuzz': {
       const p = params as FuzzParams

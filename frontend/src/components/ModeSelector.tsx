@@ -15,6 +15,7 @@ const colorMap: Record<string, { ring: string; bg: string; text: string; badge: 
   rose:    { ring: 'ring-rose-500',    bg: 'bg-rose-500/10',    text: 'text-rose-600 dark:text-rose-400',       badge: 'bg-rose-500/20 text-rose-600 dark:text-rose-400'       },
   cyan:    { ring: 'ring-cyan-500',    bg: 'bg-cyan-500/10',    text: 'text-cyan-600 dark:text-cyan-400',       badge: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400'       },
   indigo:  { ring: 'ring-indigo-500',  bg: 'bg-indigo-500/10',  text: 'text-indigo-600 dark:text-indigo-400',  badge: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' },
+  teal:    { ring: 'ring-teal-500',    bg: 'bg-teal-500/10',    text: 'text-teal-600 dark:text-teal-400',       badge: 'bg-teal-500/20 text-teal-600 dark:text-teal-400'       },
 }
 
 function ModeCard({ info, active, onClick }: { info: ModeInfo; active: boolean; onClick: () => void }) {
@@ -66,7 +67,7 @@ export function ModeSelector({ selected, onChange }: Props) {
       {/* Expanded grid */}
       {open && (
         <div className="mb-3">
-          <div className="grid grid-cols-4 gap-1.5 mb-2">
+          <div className="grid grid-cols-3 lg:grid-cols-5 gap-1.5 mb-2">
             {MODE_INFO.map((info) => (
               <ModeCard
                 key={info.id}

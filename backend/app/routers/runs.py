@@ -1,9 +1,11 @@
 import os
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
-from ..core.tester import APITester
+from ..core.tester import APITester, TestConfig
 from ..history.models import RunStart, RunStepStart
 from ..history.sanitize import sanitize_run_config
 from ..state import store
@@ -58,6 +60,10 @@ async def start_run(data: dict):
         "step_rps": float(data.get("step_rps", 1.0)),
         "step_requests": int(data.get("step_requests", 20)),
         "max_rps": float(data.get("max_rps", 100.0)),
+        # capacity SLO
+        "p95_limit_ms": float(data.get("p95_limit_ms", 500.0)),
+        "error_limit_pct": float(data.get("error_limit_pct", 1.0)),
+        "success_min_pct": float(data.get("success_min_pct", 99.0)),
         # fuzz
         "fuzz_fields": data.get("fuzz_fields") or {},
         "fuzz_types": data.get("fuzz_types") or {},
@@ -233,8 +239,13 @@ def run_scenario(data: dict):
     try:
         retries = int(data.get("retries", 0))
         retry_delay = float(data.get("retry_delay", 0.0))
+        virtual_users = max(1, int(data.get("virtual_users", 1)))
+        iterations = max(1, int(data.get("iterations", 1)))
+        ramp_up_s = max(0.0, float(data.get("ramp_up_s", 0.0)))
+        think_time_s = max(0.0, float(data.get("think_time_ms", 0.0)) / 1000.0)
+        stop_failure_pct = min(100.0, max(0.0, float(data.get("stop_failure_pct", 100.0))))
     except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="retries/retry_delay must be numbers")
+        raise HTTPException(status_code=400, detail="scenario settings must be numbers")
 
     by_id = {t.id: t for t in store.current_config.tests}
     history_id = str(os.urandom(8).hex())
@@ -258,10 +269,138 @@ def run_scenario(data: dict):
             target_id=None,
             target_name=f"Scenario · {len(ids)} steps",
             mode="scenario",
-            config_snapshot={"mode": "scenario"},
+            config_snapshot={
+                "mode": "scenario", "virtual_users": virtual_users,
+                "iterations": iterations, "ramp_up_s": ramp_up_s,
+                "think_time_ms": round(think_time_s * 1000),
+                "stop_failure_pct": stop_failure_pct,
+            },
         ),
         history_steps,
     )
+
+    is_virtual = virtual_users > 1 or iterations > 1
+    if is_virtual:
+        started = time.monotonic()
+        records_by_step = [[] for _ in ids]
+        completed_flows = 0
+        successful_flows = 0
+        stopped_early = False
+        state_lock = threading.Lock()
+        stop_event = threading.Event()
+        base_config = store.current_config.to_dict()
+
+        def run_virtual_user(user_index: int):
+            nonlocal completed_flows, successful_flows, stopped_early
+            if ramp_up_s > 0 and virtual_users > 1:
+                time.sleep((user_index / (virtual_users - 1)) * ramp_up_s)
+            user_config = TestConfig.from_dict(base_config)
+            user_tests = {test.id: test for test in user_config.tests}
+
+            for iteration_index in range(iterations):
+                if stop_event.is_set():
+                    break
+                flow_success = True
+                for step_index, tid in enumerate(ids):
+                    if stop_event.is_set():
+                        flow_success = False
+                        break
+                    test = user_tests.get(tid)
+                    if not test:
+                        result = {"ok": False, "error": "Endpoint not found", "attempts": 1}
+                    else:
+                        result = APITester(test, user_config).send_once(
+                            retries=retries, retry_delay=retry_delay
+                        )
+                    succeeded = _step_succeeded(result)
+                    details = _scenario_step(test, result) if test else {
+                        "test_id": tid, "name": None, "ok": False,
+                        "error": "Endpoint not found",
+                    }
+                    record = {
+                        "user": user_index + 1,
+                        "iteration": iteration_index + 1,
+                        "success": succeeded,
+                        **details,
+                    }
+                    with state_lock:
+                        records_by_step[step_index].append(record)
+                    if not succeeded:
+                        flow_success = False
+                        if not cont:
+                            break
+                    if think_time_s > 0 and step_index < len(ids) - 1:
+                        time.sleep(think_time_s)
+
+                with state_lock:
+                    completed_flows += 1
+                    if flow_success:
+                        successful_flows += 1
+                    failures = completed_flows - successful_flows
+                    failure_pct = failures / completed_flows * 100.0
+                    if completed_flows >= virtual_users and failure_pct > stop_failure_pct:
+                        stopped_early = True
+                        stop_event.set()
+
+        with ThreadPoolExecutor(max_workers=virtual_users) as executor:
+            futures = [executor.submit(run_virtual_user, index) for index in range(virtual_users)]
+            for future in as_completed(futures):
+                future.result()
+
+        summaries = []
+        for step_index, tid in enumerate(ids):
+            test = by_id.get(tid)
+            records = records_by_step[step_index]
+            latencies = sorted(float(r.get("time_ms") or 0) for r in records if r.get("time_ms") is not None)
+            successes = sum(1 for record in records if record.get("success"))
+            attempts = len(records)
+            p95_index = max(0, min(len(latencies) - 1, int((len(latencies) - 1) * 0.95))) if latencies else 0
+            summary = {
+                "test_id": tid,
+                "name": test.name if test else None,
+                "ok": attempts > 0 and successes == attempts,
+                "success": attempts > 0 and successes == attempts,
+                "attempts": attempts,
+                "successful": successes,
+                "failed": attempts - successes,
+                "success_rate": round(successes / attempts * 100.0, 1) if attempts else 0.0,
+                "avg_ms": round(sum(latencies) / len(latencies), 1) if latencies else None,
+                "p95_ms": round(latencies[p95_index], 1) if latencies else None,
+                "error": next((r.get("error") for r in records if r.get("error")), None),
+            }
+            summaries.append(summary)
+            for record in records:
+                store.history.record_response(history_id, step_index, record)
+            store.history.record_stats(history_id, step_index, {
+                "attempts": attempts,
+                "success": successes,
+                "rate_limited": sum(1 for r in records if r.get("status") == 429),
+                "errors": attempts - successes,
+                "latency_ms": {"avg": summary["avg_ms"] or 0, "last": summary["p95_ms"] or 0},
+            })
+            store.history.finish_step(history_id, step_index, "completed" if summary["success"] else "failed")
+
+        failed_flows = completed_flows - successful_flows
+        success_rate = round(successful_flows / completed_flows * 100.0, 1) if completed_flows else 0.0
+        passed = completed_flows == virtual_users * iterations and failed_flows == 0
+        bottleneck = max(
+            (summary for summary in summaries if summary.get("p95_ms") is not None),
+            key=lambda summary: summary["p95_ms"], default=None,
+        )
+        store.history.finish_run(history_id, "completed" if passed else "failed")
+        return {
+            "steps": summaries, "passed": passed,
+            "completed": len(summaries), "total": len(ids), "history_id": history_id,
+            "virtual_users": virtual_users, "iterations": iterations,
+            "total_flows": virtual_users * iterations,
+            "completed_flows": completed_flows,
+            "successful_flows": successful_flows, "failed_flows": failed_flows,
+            "success_rate": success_rate,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "stopped_early": stopped_early,
+            "bottleneck": {"test_id": bottleneck["test_id"], "name": bottleneck["name"], "p95_ms": bottleneck["p95_ms"]} if bottleneck else None,
+        }
+
     steps = []
     changed = False
     for step_index, tid in enumerate(ids):

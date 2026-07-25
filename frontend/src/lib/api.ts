@@ -114,6 +114,11 @@ export interface ScenarioStep {
   extracted?: string[]
   attempts?: number
   error?: string
+  successful?: number
+  failed?: number
+  success_rate?: number
+  avg_ms?: number | null
+  p95_ms?: number | null
 }
 
 export interface ScenarioResult {
@@ -122,6 +127,27 @@ export interface ScenarioResult {
   completed: number
   total: number
   history_id?: string
+  virtual_users?: number
+  iterations?: number
+  total_flows?: number
+  completed_flows?: number
+  successful_flows?: number
+  failed_flows?: number
+  success_rate?: number
+  duration_ms?: number
+  stopped_early?: boolean
+  bottleneck?: { test_id: string; name?: string; p95_ms: number } | null
+}
+
+export interface ScenarioOptions {
+  continue_on_error?: boolean
+  retries?: number
+  retry_delay?: number
+  virtual_users?: number
+  iterations?: number
+  ramp_up_s?: number
+  think_time_ms?: number
+  stop_failure_pct?: number
 }
 
 export interface ProjectsResponse {
@@ -190,7 +216,7 @@ export const api = {
   sendOnce: (testId: string, opts?: { retries?: number; retry_delay?: number }) =>
     req<SendResponse>('/send', jsonInit('POST', { test_id: testId, ...opts })),
   // Run endpoints in order as one flow (chaining); variables carry between steps.
-  runScenario: (testIds: string[], opts?: { continue_on_error?: boolean; retries?: number; retry_delay?: number }) =>
+  runScenario: (testIds: string[], opts?: ScenarioOptions) =>
     req<ScenarioResult>('/scenario', jsonInit('POST', { test_ids: testIds, ...opts })),
   updateTest: (id: string, test: Partial<Endpoint>) => req<Endpoint>(`/tests/${id}`, jsonInit('PUT', test)),
   deleteTest: (id: string) => req(`/tests/${id}`, jsonInit('DELETE')),

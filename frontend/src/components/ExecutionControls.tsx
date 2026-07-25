@@ -1,16 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
-import { Play, Square, ListVideo } from 'lucide-react'
+import { Play, Square, ListVideo, RotateCcw } from 'lucide-react'
 import { RunConfig } from '../types'
 import { RunStatus } from './LiveMonitor'
 import { ModeSelector } from './ModeSelector'
 import { ModeParamsForm, estimateModeDuration } from './ModeParamsForm'
 import { buildRunPayload } from '../lib/modePayload'
+import { TestMode, ModeParams, LoadParams, ScenarioParams } from '../types/testModes'
 import {
-  TestMode, ModeParams, MODE_DEFAULTS,
-  LoadParams,
-} from '../types/testModes'
+  defaultModeParams,
+  loadTestModePreferences,
+  saveTestModePreferences,
+} from '../lib/testModePreferences'
 
 // ---- Legacy compat: derive a RunConfig from load params -------------------
 
@@ -65,29 +67,34 @@ interface Props {
   onRunAll: (mode: TestMode, params: ModeParams['params']) => void
   onStop: () => void
   selectedTestId?: string | null
+  scenarioBusy?: boolean
 }
 
 // ---- Component -----------------------------------------------------------
 
 export function ExecutionControls({
   settings, onChange, status, selectedName, hasSelection, endpointCount,
-  overrideEnabled, onToggleOverride, onRun, onRunAll, onStop, selectedTestId,
+  overrideEnabled, onToggleOverride, onRun, onRunAll, onStop, selectedTestId, scenarioBusy = false,
 }: Props) {
-  const running = status === 'running'
+  const running = status === 'running' || scenarioBusy
 
-  // Mode state — persisted in component for the session
-  const [mode, setMode] = useState<TestMode>('load')
-  const [modeParams, setModeParams] = useState<ModeParams['params']>(
-    () => MODE_DEFAULTS[mode]
-  )
+  const [preferences, setPreferences] = useState(loadTestModePreferences)
+  const mode = preferences.selectedMode
+  const modeParams = preferences.paramsByMode[mode]
+
+  useEffect(() => {
+    saveTestModePreferences(preferences)
+  }, [preferences])
 
   const handleModeChange = (m: TestMode) => {
-    setMode(m)
-    setModeParams(MODE_DEFAULTS[m])
+    setPreferences((current) => ({ ...current, selectedMode: m }))
   }
 
   const handleParamsChange = (p: ModeParams['params']) => {
-    setModeParams(p)
+    setPreferences((current) => ({
+      ...current,
+      paramsByMode: { ...current.paramsByMode, [mode]: p },
+    }))
     // Mirror load params back into legacy settings so other parts of UI stay in sync
     if (mode === 'load') {
       const lp = p as LoadParams
@@ -100,6 +107,8 @@ export function ExecutionControls({
       })
     }
   }
+
+  const resetCurrentMode = () => handleParamsChange(defaultModeParams(mode))
 
   // Sync load params from legacy settings when they change externally (e.g. override toggle)
   const syncedParams: ModeParams['params'] = mode === 'load'
@@ -116,8 +125,7 @@ export function ExecutionControls({
   const handleRun = () => {
     if (!selectedTestId) return
     if (mode === 'scenario') {
-      // Scenario mode → use existing scenario flow (handled in App.tsx via onRun with special flag)
-      onRun({ __scenario: true })
+      onRun({ __scenario: true, ...(syncedParams as ScenarioParams) })
       return
     }
     const payload = buildRunPayload(selectedTestId, mode, syncedParams)
@@ -134,7 +142,17 @@ export function ExecutionControls({
         <ModeSelector selected={mode} onChange={handleModeChange} />
 
         {/* Mode parameter form */}
-        <div className="pt-1 border-t border-border/60">
+        <div className="pt-1 border-t border-border/60 space-y-1.5">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={resetCurrentMode}
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              title="Restore the recommended defaults for this mode"
+            >
+              <RotateCcw className="h-3 w-3" /> Reset this mode
+            </button>
+          </div>
           <ModeParamsForm
             mode={mode}
             params={syncedParams}
@@ -180,9 +198,9 @@ export function ExecutionControls({
               size="sm"
               variant="outline"
               className="h-8 gap-1.5"
-              title="Run every endpoint in order (uses each endpoint's override if set)"
+              title={mode === 'scenario' ? 'Run every endpoint in this project as one ordered journey' : "Run every endpoint in order (uses each endpoint's override if set)"}
             >
-              <ListVideo className="h-3.5 w-3.5" /> Run All
+              <ListVideo className="h-3.5 w-3.5" /> {mode === 'scenario' ? 'Run project journey' : 'Run All'}
             </Button>
             <Button
               onClick={handleRun}
@@ -190,9 +208,9 @@ export function ExecutionControls({
               size="sm"
               className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              <Play className="h-3.5 w-3.5" /> Run
+              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running scenario…' : mode === 'scenario' ? 'Run selected' : 'Run'}
             </Button>
-            <Button onClick={onStop} disabled={!running} size="sm" variant="destructive" className="h-8 gap-1.5">
+            <Button onClick={onStop} disabled={status !== 'running'} size="sm" variant="destructive" className="h-8 gap-1.5">
               <Square className="h-3 w-3" /> Stop
             </Button>
           </div>

@@ -23,13 +23,14 @@ Download the latest build from [GitHub Releases](https://github.com/nannndev/bea
 
 - **Windows 10/11 x64:** run the `.exe` NSIS installer.
 - **macOS Apple Silicon:** open the `.dmg` and drag Beacon into Applications.
+- **Linux x64:** use the portable `.AppImage`, or install the `.deb` on Debian/Ubuntu.
 
 The current macOS build is unsigned and is distributed directly, not through
 the Mac App Store. On first launch, right-click **Beacon**, choose **Open**, and
 confirm **Open** in the Gatekeeper dialog. Later launches can use the normal
 double-click flow.
 
-Both packages include the frontend, FastAPI backend, and MCP server. End users
+All packages include the frontend, FastAPI backend, and MCP server. End users
 do not need Node.js, Python, Rust, or a hosted Beacon account.
 
 ## Building the Desktop App
@@ -96,6 +97,22 @@ The distributable files are written to:
 The public `.dmg` is currently unsigned. Developer ID signing, hardened
 runtime, and Apple notarization remain the path to a smoother first-launch
 experience when an organization-owned signing certificate is available.
+
+### Linux build
+
+Install the Tauri Linux prerequisites for your distribution first. On
+Debian/Ubuntu, this includes WebKitGTK 4.1, AppIndicator, librsvg, and patchelf.
+Then build both supported package formats:
+
+```bash
+cd frontend
+BEACON_PYTHON=../backend/.venv/bin/python npm run desktop:build:linux
+```
+
+The distributable files are written to:
+
+- `src-tauri/target/release/bundle/appimage/*.AppImage`
+- `src-tauri/target/release/bundle/deb/*.deb`
 
 ## Running in Development
 

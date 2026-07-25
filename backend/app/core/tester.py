@@ -196,6 +196,9 @@ class APITester:
         self._first_rate_limited_at: Optional[int] = None
         self._last_retry_after: Optional[str] = None
         self._probe_threshold_rps: Optional[float] = None
+        self._capacity_safe_rps: Optional[float] = None
+        self._capacity_breaking_rps: Optional[float] = None
+        self._capacity_breach_reason: Optional[str] = None
         self._t_start = time.time()
 
     def _record_latency(self, ms: float):
@@ -250,6 +253,9 @@ class APITester:
         snap["first_rate_limited_at"] = self._first_rate_limited_at
         snap["retry_after"] = self._last_retry_after
         snap["probe_threshold_rps"] = self._probe_threshold_rps
+        snap["capacity_safe_rps"] = self._capacity_safe_rps
+        snap["capacity_breaking_rps"] = self._capacity_breaking_rps
+        snap["capacity_breach_reason"] = self._capacity_breach_reason
         return snap
 
     def _substitute(self, value: Any) -> Any:
@@ -806,6 +812,92 @@ class APITester:
         return self.results
 
     # -------------------------------------------------------------------------
+    # CAPACITY mode: find the highest RPS that still satisfies the SLO
+    # -------------------------------------------------------------------------
+    def run_capacity(self, start_rps: float = 5.0, step_rps: float = 5.0,
+                     step_requests: int = 30, max_rps: float = 200.0,
+                     p95_limit_ms: float = 500.0, error_limit_pct: float = 1.0,
+                     success_min_pct: float = 99.0):
+        """Increase target RPS step-by-step until a latency or reliability SLO
+        is breached. Each decision uses only samples from the current step."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+        current_rps = max(0.1, start_rps)
+        step_rps = max(0.1, step_rps)
+        step_requests = max(1, step_requests)
+        request_index = 0
+        max_workers = max(2, min(256, int(max_rps) + 1))
+
+        self.log(
+            f"[capacity] Starting {current_rps:.1f} -> {max_rps:.1f} rps; "
+            f"SLO p95<={p95_limit_ms:.0f}ms errors<={error_limit_pct:.1f}% "
+            f"success>={success_min_pct:.1f}%"
+        )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            while current_rps <= max_rps and not self.stop_flag.get("stop"):
+                before = dict(self.results)
+                latency_offset = len(self._all_lat)
+                futures = []
+                interval = 1.0 / current_rps
+                next_submit = time.monotonic()
+                self.log(f"[capacity] Testing {current_rps:.1f} rps ({step_requests} requests) ...")
+
+                for _ in range(step_requests):
+                    if self.stop_flag.get("stop"):
+                        break
+                    remaining = next_submit - time.monotonic()
+                    if remaining > 0:
+                        time.sleep(remaining)
+                    request_index += 1
+                    futures.append(executor.submit(self._send_one, request_index))
+                    next_submit += interval
+
+                for future in as_completed(futures):
+                    future.result()
+
+                attempts = self.results["attempts"] - before["attempts"]
+                successes = self.results["success"] - before["success"]
+                failures = ((self.results["errors"] - before["errors"])
+                            + (self.results["rate_limited"] - before["rate_limited"]))
+                step_latencies = sorted(self._all_lat[latency_offset:])
+                p95 = self._percentile(step_latencies, 95)
+                error_pct = (failures / attempts * 100.0) if attempts else 100.0
+                success_pct = (successes / attempts * 100.0) if attempts else 0.0
+
+                reasons = []
+                if p95 > p95_limit_ms:
+                    reasons.append(f"p95 {p95:.0f}ms > {p95_limit_ms:.0f}ms")
+                if error_pct > error_limit_pct:
+                    reasons.append(f"errors {error_pct:.1f}% > {error_limit_pct:.1f}%")
+                if success_pct < success_min_pct:
+                    reasons.append(f"success {success_pct:.1f}% < {success_min_pct:.1f}%")
+
+                self.log(
+                    f"[capacity] {current_rps:.1f} rps result: p95={p95:.0f}ms "
+                    f"errors={error_pct:.1f}% success={success_pct:.1f}%"
+                )
+                if reasons:
+                    self._capacity_breaking_rps = current_rps
+                    self._capacity_breach_reason = "; ".join(reasons)
+                    self.log(f"[capacity] Breaking point: {current_rps:.1f} rps — {self._capacity_breach_reason}")
+                    self.update_stats(self._snapshot())
+                    break
+
+                self._capacity_safe_rps = current_rps
+                self.update_stats(self._snapshot())
+                current_rps = round(current_rps + step_rps, 3)
+
+        if self._capacity_breaking_rps is None and not self.stop_flag.get("stop"):
+            self.log(f"[capacity] SLO remained healthy through {self._capacity_safe_rps or 0:.1f} rps")
+        self.update_stats(self._snapshot())
+        self.log(
+            f"[capacity] Finished. safe={self._capacity_safe_rps} rps, "
+            f"breaking={self._capacity_breaking_rps} rps"
+        )
+        return self.results
+
+    # -------------------------------------------------------------------------
     # FUZZ mode: mutate payload fields with various fuzz values
     # -------------------------------------------------------------------------
     _SQL_PAYLOADS = [
@@ -961,7 +1053,7 @@ class APITester:
     def run_mode(self, mode: str, params: Dict = None):
         """Dispatch to the correct run method based on mode string.
 
-        Modes: 'load' (default), 'ramp', 'spike', 'soak', 'rate_probe',
+        Modes: 'load' (default), 'ramp', 'spike', 'soak', 'rate_probe', 'capacity',
                'fuzz', 'benchmark'.
         params is a dict of mode-specific keyword arguments."""
         p = params or {}
@@ -1002,6 +1094,17 @@ class APITester:
                 step_rps=float(p.get("step_rps", 1.0)),
                 step_requests=int(p.get("step_requests", 20)),
                 max_rps=float(p.get("max_rps", 100.0)),
+            )
+
+        if mode == "capacity":
+            return self.run_capacity(
+                start_rps=float(p.get("start_rps", 5.0)),
+                step_rps=float(p.get("step_rps", 5.0)),
+                step_requests=int(p.get("step_requests", 30)),
+                max_rps=float(p.get("max_rps", 200.0)),
+                p95_limit_ms=float(p.get("p95_limit_ms", 500.0)),
+                error_limit_pct=float(p.get("error_limit_pct", 1.0)),
+                success_min_pct=float(p.get("success_min_pct", 99.0)),
             )
 
         if mode == "fuzz":

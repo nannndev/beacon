@@ -7,6 +7,7 @@ import { HistoryCompare } from '../components/history/HistoryCompare'
 import { HistoryDetail as HistoryDetailView } from '../components/history/HistoryDetail'
 import { HistoryList } from '../components/history/HistoryList'
 import { useConfirmDialog } from '../components/ui/confirm-dialog'
+import { toast } from '../components/ui/toast'
 
 
 type HistoryClient = Pick<typeof api, 'listHistory' | 'historyDetail' | 'compareHistory' | 'updateHistory' | 'deleteHistory' | 'exportHistory' | 'reportHistory' | 'historyHealth' | 'rebuildHistory'>
@@ -29,6 +30,7 @@ export function HistoryPage({ projectId, onBack, initialRunId, client = api }: P
   const [loading, setLoading] = useState(true)
   const [health, setHealth] = useState<HistoryHealth | null>(null)
   const [resetText, setResetText] = useState('')
+  const [exporting, setExporting] = useState<'run' | 'report' | null>(null)
 
   const load = useCallback(async (append = false) => {
     setLoading(true)
@@ -69,19 +71,44 @@ export function HistoryPage({ projectId, onBack, initialRunId, client = api }: P
     setDetail(null)
     await load(false)
   }
-  const exportRun = async () => { if (!detail) return; const payload = await client.exportHistory(detail.id); const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = `beacon-run-${detail.id}.json`; link.click(); URL.revokeObjectURL(url) }
+  const exportRun = async () => {
+    if (!detail) return
+    setExporting('run')
+    const filename = `beacon-run-${detail.id}.json`
+    try {
+      const payload = await client.exportHistory(detail.id)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success(`Downloaded ${filename}`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not export this run')
+    } finally {
+      setExporting(null)
+    }
+  }
   const exportReport = async (format: 'html' | 'md' = 'html') => {
     if (!detail) return
+    setExporting('report')
+    const filename = `beacon-report-${detail.id}.${format}`
     try {
       const text = await client.reportHistory(detail.id, format)
       const type = format === 'md' ? 'text/markdown' : 'text/html'
       const url = URL.createObjectURL(new Blob([text], { type }))
       const link = document.createElement('a')
       link.href = url
-      link.download = `beacon-report-${detail.id}.${format}`
+      link.download = filename
       link.click()
       URL.revokeObjectURL(url)
-    } catch { /* report is auxiliary — a failure shouldn't disrupt the page */ }
+      toast.success(`Downloaded ${filename}`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not download this report')
+    } finally {
+      setExporting(null)
+    }
   }
 
   if (health && !health.available) {
@@ -112,7 +139,7 @@ export function HistoryPage({ projectId, onBack, initialRunId, client = api }: P
         </div>
         <section className={`${(detail || comparison) ? 'min-h-0' : 'hidden'} md:block`}>
           {(detail || comparison) && <button type="button" onClick={() => { setSelectedId(null); setCompareIds([]); setDetail(null); setComparison(null) }} className="history-action m-3 md:hidden"><ArrowLeft className="h-3.5 w-3.5" /> Back to runs</button>}
-          {comparison ? <HistoryCompare comparison={comparison} /> : detail ? <HistoryDetailView detail={detail} onPin={pin} onLabel={label} onExport={exportRun} onReport={exportReport} onDelete={remove} /> : <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"><div><HistoryIcon className="mx-auto mb-3 h-8 w-8 opacity-40" />Select a run to inspect metrics, samples, and ordered steps.</div></div>}
+          {comparison ? <HistoryCompare comparison={comparison} /> : detail ? <HistoryDetailView detail={detail} onPin={pin} onLabel={label} onExport={exportRun} onReport={exportReport} onDelete={remove} exporting={exporting} /> : <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"><div><HistoryIcon className="mx-auto mb-3 h-8 w-8 opacity-40" />Select a run to inspect metrics, samples, and ordered steps.</div></div>}
         </section>
       </div>
       {confirmationDialog}

@@ -552,7 +552,7 @@ claude mcp add beacon -- <path-to>/mcp_server
             </p>
           </Reveal>
 
-          <RevealGroup className="mx-auto mt-12 grid max-w-5xl gap-5 md:grid-cols-2" stagger={0.1}>
+          <RevealGroup className="mx-auto mt-12 grid max-w-7xl gap-5 md:grid-cols-3" stagger={0.1}>
             <RevealItem as="article" className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
               <div className="flex items-center gap-5">
                 <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-cyan-500/20 bg-cyan-500/10">
@@ -592,6 +592,28 @@ claude mcp add beacon -- <path-to>/mcp_server
               >
                 <Download className="h-4 w-4" />
                 Download DMG
+              </button>
+            </RevealItem>
+
+            <RevealItem as="article" className="group flex min-h-72 flex-col rounded-3xl border border-border/70 bg-card/90 p-7 transition-all hover:-translate-y-1 hover:border-cyan-500/35 hover:shadow-2xl md:p-9">
+              <div className="flex items-center gap-5">
+                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+                  <Terminal className="h-8 w-8 text-emerald-500" strokeWidth={1.8} />
+                </span>
+                <div>
+                  <div className="text-2xl font-semibold tracking-tight">Beacon for Linux</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Linux x64, AppImage &amp; DEB</div>
+                </div>
+              </div>
+              <div className="mt-6 text-sm leading-6 text-muted-foreground">
+                Portable AppImage for most distributions. A native DEB package is also available for Debian and Ubuntu.
+              </div>
+              <button
+                onClick={() => void startDownload('linux')}
+                className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"
+              >
+                <Download className="h-4 w-4" />
+                Download AppImage
               </button>
             </RevealItem>
           </RevealGroup>
@@ -735,7 +757,7 @@ function FeatureGallery() {
             <div className="mt-7 space-y-3 font-mono text-xs text-muted-foreground">
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>SEND</span><span className="text-foreground">Endpoint row / editor</span></div>
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>MODES</span><span className="text-foreground">Single / load / scenario</span></div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.3.6 desktop</span></div>
+              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.3.7 desktop</span></div>
             </div>
           </div>
         </Reveal>

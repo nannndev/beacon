@@ -8,6 +8,8 @@ export interface ChartPoint {
   elapsed: number
   latency: number
   rps: number
+  errorRate: number
+  errorCount: number
 }
 
 export function percentile(

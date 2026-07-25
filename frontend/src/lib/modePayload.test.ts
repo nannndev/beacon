@@ -33,4 +33,16 @@ describe('buildRunPayload', () => {
       benchmark_requests: 50, benchmark_warmup: 5,
     })).toEqual({ test_id: 'four', mode: 'benchmark', n_samples: 50, warmup: 5 })
   })
+
+  it('normalizes capacity SLO fields', () => {
+    expect(buildRunPayload('five', 'capacity', {
+      capacity_start_rps: 5, capacity_step_rps: 5, capacity_step_requests: 30,
+      capacity_max_rps: 100, capacity_p95_limit_ms: 500,
+      capacity_error_limit_pct: 1, capacity_success_min_pct: 99,
+    })).toEqual({
+      test_id: 'five', mode: 'capacity', start_rps: 5, step_rps: 5,
+      step_requests: 30, max_rps: 100, p95_limit_ms: 500,
+      error_limit_pct: 1, success_min_pct: 99,
+    })
+  })
 })

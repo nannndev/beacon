@@ -8,6 +8,7 @@ export type TestMode =
   | 'spike'
   | 'soak'
   | 'rate_probe'
+  | 'capacity'
   | 'fuzz'
   | 'benchmark'
   | 'scenario'
@@ -51,6 +52,16 @@ export interface RateProbeParams {
   probe_max_rps: number
 }
 
+export interface CapacityParams {
+  capacity_start_rps: number
+  capacity_step_rps: number
+  capacity_step_requests: number
+  capacity_max_rps: number
+  capacity_p95_limit_ms: number
+  capacity_error_limit_pct: number
+  capacity_success_min_pct: number
+}
+
 export type FuzzType = 'string' | 'number' | 'email' | 'sql' | 'xss' | 'empty' | 'long'
 
 export interface FuzzParams {
@@ -67,8 +78,14 @@ export interface BenchmarkParams {
 }
 
 export interface ScenarioParams {
-  // test_ids are filled in from the selected endpoints
   continue_on_error: boolean
+  virtual_users: number
+  iterations: number
+  ramp_up_s: number
+  think_time_ms: number
+  retries: number
+  retry_delay_ms: number
+  stop_failure_pct: number
 }
 
 export type ModeParams =
@@ -77,6 +94,7 @@ export type ModeParams =
   | { mode: 'spike';      params: SpikeParams }
   | { mode: 'soak';       params: SoakParams }
   | { mode: 'rate_probe'; params: RateProbeParams }
+  | { mode: 'capacity';   params: CapacityParams }
   | { mode: 'fuzz';       params: FuzzParams }
   | { mode: 'benchmark';  params: BenchmarkParams }
   | { mode: 'scenario';   params: ScenarioParams }
@@ -116,6 +134,15 @@ export const MODE_DEFAULTS: Record<TestMode, ModeParams['params']> = {
     probe_step_requests: 20,
     probe_max_rps: 100,
   } as RateProbeParams,
+  capacity: {
+    capacity_start_rps: 5,
+    capacity_step_rps: 5,
+    capacity_step_requests: 30,
+    capacity_max_rps: 200,
+    capacity_p95_limit_ms: 500,
+    capacity_error_limit_pct: 1,
+    capacity_success_min_pct: 99,
+  } as CapacityParams,
   fuzz: {
     fuzz_fields: [],
     fuzz_types: {},
@@ -129,6 +156,13 @@ export const MODE_DEFAULTS: Record<TestMode, ModeParams['params']> = {
   } as BenchmarkParams,
   scenario: {
     continue_on_error: false,
+    virtual_users: 1,
+    iterations: 1,
+    ramp_up_s: 0,
+    think_time_ms: 250,
+    retries: 0,
+    retry_delay_ms: 500,
+    stop_failure_pct: 100,
   } as ScenarioParams,
 }
 
@@ -187,6 +221,14 @@ export const MODE_INFO: ModeInfo[] = [
     color: 'amber',
   },
   {
+    id: 'capacity',
+    label: 'Capacity',
+    emoji: '🧭',
+    tagline: 'Find safe RPS',
+    description: 'Increase traffic until latency, errors, or success rate breaks your SLO. Reports safe capacity and the breaking point.',
+    color: 'teal',
+  },
+  {
     id: 'fuzz',
     label: 'Fuzz',
     emoji: '🔀',
@@ -207,8 +249,8 @@ export const MODE_INFO: ModeInfo[] = [
     id: 'scenario',
     label: 'Scenario',
     emoji: '🔗',
-    tagline: 'Chained endpoints',
-    description: 'Run endpoints in order as one flow. Variables extracted from each step carry forward.',
+    tagline: 'Virtual user journeys',
+    description: 'Run chained endpoints with isolated users, iterations, ramp-up, think time, retries, and per-step performance.',
     color: 'indigo',
   },
 ]

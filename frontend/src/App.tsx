@@ -20,7 +20,7 @@ import { CommandPalette, type Command } from './components/CommandPalette'
 import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
 import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
-import { ScenarioResultsDialog } from './components/ScenarioResultsDialog'
+import { ScenarioMonitor } from './components/ScenarioMonitor'
 import type { ScenarioResult, SendResponse } from './lib/api'
 import { useRun } from './hooks/useRun'
 import { api } from './lib/api'
@@ -29,7 +29,7 @@ import Onboarding from './pages/Onboarding'
 import { hasJsonPlaceholderSample } from './lib/sampleProject'
 import { useAppView } from './hooks/useAppView'
 import { HistoryPage } from './pages/HistoryPage'
-import type { ModeParams, TestMode } from './types/testModes'
+import { MODE_DEFAULTS, type ModeParams, type ScenarioParams, type TestMode } from './types/testModes'
 import { buildRunPayload } from './lib/modePayload'
 import { useConfirmDialog } from './components/ui/confirm-dialog'
 import { SendResponsePanel } from './components/SendResponsePanel'
@@ -86,7 +86,11 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
+  const [scenarioBusy, setScenarioBusy] = useState(false)
+  const [scenarioPlan, setScenarioPlan] = useState<{ params: ScenarioParams; startedAt: number } | null>(null)
+  const [scenarioEndpoints, setScenarioEndpoints] = useState<Array<{ id: string; name: string; method?: string }>>([])
   const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
+  const [exportingProject, setExportingProject] = useState(false)
   const [sendingTestId, setSendingTestId] = useState<string | null>(null)
   const [sendResult, setSendResult] = useState<{ endpointId: string; endpointName: string; response: SendResponse | null } | null>(null)
 
@@ -286,11 +290,18 @@ function App() {
       tone: 'action',
     })) return
     try {
+      const params = MODE_DEFAULTS.scenario as ScenarioParams
+      setScenarioResult(null)
+      setScenarioPlan({ params, startedAt: Date.now() })
+      setScenarioEndpoints(tests.map(({ id, name, method }) => ({ id, name, method })))
+      setScenarioBusy(true)
       const result = await api.runScenario(tests.map((ep) => ep.id), { continue_on_error: false })
       setScenarioResult(result)
       await fetchAll() // pick up any tokens the chain refreshed
     } catch (e: any) {
       toast.error(e?.message || 'Scenario failed')
+    } finally {
+      setScenarioBusy(false)
     }
   }
 
@@ -329,6 +340,7 @@ function App() {
   // ---- export / import (Postman-style) ---------------------------------
   const exportProject = async () => {
     if (!currentProject) return
+    setExportingProject(true)
     try {
       // Default export redacts secret values; the backend keeps variable names.
       const data = await api.exportProject(currentProjectId, false)
@@ -340,9 +352,11 @@ function App() {
       a.download = `${safeName}.project.json`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('Exported (secret values redacted)')
+      toast.success(`Downloaded ${safeName}.project.json · secrets redacted`)
     } catch (e: any) {
       toast.error(e?.message || 'Failed to export project')
+    } finally {
+      setExportingProject(false)
     }
   }
 
@@ -505,13 +519,28 @@ function App() {
 
     // Scenario mode: delegate to the existing runFolderAsScenario-style flow
     if (payload?.__scenario) {
-      const allIds = effectiveTests.map((t) => t.id)
+      const scenario = payload as unknown as ScenarioParams
       try {
-        const result = await api.runScenario(allIds, { continue_on_error: false })
+        setScenarioResult(null)
+        setScenarioPlan({ params: scenario, startedAt: Date.now() })
+        setScenarioEndpoints([{ id: ep.id, name: ep.name, method: ep.method }])
+        setScenarioBusy(true)
+        const result = await api.runScenario([ep.id], {
+          continue_on_error: scenario.continue_on_error,
+          virtual_users: scenario.virtual_users,
+          iterations: scenario.iterations,
+          ramp_up_s: scenario.ramp_up_s,
+          think_time_ms: scenario.think_time_ms,
+          retries: scenario.retries,
+          retry_delay: scenario.retry_delay_ms / 1000,
+          stop_failure_pct: scenario.stop_failure_pct,
+        })
         setScenarioResult(result)
         await fetchAll()
       } catch (e: any) {
         toast.error(e?.message || 'Scenario failed')
+      } finally {
+        setScenarioBusy(false)
       }
       return
     }
@@ -574,9 +603,24 @@ function App() {
       detail: 'Saved endpoint overrides take priority. Other endpoints use the global settings.',
     })) return
     if (mode === 'scenario') {
-      void api.runScenario(tests.map((ep) => ep.id), { continue_on_error: false })
+      const scenario = (modeParams || MODE_DEFAULTS.scenario) as ScenarioParams
+      setScenarioResult(null)
+      setScenarioPlan({ params: scenario, startedAt: Date.now() })
+      setScenarioEndpoints(tests.map(({ id, name, method }) => ({ id, name, method })))
+      setScenarioBusy(true)
+      void api.runScenario(tests.map((ep) => ep.id), {
+        continue_on_error: scenario.continue_on_error,
+        virtual_users: scenario.virtual_users,
+        iterations: scenario.iterations,
+        ramp_up_s: scenario.ramp_up_s,
+        think_time_ms: scenario.think_time_ms,
+        retries: scenario.retries,
+        retry_delay: scenario.retry_delay_ms / 1000,
+        stop_failure_pct: scenario.stop_failure_pct,
+      })
         .then((result) => setScenarioResult(result))
         .catch((e: any) => toast.error(e?.message || 'Scenario failed'))
+        .finally(() => setScenarioBusy(false))
       return
     }
     run.startAll(
@@ -699,6 +743,7 @@ function App() {
           onProjectSettings={() => setShowProjectSettings(true)}
           onImport={() => setShowImportDialog(true)}
           onExport={exportProject}
+          exporting={exportingProject}
           onOpenMcp={() => appView.openMcp()}
           onOpenSettings={() => setShowSettings(true)}
         />
@@ -729,6 +774,15 @@ function App() {
                 onRunAll={runAll}
                 onStop={run.stop}
                 selectedTestId={selectedTestId}
+                scenarioBusy={scenarioBusy}
+              />
+
+              <ScenarioMonitor
+                busy={scenarioBusy}
+                plan={scenarioPlan}
+                result={scenarioResult}
+                endpoints={scenarioEndpoints}
+                onClear={() => { setScenarioResult(null); setScenarioPlan(null); setScenarioEndpoints([]) }}
               />
 
               <EndpointTable
@@ -793,7 +847,6 @@ function App() {
       <ProjectSettingsDialog open={showProjectSettings} onOpenChange={setShowProjectSettings} project={currentProject} onSave={saveProjectSettings} onDelete={deleteProject} />
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />
       <CommandPalette open={showPalette} onOpenChange={setShowPalette} commands={paletteCommands} />
-      <ScenarioResultsDialog result={scenarioResult} onClose={() => setScenarioResult(null)} />
       {confirmationDialog}
     </div>
   )

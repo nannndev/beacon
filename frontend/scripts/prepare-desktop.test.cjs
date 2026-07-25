@@ -23,6 +23,14 @@ test('defines a macOS desktop build that emits an app and DMG', () => {
   );
 });
 
+test('defines a Linux desktop build that emits deb and AppImage packages', () => {
+  const packageJson = require('../package.json');
+  assert.match(
+    packageJson.scripts['desktop:build:linux'],
+    /desktop:prepare.*tauri:build -- --bundles deb,appimage/,
+  );
+});
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

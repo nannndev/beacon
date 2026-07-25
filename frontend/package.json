@@ -1,7 +1,7 @@
 {
   "name": "security-tools-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.3.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "tauri:build": "tauri build",
     "desktop:prepare": "node scripts/prepare-desktop.cjs",
     "desktop:build": "npm run desktop:prepare && npm run tauri:build",
-    "desktop:build:mac": "npm run desktop:prepare && npm run tauri:build -- --bundles app,dmg"
+    "desktop:build:mac": "npm run desktop:prepare && npm run tauri:build -- --bundles app,dmg",
+    "desktop:build:linux": "npm run desktop:prepare && npm run tauri:build -- --bundles deb,appimage"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.19",

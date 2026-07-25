@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { RunStats } from '../components/LiveMonitor'
 import { RunResponse } from '../types'
+import { toast } from '../components/ui/toast'
 
 export type ExportFormat = 'json' | 'csv' | 'logs'
 
@@ -20,6 +22,7 @@ function downloadBlob(content: string, filename: string, mimeType: string) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+  return filename
 }
 
 function slugify(name: string): string {
@@ -44,7 +47,7 @@ function exportJson(payload: ExportPayload, filename: string) {
     responses: payload.responses,
     logs: payload.logs,
   }
-  downloadBlob(JSON.stringify(data, null, 2), filename + '.json', 'application/json')
+  return downloadBlob(JSON.stringify(data, null, 2), filename + '.json', 'application/json')
 }
 
 // ---- CSV export ------------------------------------------------------------
@@ -78,7 +81,7 @@ function exportCsv(payload: ExportPayload, filename: string) {
     headers.join(','),
     ...rows.map((row) => row.map(escapeCsv).join(',')),
   ]
-  downloadBlob(lines.join('\r\n'), filename + '.csv', 'text/csv;charset=utf-8;')
+  return downloadBlob(lines.join('\r\n'), filename + '.csv', 'text/csv;charset=utf-8;')
 }
 
 // ---- Logs export -----------------------------------------------------------
@@ -92,26 +95,31 @@ function exportLogs(payload: ExportPayload, filename: string) {
     '',
   ].join('\n')
 
-  downloadBlob(header + payload.logs.join('\n'), filename + '.log', 'text/plain')
+  return downloadBlob(header + payload.logs.join('\n'), filename + '.log', 'text/plain')
 }
 
 // ---- Public hook -----------------------------------------------------------
 
 export function useExport() {
-  const exportRun = (format: ExportFormat, payload: ExportPayload) => {
+  const [exporting, setExporting] = useState<ExportFormat | null>(null)
+  const exportRun = async (format: ExportFormat, payload: ExportPayload) => {
+    setExporting(format)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     const base = slugify(payload.runName ?? 'run') + '_' + timestamp()
-    switch (format) {
-      case 'json':
-        exportJson(payload, base)
-        break
-      case 'csv':
-        exportCsv(payload, base)
-        break
-      case 'logs':
-        exportLogs(payload, base)
-        break
+    try {
+      let filename: string
+      switch (format) {
+        case 'json': filename = exportJson(payload, base); break
+        case 'csv': filename = exportCsv(payload, base); break
+        case 'logs': filename = exportLogs(payload, base); break
+      }
+      toast.success(`Downloaded ${filename}`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not export this run')
+    } finally {
+      setExporting(null)
     }
   }
 
-  return { exportRun }
+  return { exportRun, exporting }
 }

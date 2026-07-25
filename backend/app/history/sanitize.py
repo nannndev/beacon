@@ -26,6 +26,9 @@ RUN_CONFIG_KEYS = {
     "step_rps",
     "step_requests",
     "max_rps",
+    "p95_limit_ms",
+    "error_limit_pct",
+    "success_min_pct",
     "n_samples",
     "warmup",
 }

@@ -14,7 +14,7 @@ import {
   type StatsSnapshot,
 } from './liveMonitorMetrics'
 import { RunResponse } from '../types'
-import { Copy, Check, Play, Pause, Download, ChevronDown, History } from 'lucide-react'
+import { Copy, Check, Play, Pause, Download, ChevronDown, History, Loader2 } from 'lucide-react'
 import { useExport, ExportFormat } from '../hooks/useExport'
 
 export interface RunStats {
@@ -27,6 +27,9 @@ export interface RunStats {
   latency_ms?: { avg: number; min: number; max: number; last: number }
   elapsed_s?: number
   rps?: number
+  capacity_safe_rps?: number | null
+  capacity_breaking_rps?: number | null
+  capacity_breach_reason?: string | null
 }
 
 export type RunStatus = 'idle' | 'running' | 'finished' | 'stopped'
@@ -71,7 +74,7 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
   const [chartExpanded, setChartExpanded] = useState(false)
   const previousSnapshotRef = useRef<StatsSnapshot | null>(null)
 
-  const { exportRun } = useExport()
+  const { exportRun, exporting } = useExport()
 
   // Auto-scroll logs
   useEffect(() => {
@@ -124,8 +127,10 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
       elapsed,
       latency: last,
       rps: instantRps,
-    }, 180))
-  }, [stats.attempts, stats.elapsed_s, stats.latency_ms?.last, stats.rps, status])
+      errorRate: stats.attempts > 0 ? ((stats.errors + stats.rate_limited) / stats.attempts) * 100 : 0,
+      errorCount: stats.errors + stats.rate_limited,
+    }, 3600))
+  }, [stats.attempts, stats.elapsed_s, stats.latency_ms?.last, stats.rps, stats.errors, stats.rate_limited, status])
 
   const selected = responses.find((r) => r.attempt === selectedAttempt) ?? null
   const successRate = stats.attempts > 0 ? Math.round((stats.success / stats.attempts) * 100) : 0
@@ -166,9 +171,9 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
     return () => document.removeEventListener('mousedown', handler)
   }, [showExportMenu])
 
-  const handleExport = (format: ExportFormat) => {
+  const handleExport = async (format: ExportFormat) => {
     setShowExportMenu(false)
-    exportRun(format, { responses, logs, stats, runName: runningName })
+    await exportRun(format, { responses, logs, stats, runName: runningName })
   }
 
   const canExport = responses.length > 0 || logs.length > 0
@@ -196,11 +201,11 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
               variant="outline"
               size="sm"
               className="gap-1.5 h-7 px-2.5 text-xs"
-              disabled={!canExport || status === 'running'}
+              disabled={!canExport || status === 'running' || exporting != null}
               onClick={() => setShowExportMenu((v) => !v)}
             >
-              <Download className="h-3 w-3" />
-              Export
+              {exporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+              {exporting ? 'Preparing…' : 'Export'}
               <ChevronDown className={`h-3 w-3 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
             </Button>
 
@@ -276,20 +281,34 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
         </div>
 
         {showSummary && (
-          <div className={`grid gap-2 mb-3 ${
-            chartExpanded ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(220px,1fr)]'
-          }`}>
+          <div className="space-y-2 mb-3">
+            {(stats.capacity_safe_rps != null || stats.capacity_breaking_rps != null) && (
+              <div className="grid gap-2 rounded-xl border border-teal-500/25 bg-teal-500/5 p-3 sm:grid-cols-[1fr_1fr_2fr]">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Safe capacity</p>
+                  <p className="mt-1 font-mono text-xl font-semibold text-teal-500">{stats.capacity_safe_rps == null ? 'Below start' : `${stats.capacity_safe_rps.toFixed(1)} RPS`}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Breaking point</p>
+                  <p className="mt-1 font-mono text-xl font-semibold text-red-500">{stats.capacity_breaking_rps == null ? 'Not reached' : `${stats.capacity_breaking_rps.toFixed(1)} RPS`}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">SLO verdict</p>
+                  <p className="mt-1 text-xs leading-5">{stats.capacity_breach_reason || 'All configured SLO targets remained healthy.'}</p>
+                </div>
+              </div>
+            )}
             <OperationsChart
               points={chartPoints}
               p95={p95}
               expanded={chartExpanded}
               onToggleExpanded={() => setChartExpanded((value) => !value)}
             />
-            <OutcomePanel
+            {!chartExpanded && <OutcomePanel
               codes={stats.status_codes || {}}
               latest={latestResponse}
               slowest={slowestResponse}
-            />
+            />}
           </div>
         )}
 

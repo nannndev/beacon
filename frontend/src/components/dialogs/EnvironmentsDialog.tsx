@@ -5,7 +5,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Badge } from '../ui/badge'
 import { KVEditor } from '../KVEditor'
-import { Copy, Download, Plus, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from '../ui/toast'
 import { Project, Environment } from '../../types'
 
@@ -20,6 +20,7 @@ interface Props {
 export function EnvironmentsDialog({ open, onOpenChange, project, activeEnvId, onSave }: Props) {
   const [envs, setEnvs] = useState<Environment[]>([])
   const [sel, setSel] = useState(0)
+  const [exporting, setExporting] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -68,14 +69,24 @@ export function EnvironmentsDialog({ open, onOpenChange, project, activeEnvId, o
     })
   }
 
-  const exportEnvironments = () => {
-    const blob = new Blob([JSON.stringify({ version: 1, environments: envs }, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${(project?.name || 'beacon').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-environments.json`
-    link.click()
-    URL.revokeObjectURL(url)
+  const exportEnvironments = async () => {
+    setExporting(true)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    try {
+      const blob = new Blob([JSON.stringify({ version: 1, environments: envs }, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const filename = `${(project?.name || 'beacon').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-environments.json`
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success(`Downloaded ${filename}`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not export environments')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const importEnvironments = async (file?: File) => {
@@ -109,7 +120,7 @@ export function EnvironmentsDialog({ open, onOpenChange, project, activeEnvId, o
             <div className="flex items-center gap-1">
               <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => void importEnvironments(e.target.files?.[0])} />
               <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => importRef.current?.click()}><Upload className="h-3.5 w-3.5" /> Import</Button>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" disabled={envs.length === 0} onClick={exportEnvironments}><Download className="h-3.5 w-3.5" /> Export</Button>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" disabled={envs.length === 0 || exporting} onClick={() => void exportEnvironments()}>{exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} {exporting ? 'Preparing…' : 'Export'}</Button>
             </div>
           </div>
         </DialogHeader>

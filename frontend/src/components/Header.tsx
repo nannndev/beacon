@@ -1,6 +1,6 @@
 import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
-import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal } from 'lucide-react'
+import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal, Loader2 } from 'lucide-react'
 import { Project } from '../types'
 import { BrandMark } from './BrandMark'
 
@@ -9,11 +9,12 @@ interface Props {
   onProjectSettings: () => void
   onImport: () => void
   onExport: () => void
+  exporting?: boolean
   onOpenMcp: () => void
   onOpenSettings: () => void
 }
 
-export function Header({ currentProject, onProjectSettings, onImport, onExport, onOpenMcp, onOpenSettings }: Props) {
+export function Header({ currentProject, onProjectSettings, onImport, onExport, exporting = false, onOpenMcp, onOpenSettings }: Props) {
   return (
     <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background/95 backdrop-blur">
       <div className="flex items-center gap-3">
@@ -45,12 +46,12 @@ export function Header({ currentProject, onProjectSettings, onImport, onExport, 
             variant="ghost"
             size="sm"
             className="h-8 gap-1.5 font-medium"
-            disabled={!currentProject}
+            disabled={!currentProject || exporting}
             onClick={onExport}
             title="Export this project to a .json file"
           >
-            <Download className="h-3.5 w-3.5 opacity-70" />
-            <span className="hidden sm:inline">Export</span>
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5 opacity-70" />}
+            <span className="hidden sm:inline">{exporting ? 'Preparing…' : 'Export'}</span>
           </Button>
         </div>
 

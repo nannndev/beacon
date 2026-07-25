@@ -40,7 +40,7 @@ export function HistoryList({ runs, selectedId, compareIds, filters, loading, ne
         <div className="grid grid-cols-2 gap-2">
           <select value={filters.mode || ''} onChange={(event) => onFilters({ ...filters, mode: event.target.value || undefined })} className="h-9 rounded-lg border border-border bg-background px-2 text-xs">
             <option value="">All modes</option>
-            {['load', 'ramp', 'spike', 'soak', 'rate_probe', 'fuzz', 'benchmark', 'scenario'].map((mode) => <option key={mode} value={mode}>{mode.replace('_', ' ')}</option>)}
+            {['load', 'ramp', 'spike', 'soak', 'rate_probe', 'capacity', 'fuzz', 'benchmark', 'scenario'].map((mode) => <option key={mode} value={mode}>{mode.replace('_', ' ')}</option>)}
           </select>
           <select value={filters.status || ''} onChange={(event) => onFilters({ ...filters, status: (event.target.value || undefined) as any })} className="h-9 rounded-lg border border-border bg-background px-2 text-xs">
             <option value="">All statuses</option>

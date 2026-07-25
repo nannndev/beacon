@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Clock, HardDrive, Plus, AlertTriangle, Braces, FileJson, BadgeCheck, Globe2, Route, DatabaseZap, RadioTower, ScanLine, Copy, Check, ChevronDown, ChevronRight, FoldVertical, UnfoldVertical } from 'lucide-react'
-import type { SendResponse } from '../lib/api'
+import type { AssertionResult, SendResponse } from '../lib/api'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -62,6 +62,80 @@ function statusTone(status?: number): string {
   if (status >= 300 && status < 400) return 'bg-sky-500/15 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/30'
   if (status >= 400 && status < 500) return 'bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30'
   return 'bg-red-500/15 text-red-600 dark:text-red-400 ring-1 ring-red-500/30'
+}
+
+function assertionTitle(assertion: AssertionResult): string {
+  if (assertion.message) return assertion.message.split('; received')[0]
+  return `${assertion.type} ${assertion.op} ${JSON.stringify(assertion.expected)}`
+}
+
+function assertionValue(assertion: AssertionResult): string {
+  if (assertion.actual === undefined || assertion.actual === null) return assertion.ok ? 'passed' : 'not found'
+  const value = typeof assertion.actual === 'string' ? assertion.actual : JSON.stringify(assertion.actual)
+  return assertion.type === 'time_ms' ? `${value} ms` : value
+}
+
+function AssertionResultsPanel({ assertions }: { assertions: AssertionResult[] }) {
+  const passed = assertions.reduce((total, assertion) => total + Number(assertion.ok), 0)
+  const failed = assertions.length - passed
+
+  return (
+    <aside className="min-h-0 border-t border-border bg-muted/10 lg:border-l lg:border-t-0" aria-label="Assertion results">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <BadgeCheck className="h-4 w-4 text-cyan-500" />
+        <h3 className="text-sm font-bold">Assertions</h3>
+        <span className="font-mono text-xs text-muted-foreground">({passed}/{assertions.length})</span>
+      </div>
+      <div className="max-h-[460px] overflow-auto p-3">
+        <div className="mb-3 flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/25 bg-emerald-500/12 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+            <Check className="h-3.5 w-3.5" /> {passed} passed
+          </span>
+          {failed > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-bold text-red-600 dark:text-red-400">
+              <AlertTriangle className="h-3.5 w-3.5" /> {failed} failed
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {assertions.map((assertion, index) => (
+            <details
+              key={`${assertion.type}-${index}`}
+              className={`group overflow-hidden rounded-lg border transition-colors ${
+                assertion.ok
+                  ? 'border-border bg-background/55 hover:border-emerald-500/30'
+                  : 'border-red-500/30 bg-red-500/[0.06] hover:border-red-500/50'
+              }`}
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-2.5 text-xs [&::-webkit-details-marker]:hidden">
+                <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+                  assertion.ok ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'
+                }`}>
+                  {assertion.ok ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3 w-3" />}
+                </span>
+                <span className={`min-w-0 flex-1 truncate font-medium ${assertion.ok ? '' : 'text-red-600 dark:text-red-300'}`} title={assertionTitle(assertion)}>
+                  {assertionTitle(assertion)}
+                </span>
+                <span className={`max-w-28 truncate font-mono font-semibold ${assertion.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`} title={assertionValue(assertion)}>
+                  {assertionValue(assertion)}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-border/70 bg-muted/20 px-3 py-2 font-mono text-[10px]">
+                <dt className="text-muted-foreground">Rule</dt>
+                <dd className="break-all">{assertion.type} {assertion.op}</dd>
+                <dt className="text-muted-foreground">Expected</dt>
+                <dd className="break-all">{JSON.stringify(assertion.expected)}</dd>
+                <dt className="text-muted-foreground">Actual</dt>
+                <dd className={assertion.ok ? 'break-all' : 'break-all text-red-500'}>{JSON.stringify(assertion.actual)}</dd>
+              </dl>
+            </details>
+          ))}
+        </div>
+      </div>
+    </aside>
+  )
 }
 
 export default function ResponseInspector({ response, loading, onExtract, extractDestinationName, extractors }: Props) {
@@ -190,6 +264,8 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
   const headers = response.headers || {}
   const kind = bodyKind(response.content_type, response.json != null)
   const canToggleRaw = kind === 'json' || kind === 'xml' || kind === 'html'
+  const assertions = response.assertions || []
+  const showAssertionsSplit = assertions.length > 0 && (tab === 'body' || tab === 'assertions')
 
   return (
     <section className="rounded-xl border border-border bg-card">
@@ -304,8 +380,9 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
         )}
       </div>
 
-      <div className="max-h-[460px] overflow-auto p-4">
-        {tab === 'body' && (() => {
+      <div className={showAssertionsSplit ? 'grid min-h-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]' : 'max-h-[460px] overflow-auto p-4'}>
+        <div className={showAssertionsSplit ? 'max-h-[460px] min-w-0 overflow-auto p-4' : ''}>
+        {(tab === 'body' || tab === 'assertions') && (() => {
           if (kind === 'json' && response.json != null && !raw)
             return <JsonView value={response.json} path={[]} onCapture={onExtract ? setCapture : undefined} linkedPaths={linkedPaths} command={treeCommand} />
           if ((kind === 'xml' || kind === 'html') && !raw)
@@ -331,27 +408,8 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
             ))}
           </ul>
         )}
-        {tab === 'assertions' && (
-          <ul className="space-y-1.5 text-xs">
-            {(response.assertions || []).map((a, i) => (
-              <li key={i} className="flex items-start gap-2 font-mono">
-                <span className={a.ok ? 'text-emerald-500' : 'text-red-500'}>{a.ok ? '✓' : '✗'}</span>
-                <span className="break-all">
-                  {a.message ? (
-                    <span className={a.ok ? '' : 'text-red-500'}>{a.message}</span>
-                  ) : <>
-                  <span className="font-semibold">{a.type}</span>{' '}
-                  <span className="text-muted-foreground">{a.op}</span>{' '}
-                  <span>{JSON.stringify(a.expected)}</span>
-                  {!a.ok && a.actual !== undefined && (
-                    <span className="text-red-500"> — got {JSON.stringify(a.actual)}</span>
-                  )}
-                  </>}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        </div>
+        {showAssertionsSplit && <AssertionResultsPanel assertions={assertions} />}
       </div>
       <Dialog open={capture !== null} onOpenChange={(open) => { if (!open && !capturing) setCapture(null) }}>
         <DialogContent className="sm:max-w-[520px]">

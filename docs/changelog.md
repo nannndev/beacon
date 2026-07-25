@@ -3,6 +3,32 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.3.7] - 2026-07-25
+
+### Added
+
+- Capacity testing that increases traffic until latency, error-rate, or success-rate limits are breached, then reports the last safe throughput.
+- Virtual-user Scenario testing with iterations, ramp-up, think time, retries, isolated variables, and beginner-friendly traffic presets.
+- An inline Scenario journey monitor showing the running state, elapsed time, execution scope, endpoint path, per-step results, and bottlenecks without a modal.
+- Expandable live test charts, richer response-outcome metrics, and focused chart inspection.
+- Linux desktop packaging for `.deb` and AppImage alongside Windows and macOS releases.
+
+### Improved
+
+- Test-mode values now persist independently across mode switches and app restarts, with a one-click reset to recommended defaults.
+- Scenario actions now clearly distinguish the selected endpoint, the entire project journey, and folder-only chains.
+- Response assertions have clearer visual summaries, collapsible JSON keys, and clipboard shortcuts.
+- Export and download actions now show progress and completion feedback.
+- Run History has improved filtering, details, comparisons, and chart metrics.
+
+### Fixed
+
+- Scenario `Run` no longer silently executes every endpoint while displaying the selected endpoint as its target.
+- Endpoint, folder, and project reordering now preserves the dropped order reliably.
+- Desktop release validation now verifies Windows, macOS, and Linux artifacts before publishing.
+
+[Compare 0.3.6 → 0.3.7](https://github.com/nannndev/beacon/compare/v0.3.6...v0.3.7)
+
 ## [0.3.6] - 2026-07-24
 
 ### Improved

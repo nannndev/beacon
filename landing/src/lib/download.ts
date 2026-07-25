@@ -11,7 +11,8 @@ export function detectPlatform(): Platform {
   const ua = navigator.userAgent || ''
   if (/Win/i.test(ua)) return 'windows'
   if (/Mac/i.test(ua)) return 'mac'
-  if (/Linux|X11|Android/i.test(ua)) return 'linux'
+  if (/Android/i.test(ua)) return 'other'
+  if (/Linux|X11/i.test(ua)) return 'linux'
   return 'other'
 }
 
@@ -30,7 +31,10 @@ export async function latestInstallerUrl(platform: Platform, signal?: AbortSigna
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { signal })
     if (!res.ok) return null
     const release = await res.json()
-    const asset = (release.assets || []).find((a: any) => matcher.test(a.name || ''))
+    const assets = (release.assets || []).filter((a: any) => matcher.test(a.name || ''))
+    const asset = platform === 'linux'
+      ? assets.find((a: any) => /\.appimage$/i.test(a.name || '')) ?? assets[0]
+      : assets[0]
     return asset?.browser_download_url ?? null
   } catch {
     return null

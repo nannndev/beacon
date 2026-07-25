@@ -3,7 +3,7 @@ name: Release Desktop App
 # Creates a clean GitHub Release containing only the desktop installers.
 # - Triggered by version tags (v0.1.0, v1.2.3, ...) → full published release
 # - workflow_dispatch: build artifacts always; check "publish_release" + provide version to create a (draft) GitHub Release
-# - Windows x64 NSIS + unsigned macOS Apple Silicon DMG builds
+# - Windows x64 NSIS + unsigned macOS Apple Silicon DMG + Linux x64 DEB/AppImage builds
 # - Version from tag or input is synced into tauri.conf.json + Cargo.toml before build
 # - A dedicated release job collects artifacts and publishes a single clean release
 # - After merging a PR, use the manual dispatch (or push a tag) to publish the setup.exe etc.
@@ -223,10 +223,109 @@ jobs:
             frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz
             frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
 
+  build-linux:
+    runs-on: ubuntu-22.04
+    env:
+      BEACON_PYTHON: python3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux desktop system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+
+      - name: Install desktop backend dependencies
+        working-directory: backend
+        run: python3 -m pip install -r requirements-desktop.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine and sync release version
+        working-directory: frontend/src-tauri
+        shell: bash
+        run: |
+          set -e
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION=$(node -e 'const c=require("./tauri.conf.json"); console.log(c.version || "0.0.0")')
+          fi
+          node -e '
+            const fs = require("fs");
+            const p = "tauri.conf.json";
+            const conf = JSON.parse(fs.readFileSync(p, "utf8"));
+            conf.version = process.argv[1];
+            fs.writeFileSync(p, JSON.stringify(conf, null, 2) + "\n");
+          ' "$VERSION"
+          node -e '
+            const fs = require("fs");
+            const p = "Cargo.toml";
+            let toml = fs.readFileSync(p, "utf8");
+            toml = toml.replace(/^version\s*=\s*"[^"]*"/m, `version = "${process.argv[1]}"`);
+            fs.writeFileSync(p, toml);
+          ' "$VERSION"
+
+      - name: Build Linux DEB and AppImage
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm run desktop:build:linux
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: beacon-linux-x64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            frontend/src-tauri/target/release/bundle/deb/*.deb
+            frontend/src-tauri/target/release/bundle/appimage/*.AppImage
+            frontend/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
+            frontend/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
+
   # Dedicated job: collects the verified Windows installer and creates one clean release.
   # This ensures we attach only the installers (no source code in the main assets).
   release:
-    needs: [build, build-macos]
+    needs: [build, build-macos, build-linux]
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')
     runs-on: ubuntu-latest
     permissions:
@@ -290,6 +389,9 @@ jobs:
           MAC=$(find artifacts -name '*.app.tar.gz' | head -1)
           [ -n "$MAC" ] && add_platform "darwin-aarch64" "$MAC"
 
+          LINUX=$(find artifacts -name '*.AppImage.tar.gz' | head -1)
+          [ -n "$LINUX" ] && add_platform "linux-x86_64" "$LINUX"
+
           if [ "$PLATFORMS" = "{}" ]; then
             echo "No signed updater artifacts found — skipping latest.json."
             exit 0
@@ -336,14 +438,26 @@ jobs:
             (Alternatively: try to open it, then go to System Settings → Privacy &
             Security → "Open Anyway".)
 
-            After the first install, Beacon updates itself in-app on both platforms.
+            **Linux (x64)** — download the `.AppImage`, make it executable, and run it:
+
+            ```bash
+            chmod +x Beacon_*.AppImage
+            ./Beacon_*.AppImage
+            ```
+
+            Debian and Ubuntu users can alternatively install the `.deb` package.
+
+            After the first install, Beacon updates itself in-app on all supported platforms.
 
             > ⚠️ The "Source code (zip)" and "Source code (tar.gz)" files below are **automatically generated by GitHub**.
             > Use the `.exe`/`.dmg` installer for the full desktop experience.
           files: |
             artifacts/**/*.exe
             artifacts/**/*.dmg
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
             artifacts/**/*.app.tar.gz
+            artifacts/**/*.AppImage.tar.gz
             artifacts/latest.json
 
       # Announce inline here rather than via a separate `release: published`

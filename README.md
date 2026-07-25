@@ -2,7 +2,7 @@
 
 **Beacon** is a modern API workspace for building requests, chaining API flows, validating responses, and running authorized load and rate-limit tests.
 
-Built with React, TypeScript, Vite, shadcn/ui, FastAPI, and an optional Tauri desktop shell.
+Built with React, TypeScript, Vite, shadcn/ui, FastAPI, and an optional Tauri desktop shell for Windows, macOS, and Linux.
 
 ![Beacon API workspace and testing features](./assets/beacon-feature-banner.png)
 
@@ -52,8 +52,8 @@ Keep base URLs and variables separate across development, staging, and other env
 - Per-endpoint authentication, headers, cookies, extractors, and run overrides
 - Single Send with a structured Response Inspector and click-to-extract JSON fields
 - Assertions for status, response time, body content, JSON fields, and headers
-- Ordered scenarios with extractor-based state chaining and retries
-- Load, Ramp, Spike, Soak, Rate Probe, Fuzz, Benchmark, and Scenario test modes
+- Ordered scenarios with extractor-based state chaining, isolated virtual users, iterations, ramp-up, think time, retries, and per-step bottleneck metrics
+- Load, Ramp, Spike, Soak, Rate Probe, Capacity, Fuzz, Benchmark, and Scenario test modes
 - Live attempts, successes, rate limits, errors, response logs, latency trend, and exportable results
 - Local Run History with pinning, filters, expandable charts, and semantic two-run comparison
 - Desktop app via Tauri with bundled FastAPI and MCP sidecars
@@ -129,3 +129,7 @@ pnpm run docs:preview
 ## Security
 
 Use Beacon only against systems you own or are explicitly authorized to test. Local configuration can contain live URLs, cookies, bearer tokens, and other credentials; `config/tests.json` is ignored by Git and must remain private.
+
+## License
+
+Beacon is open-source software licensed under the [MIT License](./LICENSE).

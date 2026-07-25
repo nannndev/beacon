@@ -137,6 +137,40 @@ class HistoryRunnerIntegrationTests(unittest.TestCase):
         self.assertEqual(len(history.finished_steps), 2)
         self.assertEqual(history.finished[0][1], "completed")
 
+    def test_virtual_user_scenario_isolates_configs_and_aggregates_steps(self):
+        history = RecordingHistory()
+        fake_store = target_store(history)
+        config_ids = set()
+
+        class IsolatedTester(FakeTester):
+            def __init__(self, test, config, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.test = test
+                self.config = config
+                config_ids.add(id(config))
+
+            def send_once(self, **kwargs):
+                self.config.variables["access_token"] = f"token-{id(self.config)}"
+                return {"ok": True, "status": 200, "time_ms": 12, "extracted": ["access_token"]}
+
+        with (
+            patch.object(runs, "store", fake_store),
+            patch.object(runs, "APITester", IsolatedTester),
+        ):
+            result = runs.run_scenario({
+                "test_ids": ["e1", "e2"],
+                "virtual_users": 2,
+                "iterations": 2,
+                "think_time_ms": 0,
+            })
+
+        self.assertEqual(len(config_ids), 2)
+        self.assertEqual(result["total_flows"], 4)
+        self.assertEqual(result["successful_flows"], 4)
+        self.assertEqual(result["steps"][0]["attempts"], 4)
+        self.assertEqual(result["steps"][0]["success_rate"], 100.0)
+        self.assertEqual(fake_store.current_config.variables, {})
+
     def test_mcp_run_is_recorded_but_mcp_send_is_not(self):
         history = RecordingHistory()
         fake_store = target_store(history)
