@@ -1,11 +1,12 @@
 import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
-import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal, Loader2 } from 'lucide-react'
-import { Project } from '../types'
+import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal, Loader2, Radio } from 'lucide-react'
+import { Project, SharingStatus } from '../types'
 import { BrandMark } from './BrandMark'
 
 interface Props {
   currentProject?: Project
+  sharingStatus?: SharingStatus | null
   onProjectSettings: () => void
   onImport: () => void
   onExport: () => void
@@ -14,7 +15,7 @@ interface Props {
   onOpenSettings: () => void
 }
 
-export function Header({ currentProject, onProjectSettings, onImport, onExport, exporting = false, onOpenMcp, onOpenSettings }: Props) {
+export function Header({ currentProject, sharingStatus, onProjectSettings, onImport, onExport, exporting = false, onOpenMcp, onOpenSettings }: Props) {
   return (
     <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background/95 backdrop-blur">
       <div className="flex items-center gap-3">
@@ -26,7 +27,19 @@ export function Header({ currentProject, onProjectSettings, onImport, onExport, 
               <Activity className="h-3 w-3 animate-soft-pulse" /> Ready
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">{currentProject?.name || 'No project selected'} / illuminate every API call</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">{currentProject?.name || 'No project selected'} / illuminate every API call</p>
+            {sharingStatus?.sharing_enabled ? (
+              <button
+                type="button"
+                onClick={onProjectSettings}
+                className="inline-flex items-center gap-1 rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-blue-600 transition-colors hover:bg-blue-500/15 dark:text-blue-400"
+                title="This project source is shared locally"
+              >
+                <Radio className="h-2.5 w-2.5" /> Shared r{sharingStatus.revision}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

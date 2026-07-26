@@ -250,6 +250,7 @@ fn main() {
                 .expect("backend sidecar not configured")
                 .env("BEACON_PORT", port.to_string())
                 .env("BEACON_DATA_DIR", data_dir.to_string_lossy().to_string())
+                .env("BEACON_ALLOW_INSECURE_LAN", if cfg!(debug_assertions) { "1" } else { "0" })
                 .args(["--port", &port.to_string()]);
 
             let (mut _rx, child) = sidecar.spawn().expect("failed to spawn backend sidecar");

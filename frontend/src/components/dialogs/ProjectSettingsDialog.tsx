@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
-import { Trash2, Send, Loader2, CheckCircle2, AlertTriangle, BellOff } from 'lucide-react'
+import { Trash2, Send, Loader2, CheckCircle2, AlertTriangle, BellOff, Radio, ShieldCheck, Laptop, History, Copy, RefreshCw, Users, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '../../lib/api'
 import { toast } from '../ui/toast'
-import { Project, ProjectNotifications, NotifyMode } from '../../types'
+import { Project, ProjectNotifications, NotifyMode, ProjectRevision, SharingStatus } from '../../types'
 
 interface Props {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  onBack: () => void
   project?: Project
+  sharingStatus?: SharingStatus | null
+  sharingStatusLoading?: boolean
+  onSharingStatusChange: (status: SharingStatus) => void
   onSave: (name: string, notifications: ProjectNotifications) => Promise<void> | void
   onDelete: () => Promise<void> | void
 }
@@ -27,19 +28,38 @@ const MODES: { value: NotifyMode; label: string; hint: string; icon: typeof Bell
 // disable the test button before a paste is even plausibly complete.
 const WEBHOOK_RE = /^https:\/\/([\w-]+\.)?discord(app)?\.com\/api\/webhooks\/\d+\/[\w-]+/i
 
-export function ProjectSettingsDialog({ open, onOpenChange, project, onSave, onDelete }: Props) {
+export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingStatusLoading = false, onSharingStatusChange, onSave, onDelete }: Props) {
   const [name, setName] = useState('')
   const [webhook, setWebhook] = useState('')
   const [mode, setMode] = useState<NotifyMode>('off')
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [sharingBusy, setSharingBusy] = useState(false)
+  const [sharingError, setSharingError] = useState('')
+  const [revisions, setRevisions] = useState<ProjectRevision[]>([])
+  const [revisionsLoading, setRevisionsLoading] = useState(false)
+  const isMember = Boolean(sharingStatus?.member)
+  const isViewer = sharingStatus?.member?.role === 'viewer'
 
   useEffect(() => {
-    if (!open) return
     setName(project?.name || '')
     setWebhook(project?.notifications?.discord_webhook || '')
     setMode(project?.notifications?.mode || 'off')
-  }, [open, project])
+  }, [project])
+
+  useEffect(() => {
+    if (!project?.id || !sharingStatus?.sharing_enabled || sharingStatus.member) {
+      setRevisions([])
+      return
+    }
+    let cancelled = false
+    setRevisionsLoading(true)
+    api.sharingRevisions(project.id)
+      .then(({ items }) => { if (!cancelled) setRevisions(items.slice(-5).reverse()) })
+      .catch((error) => { if (!cancelled) setSharingError(error?.message || 'Could not load sharing activity') })
+      .finally(() => { if (!cancelled) setRevisionsLoading(false) })
+    return () => { cancelled = true }
+  }, [project?.id, sharingStatus?.sharing_enabled, sharingStatus?.revision, sharingStatus?.member])
 
   const webhookValid = WEBHOOK_RE.test(webhook.trim())
 
@@ -67,26 +87,255 @@ export function ProjectSettingsDialog({ open, onOpenChange, project, onSave, onD
     }
   }
 
+  const toggleSharing = async () => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    setSharingError('')
+    try {
+      const status = sharingStatus?.sharing_enabled
+        ? await api.disableSharing(project.id)
+        : await api.enableSharing(project.id)
+      onSharingStatusChange(status)
+      toast.success(status.sharing_enabled ? 'Project source is ready to share locally' : 'Local project sharing stopped')
+    } catch (error: any) {
+      const message = error?.message || 'Could not update sharing'
+      setSharingError(message)
+      toast.error(message)
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const copyValue = async (value: string, label: string) => {
+    await navigator.clipboard.writeText(value)
+    toast.success(`${label} copied`)
+  }
+
+  const refreshPairingCode = async () => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      const host = await api.refreshPairingCode(project.id)
+      onSharingStatusChange({ ...sharingStatus!, host })
+      toast.success('New pairing code generated')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not refresh pairing code')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const decidePairing = async (requestId: string, approved: boolean, role: 'viewer' | 'editor') => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      await api.decidePairing(project.id, requestId, approved, role)
+      onSharingStatusChange(await api.sharingStatus(project.id))
+      toast.success(approved ? `Device approved as ${role}` : 'Join request rejected')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not update join request')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px]">
-        <DialogHeader>
-          <DialogTitle>Project Settings</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-5 py-2">
+    <div className="mx-auto w-full max-w-5xl animate-fade-in pb-24">
+      <div className="mb-6 flex items-start justify-between gap-4 border-b border-border pb-5">
+        <div className="flex items-start gap-3">
+          <Button variant="ghost" size="icon" className="mt-0.5 h-8 w-8" onClick={onBack} aria-label="Back to workspace">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <div>
-            <Label className="text-xs">Project Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSave() }} />
+            <h1 className="text-xl font-semibold tracking-tight">Project Settings</h1>
+            <p className="mt-1 text-xs text-muted-foreground">Manage {project?.name || 'this project'}, sharing, and integrations.</p>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={onBack}>Back</Button>
+          <Button onClick={handleSave} disabled={!name.trim() || saving || isViewer}>
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Save changes
+          </Button>
+        </div>
+      </div>
 
-          {/* Discord notifications */}
-          <div className="space-y-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium">Discord notifications</span>
-              <span className="text-[10px] text-muted-foreground">Post run results to a channel</span>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
+        <div className="space-y-5">
+          <section className="rounded-xl border border-border bg-card/30 p-5">
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold">General</h2>
+              <p className="mt-1 text-[11px] text-muted-foreground">The name teammates see when this project is shared.</p>
             </div>
+            <Label className="text-xs">Project Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5" disabled={isViewer}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSave() }} />
+            {isViewer ? <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">Viewer access: shared project source is read-only on this device.</p> : null}
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-blue-500/20 bg-blue-500/[0.035]">
+            <div className="flex items-start justify-between gap-4 p-4">
+              <div className="flex min-w-0 gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <Radio className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold">Local project sharing</h3>
+                    <span className={cn(
+                      'rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide',
+                      sharingStatus?.sharing_enabled
+                        ? 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                        : 'border-border bg-muted/50 text-muted-foreground',
+                    )}>
+                      {sharingStatusLoading ? 'Checking' : sharingStatus?.sharing_enabled ? 'Source ready' : 'Private'}
+                    </span>
+                  </div>
+                  <p className="mt-1 max-w-[48ch] text-[11px] leading-relaxed text-muted-foreground">
+                    Share only this project's source. Requests, responses, history, and private variable values stay on each device.
+                  </p>
+                </div>
+              </div>
+              {!isMember ? (
+                <Button type="button" size="sm" variant={sharingStatus?.sharing_enabled ? 'outline' : 'default'}
+                  className="h-8 shrink-0" disabled={!project?.id || sharingBusy || sharingStatusLoading} onClick={toggleSharing}>
+                  {sharingBusy || sharingStatusLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Radio className="h-3.5 w-3.5" />}
+                  {sharingStatusLoading ? 'Checking' : sharingStatus?.sharing_enabled ? 'Stop sharing' : 'Enable sharing'}
+                </Button>
+              ) : (
+                <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase text-blue-600 dark:text-blue-400">
+                  {sharingStatus.member?.role}
+                </span>
+              )}
+            </div>
+
+            {sharingError ? <div className="border-t border-red-500/20 bg-red-500/5 px-4 py-2.5 text-[11px] text-red-500">{sharingError}</div> : null}
+
+            {sharingStatus?.sharing_enabled ? (
+              <div className="border-t border-blue-500/15">
+                <div className="grid grid-cols-3 divide-x divide-blue-500/15">
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><Radio className="h-3 w-3" /> Shared project</div>
+                    <div className="mt-1 truncate text-xs font-semibold">{sharingStatus.host?.project_name || project?.name}</div>
+                  </div>
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><Laptop className="h-3 w-3" /> Host device</div>
+                    <div className="mt-1 truncate text-xs font-medium">{sharingStatus.member?.host_address || sharingStatus.host?.host_device_name || 'Starting host'}</div>
+                  </div>
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><History className="h-3 w-3" /> Source revision</div>
+                    <div className="mt-1 font-mono text-sm font-semibold">r{sharingStatus.revision}</div>
+                  </div>
+                </div>
+
+                {isMember ? (
+                  <div className="grid grid-cols-2 gap-3 border-t border-blue-500/15 px-4 py-3">
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Connection</div>
+                      <div className="mt-1 text-xs font-semibold capitalize">{sharingStatus.member?.connection_state?.replace('_', ' ') || 'connected'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Permission</div>
+                      <div className="mt-1 text-xs font-semibold capitalize">{sharingStatus.member?.role}</div>
+                    </div>
+                    {sharingStatus.member?.sync_error ? <p className="col-span-2 text-[10px] text-red-500">{sharingStatus.member.sync_error}</p> : null}
+                  </div>
+                ) : sharingStatus.host?.hosting ? (
+                  <div className="grid gap-3 border-t border-blue-500/15 px-4 py-3 sm:grid-cols-[1fr_180px]">
+                    <div>
+                      <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">Host address</div>
+                      <button type="button" onClick={() => copyValue(sharingStatus.host?.address || '', 'Host address')}
+                        className="flex h-9 w-full items-center justify-between rounded-md border border-blue-500/20 bg-background/60 px-3 font-mono text-xs transition-colors hover:border-blue-500/40">
+                        <span>{sharingStatus.host.address}</span><Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    </div>
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium text-muted-foreground">
+                        <span>Pairing code</span>
+                        <button type="button" onClick={refreshPairingCode} className="hover:text-foreground" title="Generate a new code"><RefreshCw className="h-3 w-3" /></button>
+                      </div>
+                      <button type="button" onClick={() => copyValue(sharingStatus.host?.pairing_code || '', 'Pairing code')}
+                        className="flex h-9 w-full items-center justify-between rounded-md border border-blue-500/25 bg-blue-500/10 px-3 font-mono text-base font-bold tracking-[0.22em] text-blue-600 transition-colors hover:bg-blue-500/15 dark:text-blue-400">
+                        <span>{sharingStatus.host.pairing_code}</span><Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border-t border-amber-500/20 bg-amber-500/5 px-4 py-3 text-[11px] text-amber-600 dark:text-amber-400">
+                    Source is prepared, but this build cannot open the LAN host. Use a debug desktop build until encrypted release transport is ready.
+                  </div>
+                )}
+
+                {!isMember ? <div className="border-t border-blue-500/15 px-4 py-3">
+                  {sharingStatus.host?.pending_requests?.length ? (
+                    <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+                      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Approval requested</div>
+                      {sharingStatus.host.pending_requests.map((request) => (
+                        <div key={request.request_id} className="flex flex-wrap items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-semibold">{request.device_name}</div>
+                            <div className="truncate font-mono text-[9px] text-muted-foreground">{request.device_id}</div>
+                          </div>
+                          <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={sharingBusy}
+                            onClick={() => decidePairing(request.request_id, false, 'viewer')}>Reject</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={sharingBusy}
+                            onClick={() => decidePairing(request.request_id, true, 'viewer')}>Viewer</Button>
+                          <Button size="sm" className="h-7 text-[10px]" disabled={sharingBusy}
+                            onClick={() => decidePairing(request.request_id, true, 'editor')}>Editor</Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Users className="h-3 w-3" /> Connected devices
+                  </div>
+                  {sharingStatus.host?.connected_members?.length ? sharingStatus.host.connected_members.map((member) => (
+                    <div key={member.device_id} className="flex items-center justify-between py-1 text-[11px]">
+                      <span>{member.device_name}</span><span className="font-mono text-[9px] text-muted-foreground">{member.role}</span>
+                    </div>
+                  )) : <p className="text-[11px] text-muted-foreground">No teammate has joined this project yet.</p>}
+                </div> : null}
+
+                {!isMember ? <div className="border-t border-blue-500/15 px-4 py-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Source activity</span>
+                    <span className="font-mono text-[9px] text-muted-foreground">project source only</span>
+                  </div>
+                  {revisionsLoading ? (
+                    <div className="space-y-2" aria-label="Loading sharing activity">
+                      <div className="h-6 animate-pulse rounded bg-muted/70" />
+                      <div className="h-6 w-4/5 animate-pulse rounded bg-muted/50" />
+                    </div>
+                  ) : revisions.length ? (
+                    <div className="space-y-1.5">
+                      {revisions.map((revision) => (
+                        <div key={revision.id} className="flex items-center gap-3 text-[11px]">
+                          <span className="w-7 shrink-0 font-mono text-blue-600 dark:text-blue-400">r{revision.revision}</span>
+                          <span className="min-w-0 flex-1 truncate text-foreground/90">{revision.summary}</span>
+                          <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+                            {new Date(revision.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-[11px] text-muted-foreground">The initial source revision will appear here.</p>}
+                </div> : null}
+
+                <div className="flex items-center gap-1.5 border-t border-amber-500/15 bg-amber-500/5 px-4 py-2.5 text-[10px] text-amber-600 dark:text-amber-400">
+                  <ShieldCheck className="h-3 w-3" /> Debug LAN transport. Do not use on an untrusted network.
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+        </div>
+
+        <aside className="space-y-5 lg:sticky lg:top-4">
+          <section className="space-y-3 rounded-xl border border-border bg-card/30 p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">Discord notifications</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Post finished run results to a channel.</p>
 
             {/* Segmented mode selector */}
             <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">
@@ -142,25 +391,17 @@ export function ProjectSettingsDialog({ open, onOpenChange, project, onSave, onD
                 </p>
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+          <section className="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
             <div className="text-xs font-medium text-red-500 mb-1">Danger zone</div>
             <p className="text-[11px] text-muted-foreground mb-2">Deleting a project removes all its environments and endpoints.</p>
             <Button variant="destructive" size="sm" className="gap-1.5" onClick={() => onDelete()}>
               <Trash2 className="h-3.5 w-3.5" /> Delete Project
             </Button>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!name.trim() || saving}>
-            {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </section>
+        </aside>
+      </div>
+    </div>
   )
 }

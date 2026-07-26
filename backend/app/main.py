@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config as app_config
 from .state import store
-from .routers import config, projects, environments, tests, runs, history
+from .routers import config, projects, environments, tests, runs, history, sharing
 
 
 @asynccontextmanager
@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
     store.load()
     store.history.initialize()
     store.history.mark_interrupted_runs()
+    store.sharing.initialize()
     yield
 
 
@@ -32,7 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (config, projects, environments, tests, runs, history):
+for module in (config, projects, environments, tests, runs, history, sharing):
     app.include_router(module.router)
 
 

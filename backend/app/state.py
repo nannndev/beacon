@@ -14,6 +14,8 @@ from .catalogs import build_jsonplaceholder_project
 from .history.service import HistoryService
 from .history.sqlite_repository import SqliteRunHistoryRepository
 from .repository import Repository, JsonRepository
+from .sharing.service import SharedProjectService
+from .sharing.sqlite_repository import SqliteSharedProjectRepository
 
 
 class Store:
@@ -22,6 +24,7 @@ class Store:
         self.repo: Repository = repo or JsonRepository()
         data_dir = os.getenv("BEACON_DATA_DIR")
         history_path = os.path.join(data_dir, "history.db") if data_dir else os.path.join("config", "history.db")
+        sharing_path = os.path.join(data_dir, "workspace.db") if data_dir else os.path.join("config", "workspace.db")
         self.history = history or HistoryService(SqliteRunHistoryRepository(history_path))
         self.projects: List[dict] = []
         self.current_project_id: Optional[str] = None
@@ -34,6 +37,13 @@ class Store:
         self.active_websockets: list = []
         # Captured at startup so worker threads can push WS messages safely.
         self.main_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.sharing = SharedProjectService(
+            SqliteSharedProjectRepository(sharing_path),
+            project_lookup=lambda project_id: next(
+                (project for project in self.projects if project.get("id") == project_id), None
+            ),
+            device_id=lambda: self.history.origin_device_id or "local",
+        )
 
     # ---- defaults -----------------------------------------------------
     @staticmethod
@@ -209,8 +219,12 @@ class Store:
             return True
         return False
 
-    def save(self):
+    def save(self, sync_sharing: bool = True):
         self.save_active_project()
+        if sync_sharing:
+            active = next((p for p in self.projects if p.get("id") == self.current_project_id), None)
+            if active:
+                self.sharing.record_local_change(active)
         self.repo.save({
             "current_project_id": self.current_project_id,
             "projects": self.projects,

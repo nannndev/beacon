@@ -1,6 +1,6 @@
 // Centralized backend calls. All paths are proxied to the FastAPI backend by Vite.
 // For desktop builds (Tauri production), we use a full backend URL.
-import { TestConfig, Endpoint, RunConfig, ProjectNotifications } from '../types'
+import { TestConfig, Endpoint, RunConfig, ProjectNotifications, ProjectRevision, SharingStatus } from '../types'
 import { isDesktop } from './platform'
 import type {
   HistoryCompareResult,
@@ -200,6 +200,28 @@ export const api = {
     req<Record<string, unknown>>(`/projects/${id}/export?include_secrets=${includeSecrets ? 'true' : 'false'}`),
   importProject: (payload: unknown) =>
     req<ImportProjectResponse>('/projects/import', jsonInit('POST', payload)),
+
+  // Browser code controls sharing through its own local backend. LAN transport
+  // credentials never enter the React process.
+  sharingStatus: (id: string) => req<SharingStatus>(`/sharing/projects/${id}`),
+  enableSharing: (id: string) => req<SharingStatus>(`/sharing/projects/${id}/enable`, jsonInit('POST')),
+  disableSharing: (id: string) => req<SharingStatus>(`/sharing/projects/${id}/disable`, jsonInit('POST')),
+  sharingRevisions: (id: string, after = 0) =>
+    req<{ items: ProjectRevision[] }>(`/sharing/projects/${id}/revisions?after=${after}`),
+  refreshPairingCode: (id: string) =>
+    req<NonNullable<SharingStatus['host']>>(`/sharing/projects/${id}/pairing-code`, jsonInit('POST')),
+  joinLocalProject: (address: string, code: string, device_name: string) =>
+    req<{ address: string; request_id: string; status: 'pending'; project_name: string }>(
+      '/sharing/join', jsonInit('POST', { address, code, device_name }),
+    ),
+  localJoinStatus: (address: string, request_id: string) =>
+    req<{ status: 'pending' | 'rejected' | 'approved'; project_id?: string; project_name?: string }>(
+      '/sharing/join/status', jsonInit('POST', { address, request_id }),
+    ),
+  decidePairing: (projectId: string, requestId: string, approved: boolean, role: 'viewer' | 'editor') =>
+    req(`/sharing/projects/${projectId}/requests/${requestId}/decision`, jsonInit('POST', { approved, role })),
+  syncSharedProject: (projectId: string) =>
+    req<{ changed: boolean; status: SharingStatus }>(`/sharing/projects/${projectId}/sync`, jsonInit('POST')),
 
   // Environments
   createEnvironment: (projectId: string, env: { name: string; base_url: string; variables?: Record<string, string> }) =>

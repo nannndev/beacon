@@ -68,6 +68,63 @@ export interface Project {
   items: CollectionItem[]   // tree structure like Postman (supports folders)
   // legacy flat support during migration
   tests?: Endpoint[]
+  shared_origin?: {
+    host_address: string
+    host_device_id?: string
+    role: 'viewer' | 'editor'
+    revision: number
+    connection_state?: 'connected' | 'read_only' | 'host_offline'
+    sync_error?: string | null
+  }
+}
+
+export interface SharingStatus {
+  project_id: string
+  sharing_enabled: boolean
+  revision: number | null
+  owner_device_id?: string
+  source_schema_version?: number
+  created_at?: string
+  updated_at?: string
+  host?: {
+    hosting: boolean
+    project_id?: string | null
+    project_name?: string | null
+    host_device_name?: string
+    address?: string | null
+    pairing_code?: string | null
+    pairing_expires_at?: number | null
+    connected_members?: Array<{ device_id: string; device_name: string; created_at: number; role: 'viewer' | 'editor' }>
+    pending_requests?: Array<{
+      request_id: string
+      device_id: string
+      device_name: string
+      created_at: number
+      status: 'pending'
+    }>
+    transport?: string | null
+  }
+  member?: {
+    role: 'viewer' | 'editor'
+    host_address: string
+    connection_state: 'connected' | 'read_only' | 'host_offline'
+    sync_error?: string | null
+  }
+}
+
+export interface ProjectRevision {
+  id: string
+  project_id: string
+  revision: number
+  base_revision: number
+  mutation_id: string
+  actor_device_id: string
+  operation: string
+  target_type: string
+  target_id?: string | null
+  summary: string
+  patch: Record<string, unknown>
+  created_at: string
 }
 
 export interface AppData {

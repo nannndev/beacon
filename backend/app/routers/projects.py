@@ -31,6 +31,7 @@ def list_projects():
                 "environments": p.get("environments", []),
                 "current_environment_id": p.get("current_environment_id"),
                 "notifications": p.get("notifications", {}),
+                "shared_origin": p.get("shared_origin"),
                 "items": p.get("items") or [
                     {"type": "request", **t} for t in p.get("tests", [])
                 ],

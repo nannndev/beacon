@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo, Activity, Database, Layers3, Sparkles, Plug, History, GripVertical } from 'lucide-react'
+import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo, Activity, Database, Layers3, Sparkles, Plug, History, GripVertical, Radio } from 'lucide-react'
 import { Project, TestConfig } from '../types'
 import { BrandMark } from './BrandMark'
 import { useAppVersion } from '../hooks/useAppVersion'
@@ -17,6 +17,7 @@ interface Props {
   onSwitchProject: (id: string) => void
   onReorderProjects: (projectIds: string[]) => void
   onNewProject: () => void
+  onJoinProject: () => void
   onAddSampleProject: () => void
   sampleProjectExists: boolean
   sampleProjectBusy: boolean
@@ -34,7 +35,7 @@ interface Props {
 export function Sidebar({
   projects, currentProjectId, currentProject, config, collapsed, onToggleCollapse,
   onReorderProjects,
-  onSwitchProject, onNewProject, onAddSampleProject, sampleProjectExists, sampleProjectBusy,
+  onSwitchProject, onNewProject, onJoinProject, onAddSampleProject, sampleProjectExists, sampleProjectBusy,
   onSwitchEnv, onManageEnv, onGlobalVars, onNewEndpoint, onRunAll, runAllDisabled,
   onOpenMcp, onOpenHistory, activeView = 'workspace',
 }: Props) {
@@ -129,6 +130,9 @@ export function Sidebar({
         <Button size="icon" variant="ghost" className="h-8 w-8" title="New project" onClick={onNewProject}>
           <Plus className="h-4 w-4" />
         </Button>
+        <Button size="icon" variant="ghost" className="h-8 w-8" title="Join local project" onClick={onJoinProject}>
+          <Radio className="h-4 w-4" />
+        </Button>
         <Button size="icon" variant={activeView === 'history' ? 'secondary' : 'ghost'} className="h-8 w-8" title="Run history" onClick={onOpenHistory}>
           <History className="h-4 w-4" />
         </Button>
@@ -193,9 +197,10 @@ export function Sidebar({
 
       <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Projects</div>
-        <Button size="icon" variant="ghost" className="h-6 w-6" title="New project" onClick={onNewProject}>
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button size="icon" variant="ghost" className="h-6 w-6" title="Join local project" onClick={onJoinProject}><Radio className="h-3.5 w-3.5" /></Button>
+          <Button size="icon" variant="ghost" className="h-6 w-6" title="New project" onClick={onNewProject}><Plus className="h-3.5 w-3.5" /></Button>
+        </div>
       </div>
       <div className="min-h-[60px] flex-1 space-y-1 overflow-auto px-2">
         {projects.length === 0 && (

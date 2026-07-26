@@ -3,6 +3,27 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.0] - 2026-07-27
+
+### Added
+
+- Local-first project sharing foundation with revisioned SQLite snapshots and project-scoped source synchronization.
+- LAN pairing with expiring codes, explicit owner approval, and Viewer or Editor roles.
+- Automatic revision polling and Editor mutation sync between paired Beacon devices.
+- A dedicated Project Settings screen showing the host address, shared project, revision, connected devices, pending approvals, member role, and connection state.
+
+### Improved
+
+- Project sharing keeps requests, responses, run history, notification credentials, and private environment values on each device.
+- Joined projects clearly distinguish read-only Viewer access from editable Editor access.
+- Repository language statistics no longer include generated Graphify reports.
+
+### Security
+
+- Public release builds keep insecure LAN hosting disabled while encrypted transport is under development; the current LAN host is available only in desktop debug builds.
+
+[Compare 0.3.9 → 0.4.0](https://github.com/nannndev/beacon/compare/v0.3.9...v0.4.0)
+
 ## [0.3.9] - 2026-07-25
 
 ### Added

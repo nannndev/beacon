@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TestConfig, Project, Endpoint, RunConfig, CollectionItem, ProjectNotifications } from './types'
+import { TestConfig, Project, Endpoint, RunConfig, CollectionItem, ProjectNotifications, SharingStatus } from './types'
 import { flattenItems, collectRequestsUnderFolder } from './lib/utils'
 import { insertIntoFolder, renameItem, duplicateFolder, removeItem } from './lib/tree'
 import { Sidebar } from './components/Sidebar'
@@ -12,7 +12,8 @@ import { ProjectDialog } from './components/dialogs/ProjectDialog'
 import { ImportDialog } from './components/dialogs/ImportDialog'
 import { EnvironmentsDialog } from './components/dialogs/EnvironmentsDialog'
 import { GlobalVarsDialog } from './components/dialogs/GlobalVarsDialog'
-import { ProjectSettingsDialog } from './components/dialogs/ProjectSettingsDialog'
+import { ProjectSettingsPage } from './components/dialogs/ProjectSettingsDialog'
+import { JoinLocalProjectDialog } from './components/dialogs/JoinLocalProjectDialog'
 import { SettingsDialog } from './components/dialogs/SettingsDialog'
 import { LoadingScreen } from './components/LoadingScreen'
 import { McpPage } from './pages/McpPage'
@@ -79,6 +80,7 @@ function App() {
   const [newEndpointFolderId, setNewEndpointFolderId] = useState<string | null>(null)
 
   const [showProjectDialog, setShowProjectDialog] = useState(false)
+  const [showJoinProjectDialog, setShowJoinProjectDialog] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => localStorage.getItem('sidebar_collapsed') === 'true')
   const [showEnvDialog, setShowEnvDialog] = useState(false)
@@ -93,6 +95,8 @@ function App() {
   const [scenarioEndpoints, setScenarioEndpoints] = useState<Array<{ id: string; name: string; method?: string }>>([])
   const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
   const [exportingProject, setExportingProject] = useState(false)
+  const [sharingStatus, setSharingStatus] = useState<SharingStatus | null>(null)
+  const [sharingStatusLoading, setSharingStatusLoading] = useState(false)
   const [sendingTestId, setSendingTestId] = useState<string | null>(null)
   const [sendResult, setSendResult] = useState<{ endpointId: string; endpointName: string; response: SendResponse | null } | null>(null)
 
@@ -141,6 +145,49 @@ function App() {
   const selectedTargetType = effectiveTests.find((t) => t.id === selectedTestId)?.target_type
     || (config.tests as Endpoint[]).find((t) => t.id === selectedTestId)?.target_type
     || 'api'
+
+  useEffect(() => {
+    if (!currentProjectId) {
+      setSharingStatus(null)
+      setSharingStatusLoading(false)
+      return
+    }
+    let cancelled = false
+    setSharingStatus(null)
+    setSharingStatusLoading(true)
+    const refreshSharing = () => api.sharingStatus(currentProjectId)
+      .then((status) => { if (!cancelled) setSharingStatus(status) })
+      .catch(() => { if (!cancelled) setSharingStatus(null) })
+      .finally(() => { if (!cancelled) setSharingStatusLoading(false) })
+    void refreshSharing()
+    const timer = showProjectSettings ? window.setInterval(refreshSharing, 1000) : undefined
+    return () => {
+      cancelled = true
+      if (timer) window.clearInterval(timer)
+    }
+  }, [currentProjectId, showProjectSettings])
+
+  useEffect(() => {
+    if (!currentProjectId || !sharingStatus?.sharing_enabled) return
+    let cancelled = false
+    let running = false
+    const sync = async () => {
+      if (running) return
+      running = true
+      try {
+        const result = await api.syncSharedProject(currentProjectId)
+        if (!cancelled) setSharingStatus(result.status)
+        if (!cancelled && result.changed) await fetchAll()
+      } catch {
+        // Connection state is reported by the backend on the next status read.
+      } finally {
+        running = false
+      }
+    }
+    void sync()
+    const timer = window.setInterval(sync, 1500)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [currentProjectId, sharingStatus?.sharing_enabled])
 
   // The backend sidecar is launched and supervised by the Tauri Rust layer
   // (see src-tauri/src/main.rs), not from here — the React unmount cleanup did
@@ -760,6 +807,7 @@ function App() {
         onSwitchProject={switchProject}
         onReorderProjects={(projectIds) => void reorderProjects(projectIds)}
         onNewProject={() => setShowProjectDialog(true)}
+        onJoinProject={() => setShowJoinProjectDialog(true)}
         onAddSampleProject={addSampleProject}
         sampleProjectExists={hasJsonPlaceholderSample(projects)}
         sampleProjectBusy={sampleProjectBusy}
@@ -777,6 +825,7 @@ function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header
           currentProject={currentProject}
+          sharingStatus={sharingStatus}
           onProjectSettings={() => setShowProjectSettings(true)}
           onImport={() => setShowImportDialog(true)}
           onExport={exportProject}
@@ -786,7 +835,17 @@ function App() {
         />
 
         <div className={`flex-1 overflow-auto ${showEditor ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
-          {showEditor ? (
+          {showProjectSettings ? (
+            <ProjectSettingsPage
+              onBack={() => setShowProjectSettings(false)}
+              project={currentProject}
+              sharingStatus={sharingStatus}
+              sharingStatusLoading={sharingStatusLoading}
+              onSharingStatusChange={setSharingStatus}
+              onSave={saveProjectSettings}
+              onDelete={deleteProject}
+            />
+          ) : showEditor ? (
             <EndpointEditor
               testId={editingId}
               config={config}
@@ -879,10 +938,10 @@ function App() {
 
       {/* Dialogs */}
       <ProjectDialog open={showProjectDialog} onOpenChange={setShowProjectDialog} onCreate={createProject} />
+      <JoinLocalProjectDialog open={showJoinProjectDialog} onOpenChange={setShowJoinProjectDialog} onJoined={fetchAll} />
       <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} onImport={doImport} fetchTemplate={api.projectTemplate} />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
-      <ProjectSettingsDialog open={showProjectSettings} onOpenChange={setShowProjectSettings} project={currentProject} onSave={saveProjectSettings} onDelete={deleteProject} />
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />
       <CommandPalette open={showPalette} onOpenChange={setShowPalette} commands={paletteCommands} />
       {confirmationDialog}
