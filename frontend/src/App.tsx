@@ -844,6 +844,7 @@ function App() {
               onSharingStatusChange={setSharingStatus}
               onSave={saveProjectSettings}
               onDelete={deleteProject}
+              onProjectListChange={fetchAll}
             />
           ) : showEditor ? (
             <EndpointEditor

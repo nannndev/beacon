@@ -79,6 +79,16 @@ class SharingLiveSyncTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_owner_can_change_role_and_revoke_member(self):
+        self._client("viewer")
+        changed = self.service.update_member("p1", "member-device", "editor")
+        self.assertEqual(changed["role"], "editor")
+        self.assertEqual(self.service.lan_host.status()["connected_members"][0]["role"], "editor")
+
+        removed = self.service.remove_member("p1", "member-device")
+        self.assertTrue(removed["removed"])
+        self.assertEqual(self.service.lan_host.status()["connected_members"], [])
+
     def test_joined_editor_pushes_full_source_and_updates_revision(self):
         member = project_source()
         member["name"] = "Renamed by editor"

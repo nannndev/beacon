@@ -220,6 +220,16 @@ class SharedProjectService:
             raise KeyError("Project is not currently hosted")
         return self.lan_host.decide_pairing(request_id, approved, role)
 
+    def update_member(self, project_id: str, device_id: str, role: str) -> dict:
+        if self.lan_host.status().get("project_id") != project_id:
+            raise KeyError("Project is not currently hosted")
+        return self.lan_host.update_member(device_id, role)
+
+    def remove_member(self, project_id: str, device_id: str) -> dict:
+        if self.lan_host.status().get("project_id") != project_id:
+            raise KeyError("Project is not currently hosted")
+        return self.lan_host.remove_member(device_id)
+
     @staticmethod
     def _localize_snapshot(source: dict, existing: Optional[dict] = None) -> dict:
         project = {**source}

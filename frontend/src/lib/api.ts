@@ -220,6 +220,14 @@ export const api = {
     ),
   decidePairing: (projectId: string, requestId: string, approved: boolean, role: 'viewer' | 'editor') =>
     req(`/sharing/projects/${projectId}/requests/${requestId}/decision`, jsonInit('POST', { approved, role })),
+  updateSharingMember: (projectId: string, deviceId: string, role: 'viewer' | 'editor') =>
+    req(`/sharing/projects/${projectId}/members/${deviceId}`, jsonInit('PATCH', { role })),
+  removeSharingMember: (projectId: string, deviceId: string) =>
+    req(`/sharing/projects/${projectId}/members/${deviceId}`, jsonInit('DELETE')),
+  duplicateSharedProject: (projectId: string) =>
+    req<{ project_id: string; project_name: string }>(`/sharing/projects/${projectId}/duplicate-private`, jsonInit('POST')),
+  leaveSharedProject: (projectId: string) =>
+    req<{ left: boolean; current_project_id?: string }>(`/sharing/projects/${projectId}/leave`, jsonInit('POST')),
   syncSharedProject: (projectId: string) =>
     req<{ changed: boolean; status: SharingStatus }>(`/sharing/projects/${projectId}/sync`, jsonInit('POST')),
 

@@ -26,6 +26,8 @@ import {
   StopCircle,
   Terminal,
   Users,
+  UserCheck,
+  Wifi,
   X,
 } from 'lucide-react'
 import { ThemeToggle } from '../components/ThemeToggle'
@@ -64,6 +66,7 @@ const DISCORD_URL =
 const NAV_LINKS = [
   { id: 'product-preview', label: 'Product' },
   { id: 'features', label: 'Features' },
+  { id: 'sharing', label: 'Team' },
   { id: 'workflow', label: 'Workflow' },
   { id: 'mcp', label: 'AI' },
   { id: 'desktop', label: 'Desktop' },
@@ -449,6 +452,7 @@ export default function LandingPage() {
               { icon: FileCode2, title: 'Any content type', body: 'Use JSON, forms, multipart uploads, raw text, XML, or GraphQL with variables.' },
               { icon: Activity, title: 'Live load testing', body: 'Watch attempts, success, rate limits, errors, latency percentiles, and a live trend chart as runs execute.' },
               { icon: Repeat, title: 'Retry & rate control', body: 'Retry failures and tune concurrency, delays, and request limits per endpoint.' },
+              { icon: Users, title: 'Local project sharing', body: 'Pair nearby Beacon devices, sync one project, and keep execution plus private variables local.' },
             ].map(({ icon: Icon, title, body }) => (
               <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-5">
                 <div className="flex items-center gap-3">
@@ -461,6 +465,71 @@ export default function LandingPage() {
               </RevealItem>
             ))}
           </RevealGroup>
+        </div>
+      </section>
+
+      <section id="sharing" className="relative scroll-mt-20 overflow-hidden border-y border-border/60 bg-muted/15">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(6,182,212,0.10),transparent_34%),radial-gradient(circle_at_80%_70%,rgba(59,130,246,0.08),transparent_36%)]" />
+        <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:px-8 lg:py-24">
+          <Reveal>
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-4 py-1 text-xs font-semibold tracking-widest text-cyan-600 dark:text-cyan-400">
+              <Wifi className="h-3.5 w-3.5" /> LOCAL-FIRST TEAMWORK
+            </div>
+            <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">Share the project. Run on your own device.</h2>
+            <p className="mt-5 max-w-xl leading-7 text-muted-foreground">
+              Host one Beacon project on your trusted local network, approve teammates as Viewer or Editor, and synchronize endpoint source without uploading your workspace to a cloud account.
+            </p>
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              {[
+                [UserCheck, 'Owner approval', 'Pairing codes, explicit approval, and per-device roles.'],
+                [ShieldCheck, 'Secrets stay local', 'Private variables, responses, and run history never synchronize.'],
+                [GitBranch, 'Revisioned source', 'Accepted edits become ordered project revisions.'],
+                [PanelsTopLeft, 'Local execution', 'Every teammate sends and tests from their own machine.'],
+              ].map(([Icon, title, body]) => {
+                const SharingIcon = Icon as typeof Users
+                return <div key={title as string} className="rounded-2xl border border-border/70 bg-background/65 p-4 backdrop-blur-xl">
+                  <SharingIcon className="h-4 w-4 text-cyan-500" />
+                  <div className="mt-3 text-sm font-semibold">{title as string}</div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{body as string}</p>
+                </div>
+              })}
+            </div>
+          </Reveal>
+
+          <Reveal delay={0.1} className="liquid-glass rounded-[2rem] p-5 md:p-7">
+            <div className="flex items-center justify-between border-b border-border/70 pb-4">
+              <div>
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-500">Shared project</div>
+                <div className="mt-1 text-lg font-semibold">Platform API</div>
+              </div>
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 font-mono text-[10px] font-bold text-emerald-500">SYNCED · r24</span>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {[
+                ['Host', 'Nando MacBook'],
+                ['Network', '192.168.1.18'],
+                ['Execution', 'This device'],
+              ].map(([label, value]) => <div key={label} className="rounded-xl border border-border/60 bg-background/55 p-3">
+                <div className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">{label}</div>
+                <div className="mt-2 truncate text-xs font-semibold">{value}</div>
+              </div>)}
+            </div>
+            <div className="mt-5 space-y-2">
+              {[
+                ['QA Windows', 'EDITOR', 'connected'],
+                ['Frontend Linux', 'VIEWER', 'connected'],
+              ].map(([device, role, state]) => <div key={device} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/55 px-4 py-3">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{device}</span>
+                <span className="font-mono text-[9px] text-muted-foreground">{state}</span>
+                <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 font-mono text-[9px] font-bold text-cyan-500">{role}</span>
+              </div>)}
+            </div>
+            <div className="mt-5 flex items-center justify-between border-t border-border/70 pt-4 text-xs text-muted-foreground">
+              <span>Source synchronized · requests and history stay local</span>
+              <span className="font-mono text-cyan-500">LAN</span>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -757,7 +826,7 @@ function FeatureGallery() {
             <div className="mt-7 space-y-3 font-mono text-xs text-muted-foreground">
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>SEND</span><span className="text-foreground">Endpoint row / editor</span></div>
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>MODES</span><span className="text-foreground">Single / load / scenario</span></div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.3.8 desktop</span></div>
+              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.4.1 desktop</span></div>
             </div>
           </div>
         </Reveal>

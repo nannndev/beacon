@@ -206,3 +206,20 @@ class LanHostService:
             "role": role,
         }
         return {"request_id": request_id, "status": "approved", "role": role}
+
+    def update_member(self, device_id: str, role: str) -> dict:
+        if role not in {"viewer", "editor"}:
+            raise ValueError("Role must be viewer or editor")
+        for member in self._sessions.values():
+            if member["device_id"] == device_id:
+                member["role"] = role
+                return {"device_id": device_id, "role": role}
+        raise KeyError("Connected member not found")
+
+    def remove_member(self, device_id: str) -> dict:
+        tokens = [token for token, member in self._sessions.items() if member["device_id"] == device_id]
+        if not tokens:
+            raise KeyError("Connected member not found")
+        for token in tokens:
+            self._sessions.pop(token, None)
+        return {"device_id": device_id, "removed": True}

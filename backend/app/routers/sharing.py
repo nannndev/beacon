@@ -1,4 +1,6 @@
+import copy
 from dataclasses import asdict
+import uuid
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -104,6 +106,56 @@ def decide_pairing(project_id: str, request_id: str, data: dict):
         raise HTTPException(status_code=404, detail=str(error))
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.patch("/projects/{project_id}/members/{device_id}")
+def update_member(project_id: str, device_id: str, data: dict):
+    try:
+        return store.sharing.update_member(project_id, device_id, str(data.get("role") or ""))
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.delete("/projects/{project_id}/members/{device_id}")
+def remove_member(project_id: str, device_id: str):
+    try:
+        return store.sharing.remove_member(project_id, device_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+
+
+def _joined_project(project_id: str) -> dict:
+    project = next((item for item in store.projects if item.get("id") == project_id), None)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.get("shared_origin"):
+        raise HTTPException(status_code=400, detail="This project was not joined from another device")
+    return project
+
+
+@router.post("/projects/{project_id}/duplicate-private")
+def duplicate_shared_project(project_id: str):
+    source = copy.deepcopy(_joined_project(project_id))
+    source["id"] = str(uuid.uuid4())
+    source["name"] = f"{source.get('name', 'Shared project')} (Private copy)"
+    source.pop("shared_origin", None)
+    store.projects.append(source)
+    store.current_project_id = source["id"]
+    store.sync_current_config()
+    store.save(sync_sharing=False)
+    return {"project_id": source["id"], "project_name": source["name"]}
+
+
+@router.post("/projects/{project_id}/leave")
+def leave_shared_project(project_id: str):
+    project = _joined_project(project_id)
+    store.projects.remove(project)
+    store.current_project_id = store.projects[0]["id"] if store.projects else None
+    store.sync_current_config()
+    store.save(sync_sharing=False)
+    return {"left": True, "current_project_id": store.current_project_id}
 
 
 @router.post("/projects/{project_id}/sync")

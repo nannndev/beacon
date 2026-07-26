@@ -16,6 +16,7 @@ interface Props {
   onSharingStatusChange: (status: SharingStatus) => void
   onSave: (name: string, notifications: ProjectNotifications) => Promise<void> | void
   onDelete: () => Promise<void> | void
+  onProjectListChange: () => Promise<void> | void
 }
 
 const MODES: { value: NotifyMode; label: string; hint: string; icon: typeof BellOff }[] = [
@@ -28,7 +29,7 @@ const MODES: { value: NotifyMode; label: string; hint: string; icon: typeof Bell
 // disable the test button before a paste is even plausibly complete.
 const WEBHOOK_RE = /^https:\/\/([\w-]+\.)?discord(app)?\.com\/api\/webhooks\/\d+\/[\w-]+/i
 
-export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingStatusLoading = false, onSharingStatusChange, onSave, onDelete }: Props) {
+export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingStatusLoading = false, onSharingStatusChange, onSave, onDelete, onProjectListChange }: Props) {
   const [name, setName] = useState('')
   const [webhook, setWebhook] = useState('')
   const [mode, setMode] = useState<NotifyMode>('off')
@@ -134,6 +135,55 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
       toast.success(approved ? `Device approved as ${role}` : 'Join request rejected')
     } catch (error: any) {
       toast.error(error?.message || 'Could not update join request')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const updateMember = async (deviceId: string, role?: 'viewer' | 'editor') => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      if (role) {
+        await api.updateSharingMember(project.id, deviceId, role)
+        toast.success(`Member changed to ${role}`)
+      } else {
+        await api.removeSharingMember(project.id, deviceId)
+        toast.success('Member access revoked')
+      }
+      onSharingStatusChange(await api.sharingStatus(project.id))
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not update member')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const duplicatePrivate = async () => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      const copy = await api.duplicateSharedProject(project.id)
+      await onProjectListChange()
+      toast.success(`${copy.project_name} created`)
+      onBack()
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not create private copy')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const leaveProject = async () => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      await api.leaveSharedProject(project.id)
+      await onProjectListChange()
+      toast.success('Left shared project')
+      onBack()
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not leave shared project')
     } finally {
       setSharingBusy(false)
     }
@@ -290,8 +340,14 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                     <Users className="h-3 w-3" /> Connected devices
                   </div>
                   {sharingStatus.host?.connected_members?.length ? sharingStatus.host.connected_members.map((member) => (
-                    <div key={member.device_id} className="flex items-center justify-between py-1 text-[11px]">
-                      <span>{member.device_name}</span><span className="font-mono text-[9px] text-muted-foreground">{member.role}</span>
+                    <div key={member.device_id} className="flex items-center justify-between gap-2 py-1 text-[11px]">
+                      <span className="min-w-0 flex-1 truncate">{member.device_name}</span>
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-[9px]" disabled={sharingBusy}
+                        onClick={() => updateMember(member.device_id, member.role === 'viewer' ? 'editor' : 'viewer')}>
+                        {member.role}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-[9px] text-red-500" disabled={sharingBusy}
+                        onClick={() => updateMember(member.device_id)}>Revoke</Button>
                     </div>
                   )) : <p className="text-[11px] text-muted-foreground">No teammate has joined this project yet.</p>}
                 </div> : null}
@@ -322,8 +378,17 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                 </div> : null}
 
                 <div className="flex items-center gap-1.5 border-t border-amber-500/15 bg-amber-500/5 px-4 py-2.5 text-[10px] text-amber-600 dark:text-amber-400">
-                  <ShieldCheck className="h-3 w-3" /> Debug LAN transport. Do not use on an untrusted network.
+                  <ShieldCheck className="h-3 w-3" /> Local authenticated transport. Use sharing only on a trusted network.
                 </div>
+                {isMember ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-500/15 px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground">Keep a private copy before leaving if you want to retain this snapshot.</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={sharingBusy} onClick={duplicatePrivate}>Make private copy</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] text-red-500" disabled={sharingBusy} onClick={leaveProject}>Leave project</Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </section>
