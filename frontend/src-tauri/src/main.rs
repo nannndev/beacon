@@ -250,7 +250,11 @@ fn main() {
                 .expect("backend sidecar not configured")
                 .env("BEACON_PORT", port.to_string())
                 .env("BEACON_DATA_DIR", data_dir.to_string_lossy().to_string())
-                .env("BEACON_ALLOW_INSECURE_LAN", if cfg!(debug_assertions) { "1" } else { "0" })
+                // Sharing is explicitly opt-in from Project Settings and is
+                // protected by a short-lived pairing code plus owner approval.
+                // Keep the LAN listener available in packaged desktop builds;
+                // the UI warns users to use it only on trusted networks.
+                .env("BEACON_ALLOW_INSECURE_LAN", "1")
                 .args(["--port", &port.to_string()]);
 
             let (mut _rx, child) = sidecar.spawn().expect("failed to spawn backend sidecar");

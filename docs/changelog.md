@@ -3,6 +3,18 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.1] - 2026-07-27
+
+### Fixed
+
+- Enabled the opt-in LAN sharing host in packaged Windows, macOS, and Linux builds. Version 0.4.0 exposed the sharing controls but only started the listener in debug builds, causing Share and Join to fail in the installed app.
+
+### Security
+
+- Local sharing still requires an expiring pairing code, explicit approval by the project owner, and a Viewer or Editor role. Use it only on a trusted local network while encrypted transport is under development.
+
+[Compare 0.4.0 → 0.4.1](https://github.com/nannndev/beacon/compare/v0.4.0...v0.4.1)
+
 ## [0.4.0] - 2026-07-27
 
 ### Added
