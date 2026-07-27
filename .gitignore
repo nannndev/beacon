@@ -38,12 +38,14 @@ ENV/
 config/tests.json
 config/*.local.json
 config/history.db*
+config/workspace.db*
 config/sharing-identity/
 
 # Backend (FastAPI) also stores operational state relative to its cwd
 backend/config/tests.json
 backend/config/*.local.json
 backend/config/history.db*
+backend/config/workspace.db*
 backend/config/sharing-identity/
 *.log
 results/

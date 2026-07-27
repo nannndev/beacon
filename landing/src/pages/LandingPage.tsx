@@ -44,12 +44,12 @@ import {
   motion,
   useReducedMotion,
 } from '../components/motion'
-import workspaceShot from '../assets/features/workspace.png'
+import workspaceShot from '../assets/features/workspace-v044.png'
 import requestBuilderShot from '../assets/features/request-builder.png'
 import responseInspectorShot from '../assets/features/response-inspector.png'
 import assertionsShot from '../assets/features/assertions.png'
 import environmentsShot from '../assets/features/environments.png'
-import scenarioResultsShot from '../assets/features/scenario-results.png'
+import scenarioResultsShot from '../assets/features/load-soak-v044.png'
 import runHistoryShot from '../assets/features/run-history.png'
 
 // URLs injected from the root .env via vite.config.ts (define block).
@@ -452,7 +452,7 @@ export default function LandingPage() {
               { icon: FileCode2, title: 'Any content type', body: 'Use JSON, forms, multipart uploads, raw text, XML, or GraphQL with variables.' },
               { icon: Activity, title: 'Live load testing', body: 'Watch attempts, success, rate limits, errors, latency percentiles, and a live trend chart as runs execute.' },
               { icon: Repeat, title: 'Retry & rate control', body: 'Retry failures and tune concurrency, delays, and request limits per endpoint.' },
-              { icon: Users, title: 'Local project sharing', body: 'Pair nearby Beacon devices, sync one project, and keep execution plus private variables local.' },
+              { icon: Users, title: 'Secure local sharing', body: 'Pair nearby devices over HTTPS, sync revisioned project source, and keep execution plus private values local.' },
             ].map(({ icon: Icon, title, body }) => (
               <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-5">
                 <div className="flex items-center gap-3">
@@ -477,14 +477,14 @@ export default function LandingPage() {
             </div>
             <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">Share the project. Run on your own device.</h2>
             <p className="mt-5 max-w-xl leading-7 text-muted-foreground">
-              Host one Beacon project on your trusted local network, approve teammates as Viewer or Editor, and synchronize endpoint source without uploading your workspace to a cloud account.
+              Host one project on your trusted local network, approve each device as Viewer or Editor, and keep endpoint source synchronized without creating a cloud workspace.
             </p>
             <div className="mt-7 grid gap-3 sm:grid-cols-2">
               {[
-                [UserCheck, 'Owner approval', 'Pairing codes, explicit approval, and per-device roles.'],
-                [ShieldCheck, 'Secrets stay local', 'Private variables, responses, and run history never synchronize.'],
-                [GitBranch, 'Revisioned source', 'Accepted edits become ordered project revisions.'],
-                [PanelsTopLeft, 'Local execution', 'Every teammate sends and tests from their own machine.'],
+                [UserCheck, 'Trusted devices', 'Pairing codes, owner approval, roles, and automatic trusted reconnect.'],
+                [ShieldCheck, 'Pinned HTTPS', 'Beacon blocks synchronization if the host certificate fingerprint changes.'],
+                [GitBranch, 'Conflict-safe revisions', 'Three-way merge preserves unrelated edits and exposes field conflicts.'],
+                [PanelsTopLeft, 'Local execution', 'Requests, responses, history, and private values stay on each device.'],
               ].map(([Icon, title, body]) => {
                 const SharingIcon = Icon as typeof Users
                 return <div key={title as string} className="rounded-2xl border border-border/70 bg-background/65 p-4 backdrop-blur-xl">
@@ -499,16 +499,16 @@ export default function LandingPage() {
           <Reveal delay={0.1} className="liquid-glass rounded-[2rem] p-5 md:p-7">
             <div className="flex items-center justify-between border-b border-border/70 pb-4">
               <div>
-                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-500">Shared project</div>
-                <div className="mt-1 text-lg font-semibold">Platform API</div>
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-500">Local project sharing</div>
+                <div className="mt-1 text-lg font-semibold">Platform API source</div>
               </div>
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 font-mono text-[10px] font-bold text-emerald-500">SYNCED · r24</span>
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 font-mono text-[10px] font-bold text-emerald-500">CONNECTED / r24</span>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               {[
                 ['Host', 'Nando MacBook'],
-                ['Network', '192.168.1.18'],
-                ['Execution', 'This device'],
+                ['Transport', 'HTTPS pinned'],
+                ['Execution', 'Per device'],
               ].map(([label, value]) => <div key={label} className="rounded-xl border border-border/60 bg-background/55 p-3">
                 <div className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">{label}</div>
                 <div className="mt-2 truncate text-xs font-semibold">{value}</div>
@@ -516,8 +516,8 @@ export default function LandingPage() {
             </div>
             <div className="mt-5 space-y-2">
               {[
-                ['QA Windows', 'EDITOR', 'connected'],
-                ['Frontend Linux', 'VIEWER', 'connected'],
+                ['QA Windows', 'EDITOR', 'editing Auth API'],
+                ['Frontend Linux', 'VIEWER', 'viewing Orders'],
               ].map(([device, role, state]) => <div key={device} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/55 px-4 py-3">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{device}</span>
@@ -526,8 +526,8 @@ export default function LandingPage() {
               </div>)}
             </div>
             <div className="mt-5 flex items-center justify-between border-t border-border/70 pt-4 text-xs text-muted-foreground">
-              <span>Source synchronized · requests and history stay local</span>
-              <span className="font-mono text-cyan-500">LAN</span>
+              <span>LAN discovery and trusted reconnect are active</span>
+              <span className="font-mono text-cyan-500">SOURCE ONLY</span>
             </div>
           </Reveal>
         </div>
@@ -816,17 +816,17 @@ function FeatureGallery() {
         </RevealGroup>
 
         <Reveal className="mt-14 grid gap-8 lg:grid-cols-[minmax(0,1.58fr)_minmax(250px,0.42fr)] lg:items-center">
-          <ScreenFrame src={workspaceShot} alt="Current Beacon workspace with 47 JSONPlaceholder requests, test controls, and live monitoring" priority />
+          <ScreenFrame src={workspaceShot} alt="Beacon 0.4.4 request builder with dynamic values, assertions, extractors, query parameters, headers, and cookies" priority />
           <div className="lg:pl-4">
             <div className="h-px w-16 bg-cyan-400" />
             <h3 className="mt-6 text-3xl font-semibold tracking-tight">The workspace is the control surface.</h3>
             <p className="mt-4 leading-7 text-muted-foreground">
-              Choose a project and environment, send a single endpoint, or move straight into load mode. Controls, results, and evidence stay in one view.
+              Compose API and Web requests with dynamic values, assertions, extraction rules, query parameters, headers, and cookies in one focused view.
             </p>
             <div className="mt-7 space-y-3 font-mono text-xs text-muted-foreground">
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>SEND</span><span className="text-foreground">Endpoint row / editor</span></div>
               <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>MODES</span><span className="text-foreground">Single / load / scenario</span></div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.4.1 desktop</span></div>
+              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">0.4.4 desktop</span></div>
             </div>
           </div>
         </Reveal>
@@ -888,12 +888,12 @@ function FeatureGallery() {
         </div>
 
         <Reveal className="mt-24 grid gap-8 lg:grid-cols-[1.58fr_0.42fr] lg:items-center">
-          <ScreenFrame src={scenarioResultsShot} alt="Beacon Scenario result for a selected API endpoint with virtual users, iterations, and success metrics" />
+          <ScreenFrame src={scenarioResultsShot} alt="Beacon 0.4.4 Soak mode running with live requests per second, response time, error rate, and latency metrics" />
           <div className="lg:pl-4">
             <GitBranch className="h-7 w-7 text-cyan-500" />
-            <h3 className="mt-6 text-3xl font-semibold tracking-tight">Chain it, then scale it.</h3>
+            <h3 className="mt-6 text-3xl font-semibold tracking-tight">Pick the pressure profile.</h3>
             <p className="mt-4 leading-7 text-muted-foreground">
-              Run one API or Web endpoint with virtual users, or chain the complete project in list order with isolated variables and tokens.
+              Use Load for raw throughput, Scenario for complete user journeys, Rate Limit for quota discovery, or Soak for sustained endurance testing.
             </p>
           </div>
         </Reveal>

@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
   const docsUrl = `http://localhost:${DOCS_PORT}/docs/`
 
   // All backend routes share the same proxy target.
-  const proxyPaths = ['/config', '/tests', '/run', '/send', '/scenario', '/status', '/stop', '/projects', '/global', '/history']
+  const proxyPaths = ['/config', '/tests', '/run', '/send', '/scenario', '/status', '/stop', '/projects', '/global', '/history', '/sharing', '/system']
   const proxy: Record<string, any> = Object.fromEntries(
     proxyPaths.map((p) => [p, { target: backendTarget, changeOrigin: true }]),
   )
