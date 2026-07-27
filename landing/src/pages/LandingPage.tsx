@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Activity,
   Apple,
   ArrowRight,
   Bot,
   Braces,
-  Code2,
   Coffee,
   Download,
   FileCode2,
@@ -17,13 +16,9 @@ import {
   Menu,
   MessagesSquare,
   PanelsTopLeft,
-  Play,
   Repeat,
-  RotateCcw,
   Send,
   ShieldCheck,
-  Sparkles,
-  StopCircle,
   Terminal,
   Users,
   UserCheck,
@@ -34,7 +29,6 @@ import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { NetworkBackground } from '../components/NetworkBackground'
 import { ContributorWall } from '../components/ContributorWall'
-import { HeroStats } from '../components/HeroStats'
 import { startDownload } from '../lib/download'
 import {
   CountUp,
@@ -73,56 +67,12 @@ const NAV_LINKS = [
   { id: 'contributors', label: 'Contributors' },
 ]
 
-const REQUESTS = [
-  { method: 'POST', path: '/auth/login', status: 200, time: 48 },
-  { method: 'GET', path: '/users/me', status: 200, time: 32 },
-  { method: 'PUT', path: '/inventory/items', status: 202, time: 71 },
-  { method: 'GET', path: '/reports/daily', status: 429, time: 128 },
-  { method: 'POST', path: '/checkout/session', status: 201, time: 64 },
-]
-
-const SAMPLE_BODY = `{
-  "email": "{{random_email}}",
-  "token": "{{access_token}}",
-  "trace_id": "{{uuid}}"
-}`
-
 export default function LandingPage() {
   // Direct-download the right installer for the visitor's OS (falls back to the
   // releases page). See lib/download.ts.
   const download = () => { void startDownload() }
-  const [running, setRunning] = useState(false)
-  const [selected, setSelected] = useState(0)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<string>('product-preview')
-  const [logs, setLogs] = useState<string[]>([
-    'Ready. Select a request or run the collection.',
-    'Environment: Local / api.beacon.local',
-  ])
-  const logRef = useRef<HTMLDivElement>(null)
-
-  const current = REQUESTS[selected]
-  const successCount = REQUESTS.filter((r) => r.status >= 200 && r.status < 300).length
-
-  const response = useMemo(() => {
-    if (current.status === 429) {
-      return `{
-  "error": "rate_limited",
-  "retry_after": 30,
-  "message": "Request quota exceeded"
-}`
-    }
-    return `{
-  "ok": true,
-  "status": ${current.status},
-  "request_id": "req_7c42a19",
-  "latency_ms": ${current.time}
-}`
-  }, [current])
-
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [logs])
 
   useEffect(() => {
     const sections = NAV_LINKS
@@ -149,42 +99,6 @@ export default function LandingPage() {
       document.body.style.overflow = ''
     }
   }, [mobileOpen])
-
-  useEffect(() => {
-    if (!running) return
-    let i = 0
-    setLogs(['Starting collection run...', 'Resolving environment variables...'])
-    const id = window.setInterval(() => {
-      const req = REQUESTS[i % REQUESTS.length]
-      setSelected(i % REQUESTS.length)
-      setLogs((prev) => [
-        ...prev,
-        `${req.method} ${req.path} -> ${req.status} (${req.time}ms)`,
-      ].slice(-12))
-      i += 1
-      if (i >= REQUESTS.length) {
-        window.clearInterval(id)
-        setRunning(false)
-        setLogs((prev) => [...prev, `Run complete. ${successCount}/${REQUESTS.length} requests passed.`])
-      }
-    }, 620)
-    return () => window.clearInterval(id)
-  }, [running, successCount])
-
-  const runDemo = () => {
-    if (running) {
-      setRunning(false)
-      setLogs((prev) => [...prev, 'Run stopped.'])
-      return
-    }
-    setRunning(true)
-  }
-
-  const resetDemo = () => {
-    setRunning(false)
-    setSelected(0)
-    setLogs(['Ready. Select a request or run the collection.', 'Environment: Local / api.beacon.local'])
-  }
 
   return (
     <main className="landing-shell min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-background text-foreground selection:bg-cyan-500/30">
@@ -320,7 +234,7 @@ export default function LandingPage() {
                   }}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-5 text-sm font-bold text-background transition-all active:scale-[0.985]"
                 >
-                  Download release
+                  Get Beacon
                   <ArrowRight className="h-4 w-4" />
                 </button>
                 <a
@@ -329,7 +243,7 @@ export default function LandingPage() {
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-5 text-sm font-semibold transition-all hover:bg-muted active:scale-[0.985]"
                 >
                   <Download className="h-4 w-4" />
-                  Download Desktop
+                  See desktop app
                 </a>
               </div>
             </nav>
@@ -337,18 +251,17 @@ export default function LandingPage() {
         )}
       </header>
 
-      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-14 pt-12 lg:px-8 lg:pb-20 lg:pt-20 xl:grid-cols-[0.82fr_1.18fr]">
+      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-x-12 gap-y-8 px-5 pb-14 pt-12 lg:px-8 lg:pb-20 lg:pt-20 xl:grid-cols-[0.82fr_1.18fr]">
         <div className="hero-atmosphere absolute inset-0 -z-10" aria-hidden="true" />
 
         <RevealGroup className="max-w-2xl" stagger={0.08} delayChildren={0.05}>
-          <RevealItem className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            FOR API TEAMS &amp; SECURITY RESEARCHERS
+          <RevealItem className="mb-6 inline-flex items-center rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
+            FOR PEOPLE WHO BUILD AND BREAK APIs
           </RevealItem>
 
           <RevealItem as="div">
             <h1 className="text-balance text-6xl font-semibold leading-[0.98] tracking-[-3.5px] md:text-[68px] md:tracking-[-4px]">
-              Clarity for<br /> every API call.
+              API work,<br /> minus the mess.
             </h1>
           </RevealItem>
 
@@ -356,7 +269,7 @@ export default function LandingPage() {
             as="div"
             className="mt-6 max-w-xl text-pretty text-[17px] leading-relaxed text-muted-foreground"
           >
-            Send once, capture response values, assert behavior, chain scenarios, and load-test APIs from one local workspace.
+            Send requests, reuse tokens, test behavior, share projects, and run load tests without sending your data to the cloud.
           </RevealItem>
 
           <RevealItem className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -364,7 +277,7 @@ export default function LandingPage() {
               onClick={download}
               className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-semibold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
             >
-              Download Beacon
+              Get Beacon
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </button>
 
@@ -373,42 +286,13 @@ export default function LandingPage() {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-6 text-[15px] font-semibold transition-all hover:bg-muted hover:border-border active:scale-[0.985]"
             >
               <Download className="h-4 w-4" />
-              Download Desktop
+              See desktop app
             </a>
           </RevealItem>
 
-          <RevealItem>
-            <HeroStats />
-          </RevealItem>
-
-          <RevealItem className="mt-10 grid max-w-lg grid-cols-3 gap-3">
-            {[
-              { label: 'Send', value: '1 click' },
-              { label: 'Capture', value: 'Response' },
-              { label: 'Data', value: 'Local' },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="liquid-glass liquid-glass-interactive rounded-xl px-3 py-3"
-              >
-                <div className="font-mono text-xl font-bold tabular-nums">{item.value}</div>
-                <div className="mt-1 text-[11px] font-semibold text-muted-foreground">{item.label}</div>
-              </div>
-            ))}
-          </RevealItem>
         </RevealGroup>
 
-        <ProductPreview
-          current={current}
-          selected={selected}
-          response={response}
-          logs={logs}
-          running={running}
-          logRef={logRef}
-          onSelect={setSelected}
-          onRun={runDemo}
-          onReset={resetDemo}
-        />
+        <HeroProductCapture />
       </section>
 
       <section id="workspace" className="border-y border-border/60 bg-muted/15">
@@ -966,149 +850,76 @@ function ScreenFrame({ src, alt, priority = false, focus }: ScreenFrameProps) {
   )
 }
 
-interface ProductPreviewProps {
-  current: typeof REQUESTS[number]
-  selected: number
-  response: string
-  logs: string[]
-  running: boolean
-  logRef: RefObject<HTMLDivElement>
-  onSelect: (index: number) => void
-  onRun: () => void
-  onReset: () => void
-}
-
-function ProductPreview({ current, selected, response, logs, running, logRef, onSelect, onRun, onReset }: ProductPreviewProps) {
+function HeroProductCapture() {
   const reduce = useReducedMotion()
+
   return (
-    <motion.div
-      id="interactive-demo"
-      className="relative min-w-0 scroll-mt-24"
+    <motion.figure
+      className="group relative min-h-[430px] min-w-0 sm:min-h-[500px] xl:min-h-[560px]"
       initial={reduce ? undefined : { opacity: 0, y: 26, scale: 0.97 }}
       animate={reduce ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
     >
-      <div className="absolute -inset-4 -z-10 rounded-[2rem] border border-cyan-500/10 bg-cyan-500/5 blur-2xl" />
-      <div className="w-full min-w-0 overflow-hidden rounded-3xl border border-border/70 bg-card shadow-xl">
-        <div className="flex items-center justify-between border-b border-border bg-muted/30 px-5 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1.5">
-              <span className="h-3 w-3 rounded-full bg-red-400" />
-              <span className="h-3 w-3 rounded-full bg-amber-400" />
-              <span className="h-3 w-3 rounded-full bg-emerald-400" />
-            </div>
-            <span className="font-mono text-xs font-medium tracking-widest text-muted-foreground">BEACON • RETAIL API</span>
-          </div>
-          <div className="hidden items-center gap-1.5 rounded-full border border-border bg-background px-3 py-0.5 text-[10px] font-medium text-muted-foreground sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> CONNECTED
-          </div>
+      <div
+        className="absolute inset-x-[8%] top-[12%] -z-10 h-[62%] rounded-[3rem] bg-blue-500/12 blur-3xl"
+        aria-hidden="true"
+      />
+
+      <StackedProductShot
+        src={workspaceShot}
+        alt="Beacon desktop workspace showing a real API project and request editor"
+        label="Workspace"
+        eager
+        className="absolute right-0 top-4 z-10 w-[92%] rotate-[1.2deg] transition-transform duration-500 ease-out group-hover:translate-y-[-4px] group-hover:rotate-[0.5deg]"
+      />
+      <StackedProductShot
+        src={assertionsShot}
+        alt="Beacon response assertions with passed and failed checks"
+        label="Assertions"
+        className="absolute bottom-5 left-0 z-20 w-[62%] -rotate-[3.5deg] transition-transform duration-500 ease-out group-hover:-translate-x-2 group-hover:translate-y-1 group-hover:-rotate-[5deg]"
+      />
+      <StackedProductShot
+        src={scenarioResultsShot}
+        alt="Beacon load test dashboard with live request and latency charts"
+        label="Load test"
+        className="absolute bottom-0 right-0 z-30 w-[60%] rotate-[3deg] transition-transform duration-500 ease-out group-hover:translate-x-2 group-hover:translate-y-2 group-hover:rotate-[4.5deg]"
+      />
+    </motion.figure>
+  )
+}
+
+interface StackedProductShotProps {
+  src: string
+  alt: string
+  label: string
+  className: string
+  eager?: boolean
+}
+
+function StackedProductShot({ src, alt, label, className, eager = false }: StackedProductShotProps) {
+  return (
+    <div className={`screen-frame overflow-hidden rounded-xl border border-border/90 bg-card shadow-2xl ${className}`}>
+      <div className="flex h-7 items-center justify-between border-b border-border/70 bg-card/95 px-2.5 sm:h-8 sm:px-3">
+        <div className="flex items-center gap-1" aria-hidden="true">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-400/80 sm:h-2 sm:w-2" />
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 sm:h-2 sm:w-2" />
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80 sm:h-2 sm:w-2" />
         </div>
-
-        <div className="grid min-h-[560px] min-w-0 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <aside className="border-b border-border bg-muted/25 p-3 lg:border-b-0 lg:border-r">
-            <div className="mb-3 flex items-center justify-between px-1">
-              <span className="text-[11px] font-bold uppercase text-muted-foreground">Collection</span>
-              <Sparkles className="h-3.5 w-3.5 text-cyan-500" />
-            </div>
-            <div className="space-y-1">
-              {REQUESTS.map((req, index) => (
-                <button
-                  key={`${req.method}-${req.path}`}
-                  onClick={() => onSelect(index)}
-                  className={`w-full rounded-lg px-2.5 py-2 text-left transition-all ${
-                    selected === index ? 'bg-foreground text-background shadow-sm' : 'hover:bg-background'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`font-mono text-[11px] font-bold ${selected === index ? 'text-cyan-300' : 'text-cyan-600 dark:text-cyan-400'}`}>{req.method}</span>
-                    <span className="font-mono text-[10px] tabular-nums opacity-70">{req.time}ms</span>
-                  </div>
-                  <div className="mt-1 truncate text-xs font-semibold">{req.path}</div>
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <div className="grid min-w-0 lg:grid-rows-[auto_1fr_auto]">
-            <div className="border-b border-border p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-background">
-                  <span className="border-r border-border px-3 py-2 font-mono text-xs font-bold text-cyan-600 dark:text-cyan-400">{current.method}</span>
-                  <span className="truncate px-3 py-2 font-mono text-xs text-muted-foreground">https://api.beacon.local{current.path}</span>
-                </div>
-                <button
-                  onClick={onRun}
-                  className={`inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-xs font-bold transition-all active:scale-[0.98] ${
-                    running ? 'bg-destructive text-destructive-foreground' : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
-                  }`}
-                >
-                  {running ? <StopCircle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  {running ? 'Stop' : 'Run'}
-                </button>
-                <button onClick={onReset} className="inline-flex h-9 items-center justify-center rounded-md border border-border px-3 text-xs font-bold hover:bg-muted">
-                  <RotateCcw className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="grid min-w-0 lg:grid-cols-2">
-              <div className="border-b border-border p-4 lg:border-b-0 lg:border-r">
-                <div className="mb-2 flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                  <Code2 className="h-3.5 w-3.5" /> Request body
-                </div>
-                <pre className="min-h-[230px] overflow-auto rounded-xl bg-slate-950 p-4 text-left font-mono text-xs leading-6 text-slate-200"><code>{SAMPLE_BODY}</code></pre>
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  {[
-                    ['Auth', 'Bearer'],
-                    ['Env', 'Local'],
-                    ['Delay', '0.1s'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg border border-border bg-background p-3">
-                      <div className="text-[10px] font-semibold text-muted-foreground">{label}</div>
-                      <div className="mt-1 truncate font-mono text-xs font-bold">{value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-4">
-                <div className="mb-2 flex items-center justify-between text-xs font-bold text-muted-foreground">
-                  <span className="inline-flex items-center gap-2"><Terminal className="h-3.5 w-3.5" /> Response</span>
-                  <span className="flex items-center gap-1.5">
-                    <span className={`rounded-md px-2 py-0.5 font-mono ${current.status >= 200 && current.status < 300 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>{current.status}</span>
-                    <span className="font-mono text-[10px] text-muted-foreground">{current.time}ms</span>
-                    <span className={`rounded-md px-2 py-0.5 ${current.status >= 200 && current.status < 300 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'}`}>
-                      {current.status >= 200 && current.status < 300 ? '✓ assertions' : '✗ assertions'}
-                    </span>
-                  </span>
-                </div>
-                <pre className="min-h-[230px] overflow-auto rounded-xl bg-slate-950 p-4 text-left font-mono text-xs leading-6 text-slate-200"><code>{response}</code></pre>
-                <div ref={logRef} className="mt-4 h-24 overflow-auto rounded-xl border border-border bg-background p-3 font-mono text-[11px] leading-5 text-muted-foreground">
-                  {logs.map((line, index) => (
-                    <div key={`${line}-${index}`} className={line.includes('429') ? 'text-amber-600 dark:text-amber-400' : line.includes('complete') ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-                      {line}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid border-t border-border bg-muted/25 sm:grid-cols-4">
-              {[
-                ['Attempts', REQUESTS.length],
-                ['Success', REQUESTS.filter((r) => r.status < 300).length],
-                ['Rate limited', REQUESTS.filter((r) => r.status === 429).length],
-                ['Avg latency', '68ms'],
-              ].map(([label, value]) => (
-                <div key={label} className="border-b border-border px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-                  <div className="font-mono text-lg font-bold tabular-nums">{value}</div>
-                  <div className="text-[11px] font-semibold text-muted-foreground">{label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <span className="font-mono text-[7px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:text-[8px]">
+          {label}
+        </span>
       </div>
-    </motion.div>
+      <div className="aspect-[1.55] overflow-hidden bg-muted/20">
+        <img
+          src={src}
+          alt={alt}
+          width="2056"
+          height="1328"
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          className="h-full w-full object-cover object-top"
+        />
+      </div>
+    </div>
   )
 }

@@ -80,8 +80,8 @@ body {
   }
 }
 
-/* Beacon's page atmosphere borrows from request traces: a quiet coordinate
-   field, two traveling response paths, and one semantic live pulse. */
+/* Beacon's page atmosphere stays intentionally soft. The moving request trace
+   supplies the structure, so the surface does not need a decorative grid. */
 .landing-shell {
   isolation: isolate;
   background-image:
@@ -93,11 +93,67 @@ body {
 .landing-atmosphere {
   overflow: hidden;
   background-image:
-    linear-gradient(hsl(var(--border) / 0.2) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(var(--border) / 0.2) 1px, transparent 1px),
-    radial-gradient(circle at center, transparent 28%, hsl(var(--background) / 0.6) 100%);
-  background-size: 72px 72px, 72px 72px, auto;
+    radial-gradient(ellipse at 74% 10%, rgb(var(--beacon-500) / 0.09), transparent 34%),
+    radial-gradient(ellipse at 14% 46%, rgb(var(--beacon-400) / 0.045), transparent 28%),
+    radial-gradient(circle at center, transparent 34%, hsl(var(--background) / 0.68) 100%);
   mask-image: linear-gradient(to bottom, black, black 82%, transparent);
+}
+
+/* One oversized refractive lens gives the page a liquid identity without
+   falling back to grids, particles, or a pile of decorative cards. */
+.landing-atmosphere::before {
+  content: '';
+  position: absolute;
+  top: 5rem;
+  right: -12rem;
+  width: min(66vw, 64rem);
+  aspect-ratio: 1.32;
+  border: 1px solid rgb(var(--beacon-400) / 0.14);
+  border-radius: 44% 56% 48% 52% / 55% 42% 58% 45%;
+  background:
+    linear-gradient(128deg, rgb(255 255 255 / 0.16), transparent 34%),
+    radial-gradient(ellipse at 34% 28%, rgb(var(--beacon-400) / 0.08), transparent 58%);
+  box-shadow:
+    inset 18px 16px 70px rgb(255 255 255 / 0.1),
+    inset -28px -20px 90px rgb(var(--beacon-500) / 0.055);
+  transform: rotate(-8deg);
+}
+
+.landing-atmosphere::after {
+  content: '';
+  position: absolute;
+  top: 9rem;
+  right: -8rem;
+  width: min(58vw, 54rem);
+  aspect-ratio: 1.4;
+  border-radius: 48% 52% 44% 56% / 50% 46% 54% 50%;
+  border-top: 1px solid rgb(255 255 255 / 0.3);
+  border-left: 1px solid rgb(var(--beacon-400) / 0.12);
+  transform: rotate(-8deg);
+}
+
+.dark .landing-atmosphere::before {
+  border-color: rgb(var(--beacon-400) / 0.11);
+  background:
+    linear-gradient(128deg, rgb(255 255 255 / 0.035), transparent 34%),
+    radial-gradient(ellipse at 34% 28%, rgb(var(--beacon-400) / 0.065), transparent 58%);
+  box-shadow:
+    inset 18px 16px 70px rgb(255 255 255 / 0.025),
+    inset -28px -20px 90px rgb(var(--beacon-500) / 0.045);
+}
+
+@media (max-width: 767px) {
+  .landing-atmosphere::before {
+    top: 22rem;
+    right: -18rem;
+    width: 44rem;
+  }
+
+  .landing-atmosphere::after {
+    top: 25rem;
+    right: -17rem;
+    width: 39rem;
+  }
 }
 
 /* Liquid signal glass: translucent request surfaces with a directional
@@ -249,11 +305,8 @@ body {
 
 .product-story-grid {
   background-image:
-    linear-gradient(hsl(var(--border) / 0.28) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(var(--border) / 0.28) 1px, transparent 1px),
-    radial-gradient(circle at 14% 24%, rgb(var(--beacon-400) / 0.09), transparent 30%),
-    radial-gradient(circle at 86% 66%, rgb(var(--beacon-500) / 0.07), transparent 26%);
-  background-size: 64px 64px, 64px 64px, auto, auto;
+    radial-gradient(ellipse at 12% 20%, rgb(var(--beacon-400) / 0.07), transparent 34%),
+    radial-gradient(ellipse at 88% 72%, rgb(var(--beacon-500) / 0.055), transparent 30%);
   mask-image: linear-gradient(to bottom, transparent, black 8%, black 92%, transparent);
 }
 

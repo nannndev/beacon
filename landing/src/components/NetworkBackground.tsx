@@ -111,5 +111,5 @@ export function NetworkBackground() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 -z-10 h-full w-full opacity-75 dark:opacity-90" aria-hidden="true" />
+  return <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 -z-10 h-full w-full opacity-50 dark:opacity-60" aria-hidden="true" />
 }
