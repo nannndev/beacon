@@ -91,14 +91,17 @@ export interface SharingStatus {
     project_id?: string | null
     project_name?: string | null
     host_device_name?: string
+    host_device_id?: string
+    host_device_ip?: string
     address?: string | null
     pairing_code?: string | null
     pairing_expires_at?: number | null
-    connected_members?: Array<{ device_id: string; device_name: string; created_at: number; role: 'viewer' | 'editor' }>
+    connected_members?: Array<{ device_id: string; device_name: string; device_ip?: string; created_at: number; role: 'viewer' | 'editor' }>
     pending_requests?: Array<{
       request_id: string
       device_id: string
       device_name: string
+      device_ip?: string
       created_at: number
       status: 'pending'
     }>
@@ -119,6 +122,8 @@ export interface ProjectRevision {
   base_revision: number
   mutation_id: string
   actor_device_id: string
+  actor_device_name?: string | null
+  actor_device_ip?: string | null
   operation: string
   target_type: string
   target_id?: string | null

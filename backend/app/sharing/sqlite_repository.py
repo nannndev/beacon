@@ -91,6 +91,8 @@ class SqliteSharedProjectRepository:
                     base_revision INTEGER NOT NULL,
                     mutation_id TEXT NOT NULL,
                     actor_device_id TEXT NOT NULL,
+                    actor_device_name TEXT,
+                    actor_device_ip TEXT,
                     operation TEXT NOT NULL,
                     target_type TEXT NOT NULL,
                     target_id TEXT,
@@ -101,6 +103,11 @@ class SqliteSharedProjectRepository:
                     UNIQUE(project_id, mutation_id)
                 );
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(project_revisions)")}
+            if "actor_device_name" not in columns:
+                db.execute("ALTER TABLE project_revisions ADD COLUMN actor_device_name TEXT")
+            if "actor_device_ip" not in columns:
+                db.execute("ALTER TABLE project_revisions ADD COLUMN actor_device_ip TEXT")
 
     def pragma(self, name: str):
         with self._connect() as db:
@@ -125,6 +132,7 @@ class SqliteSharedProjectRepository:
             self._insert_revision(db, Revision(
                 id=str(uuid.uuid4()), project_id=project_id, revision=1, base_revision=0,
                 mutation_id=mutation_id, actor_device_id=owner_device_id,
+                actor_device_name=None, actor_device_ip=None,
                 operation="project.imported", target_type="project", target_id=project_id,
                 summary=f"Imported {source.get('name', 'project')} for sharing",
                 patch={"source": source}, created_at=now,
@@ -181,7 +189,10 @@ class SqliteSharedProjectRepository:
         with self._connect() as db:
             db.execute("UPDATE shared_projects SET sharing_enabled = 0 WHERE sharing_enabled = 1")
 
-    def apply_mutation(self, mutation: Mutation, actor_device_id: str, summary: str) -> Revision:
+    def apply_mutation(
+        self, mutation: Mutation, actor_device_id: str, summary: str,
+        actor_device_name: Optional[str] = None, actor_device_ip: Optional[str] = None,
+    ) -> Revision:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             duplicate = db.execute(
@@ -208,6 +219,7 @@ class SqliteSharedProjectRepository:
                 id=str(uuid.uuid4()), project_id=mutation.project_id,
                 revision=current_revision + 1, base_revision=current_revision,
                 mutation_id=mutation.mutation_id, actor_device_id=actor_device_id,
+                actor_device_name=actor_device_name, actor_device_ip=actor_device_ip,
                 operation=mutation.operation, target_type=_target_type(mutation.operation),
                 target_id=mutation.target_id, summary=summary,
                 patch=copy.deepcopy(mutation.payload), created_at=_now(),
@@ -230,9 +242,14 @@ class SqliteSharedProjectRepository:
     @staticmethod
     def _insert_revision(db, revision: Revision) -> None:
         db.execute(
-            "INSERT INTO project_revisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            """INSERT INTO project_revisions (
+                   id, project_id, revision, base_revision, mutation_id,
+                   actor_device_id, actor_device_name, actor_device_ip,
+                   operation, target_type, target_id, summary, patch_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (revision.id, revision.project_id, revision.revision, revision.base_revision,
-             revision.mutation_id, revision.actor_device_id, revision.operation,
+             revision.mutation_id, revision.actor_device_id, revision.actor_device_name,
+             revision.actor_device_ip, revision.operation,
              revision.target_type, revision.target_id, revision.summary,
              json.dumps(revision.patch), revision.created_at),
         )
@@ -243,6 +260,7 @@ class SqliteSharedProjectRepository:
             id=row["id"], project_id=row["project_id"], revision=row["revision"],
             base_revision=row["base_revision"], mutation_id=row["mutation_id"],
             actor_device_id=row["actor_device_id"], operation=row["operation"],
+            actor_device_name=row["actor_device_name"], actor_device_ip=row["actor_device_ip"],
             target_type=row["target_type"], target_id=row["target_id"],
             summary=row["summary"], patch=json.loads(row["patch_json"]),
             created_at=row["created_at"],

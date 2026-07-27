@@ -4,6 +4,7 @@ import uuid
 from typing import Callable, Optional
 
 import requests
+import socket
 
 from .models import Mutation, Revision
 from .sqlite_repository import SqliteSharedProjectRepository
@@ -24,6 +25,45 @@ class SharedProjectService:
         self.project_lookup = project_lookup
         self.device_id = device_id
         self.lan_host = LanHostService(self.snapshot, self.revisions_after, self.mutate, device_id)
+
+    def _local_actor(self) -> dict:
+        return {
+            "device_id": self.device_id(),
+            "device_name": socket.gethostname(),
+            "device_ip": self.lan_host.status().get("host_device_ip"),
+        }
+
+    @staticmethod
+    def _change_summary(before: dict, after: dict) -> str:
+        """Describe a full-source mutation without leaking source values."""
+        changes = []
+        if before.get("name") != after.get("name"):
+            changes.append(f"Renamed project to {after.get('name', 'Untitled')}")
+
+        def indexed(source: dict, key: str) -> dict:
+            if key == "items":
+                result = {}
+                def walk(items):
+                    for item in items or []:
+                        if isinstance(item, dict) and item.get("id"):
+                            result[item["id"]] = item
+                            walk(item.get("items", []))
+                walk(source.get("items", []))
+                return result
+            return {item.get("id"): item for item in source.get(key, []) if item.get("id")}
+
+        for key, label in (("items", "source item"), ("environments", "environment")):
+            old, new = indexed(before, key), indexed(after, key)
+            added, removed = set(new) - set(old), set(old) - set(new)
+            changed = {item_id for item_id in set(old) & set(new) if old[item_id] != new[item_id]}
+            if added:
+                changes.append(f"Added {len(added)} {label}{'' if len(added) == 1 else 's'}")
+            if removed:
+                changes.append(f"Removed {len(removed)} {label}{'' if len(removed) == 1 else 's'}")
+            if changed:
+                names = [str(new[item_id].get("name", label)) for item_id in list(changed)[:2]]
+                changes.append(f"Updated {', '.join(names)}" + (f" +{len(changed)-2}" if len(changed) > 2 else ""))
+        return " · ".join(changes) or "Updated project source"
 
     def initialize(self) -> None:
         self.repository.initialize()
@@ -169,7 +209,11 @@ class SharedProjectService:
             base_revision=status["revision"], operation="project.updated",
             target_id=project["id"], payload={key: value for key, value in source.items() if key != "id"},
         )
-        self.repository.apply_mutation(mutation, self.device_id(), f"Updated {project.get('name', 'project')}")
+        actor = self._local_actor()
+        self.repository.apply_mutation(
+            mutation, actor["device_id"], self._change_summary(snapshot["source"], source),
+            actor["device_name"], actor["device_ip"],
+        )
         return True
 
     def pull_updates(self, project: dict) -> Optional[dict]:
@@ -252,7 +296,7 @@ class SharedProjectService:
     def revisions_after(self, project_id: str, revision: int) -> list[dict]:
         return [asdict(item) for item in self.repository.revisions_after(project_id, revision)]
 
-    def mutate(self, data: dict, actor_device_id: Optional[str] = None) -> Revision:
+    def mutate(self, data: dict, actor_device_id=None) -> Revision:
         mutation = Mutation(
             mutation_id=str(data.get("mutation_id", "")),
             project_id=str(data.get("project_id", "")),
@@ -270,5 +314,15 @@ class SharedProjectService:
         status = self.repository.status(mutation.project_id)
         if not status or not status["sharing_enabled"]:
             raise ValueError("Project sharing is not enabled")
+        actor = actor_device_id if isinstance(actor_device_id, dict) else {
+            **self._local_actor(), "device_id": actor_device_id or self.device_id(),
+        }
+        snapshot = self.repository.snapshot(mutation.project_id)
         summary = str(data.get("summary") or mutation.operation)
-        return self.repository.apply_mutation(mutation, actor_device_id or self.device_id(), summary)
+        if mutation.operation == "project.updated" and snapshot:
+            candidate = {**snapshot["source"], **mutation.payload}
+            summary = self._change_summary(snapshot["source"], candidate)
+        return self.repository.apply_mutation(
+            mutation, actor["device_id"], summary,
+            actor.get("device_name"), actor.get("device_ip"),
+        )

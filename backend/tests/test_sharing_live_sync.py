@@ -61,6 +61,7 @@ class SharingLiveSyncTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["revision"], 2)
+        self.assertEqual(response.json()["actor_device_name"], "Member")
 
         snapshot = client.get(
             "/beacon-share/projects/p1/snapshot",
@@ -69,6 +70,20 @@ class SharingLiveSyncTests(unittest.TestCase):
         self.assertEqual(snapshot["source"]["items"][0]["name"], "After")
         self.assertIsNone(snapshot["source"]["environments"][0]["variables"]["access_token"]["value"])
         self.assertNotIn("notifications", snapshot["source"])
+
+    def test_pairing_captures_member_ip_automatically(self):
+        host = self.service.lan_host
+        host._project_id = "p1"
+        host._project_name = "Demo"
+        host._pairing_code = "123456"
+        host._pairing_expires_at = 9_999_999_999
+        response = TestClient(host._app()).post("/beacon-share/pair", json={
+            "project_id": "p1", "code": "123456",
+            "device_id": "member-device", "device_name": "Member",
+        })
+        self.assertEqual(response.status_code, 200)
+        request = next(iter(host._pending.values()))
+        self.assertEqual(request["device_ip"], "testclient")
 
     def test_viewer_cannot_mutate_project_source(self):
         client = self._client("viewer")

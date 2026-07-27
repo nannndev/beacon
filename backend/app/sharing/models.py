@@ -20,6 +20,8 @@ class Revision:
     base_revision: int
     mutation_id: str
     actor_device_id: str
+    actor_device_name: Optional[str]
+    actor_device_ip: Optional[str]
     operation: str
     target_type: str
     target_id: Optional[str]

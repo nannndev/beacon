@@ -271,6 +271,11 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                   <div className="px-4 py-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><Laptop className="h-3 w-3" /> Host device</div>
                     <div className="mt-1 truncate text-xs font-medium">{sharingStatus.member?.host_address || sharingStatus.host?.host_device_name || 'Starting host'}</div>
+                    {!isMember && sharingStatus.host?.hosting ? (
+                      <div className="mt-0.5 truncate font-mono text-[9px] text-muted-foreground">
+                        {sharingStatus.host.host_device_ip} · {sharingStatus.host.host_device_id}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="px-4 py-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><History className="h-3 w-3" /> Source revision</div>
@@ -324,7 +329,7 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                         <div key={request.request_id} className="flex flex-wrap items-center gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-xs font-semibold">{request.device_name}</div>
-                            <div className="truncate font-mono text-[9px] text-muted-foreground">{request.device_id}</div>
+                            <div className="truncate font-mono text-[9px] text-muted-foreground">{request.device_ip || 'IP unavailable'} · {request.device_id}</div>
                           </div>
                           <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={sharingBusy}
                             onClick={() => decidePairing(request.request_id, false, 'viewer')}>Reject</Button>
@@ -341,7 +346,10 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                   </div>
                   {sharingStatus.host?.connected_members?.length ? sharingStatus.host.connected_members.map((member) => (
                     <div key={member.device_id} className="flex items-center justify-between gap-2 py-1 text-[11px]">
-                      <span className="min-w-0 flex-1 truncate">{member.device_name}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="block">{member.device_name}</span>
+                        <span className="block font-mono text-[9px] text-muted-foreground">{member.device_ip || 'IP unavailable'} · {member.device_id}</span>
+                      </span>
                       <Button size="sm" variant="ghost" className="h-6 px-2 text-[9px]" disabled={sharingBusy}
                         onClick={() => updateMember(member.device_id, member.role === 'viewer' ? 'editor' : 'viewer')}>
                         {member.role}
@@ -367,7 +375,12 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                       {revisions.map((revision) => (
                         <div key={revision.id} className="flex items-center gap-3 text-[11px]">
                           <span className="w-7 shrink-0 font-mono text-blue-600 dark:text-blue-400">r{revision.revision}</span>
-                          <span className="min-w-0 flex-1 truncate text-foreground/90">{revision.summary}</span>
+                          <span className="min-w-0 flex-1 truncate text-foreground/90">
+                            <span className="block truncate">{revision.summary}</span>
+                            <span className="block truncate font-mono text-[9px] text-muted-foreground">
+                              by {revision.actor_device_name || 'Beacon device'} · {revision.actor_device_ip || 'local'} · {revision.actor_device_id}
+                            </span>
+                          </span>
                           <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
                             {new Date(revision.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>

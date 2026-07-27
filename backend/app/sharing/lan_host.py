@@ -6,7 +6,7 @@ import uuid
 from typing import Callable, Optional
 
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 
 
 PAIRING_TTL_SECONDS = 300
@@ -37,7 +37,7 @@ class LanHostService:
         self,
         snapshot: Callable[[str], Optional[dict]],
         revisions: Callable[[str, int], list[dict]],
-        mutate: Callable[[dict, str], object],
+        mutate: Callable[[dict, object], object],
         device_id: Callable[[], str],
     ):
         self._snapshot = snapshot
@@ -62,7 +62,7 @@ class LanHostService:
             return self.status()
 
         @app.post("/beacon-share/pair")
-        def pair(data: dict):
+        def pair(data: dict, request: Request):
             if data.get("project_id") != self._project_id:
                 raise HTTPException(status_code=404, detail="Shared project not found")
             if not self._pairing_code or time.time() >= self._pairing_expires_at:
@@ -73,6 +73,7 @@ class LanHostService:
             self._pending[request_id] = {
                 "device_id": str(data.get("device_id") or "unknown"),
                 "device_name": str(data.get("device_name") or "Beacon device")[:80],
+                "device_ip": request.client.host if request.client else "unknown",
                 "created_at": time.time(),
                 "status": "pending",
                 "role": None,
@@ -122,7 +123,7 @@ class LanHostService:
                 raise HTTPException(status_code=403, detail="Viewer role cannot edit shared source")
             if project_id != self._project_id:
                 raise HTTPException(status_code=404, detail="Shared project not found")
-            revision = self._mutate({**data, "project_id": project_id}, member["device_id"])
+            revision = self._mutate({**data, "project_id": project_id}, member)
             return revision.__dict__
 
         return app
@@ -176,6 +177,8 @@ class LanHostService:
             "project_id": self._project_id,
             "project_name": self._project_name,
             "host_device_name": socket.gethostname(),
+            "host_device_id": self._device_id(),
+            "host_device_ip": local_ip_address(),
             "address": address,
             "pairing_code": self._pairing_code,
             "pairing_expires_at": self._pairing_expires_at or None,
@@ -202,6 +205,7 @@ class LanHostService:
         self._sessions[token] = {
             "device_id": request["device_id"],
             "device_name": request["device_name"],
+            "device_ip": request["device_ip"],
             "created_at": request["created_at"],
             "role": role,
         }
