@@ -39,6 +39,7 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
   const [sharingError, setSharingError] = useState('')
   const [revisions, setRevisions] = useState<ProjectRevision[]>([])
   const [revisionsLoading, setRevisionsLoading] = useState(false)
+  const [conflictChoices, setConflictChoices] = useState<Record<string, 'team' | 'mine'>>({})
   const isMember = Boolean(sharingStatus?.member)
   const isViewer = sharingStatus?.member?.role === 'viewer'
 
@@ -47,6 +48,10 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
     setWebhook(project?.notifications?.discord_webhook || '')
     setMode(project?.notifications?.mode || 'off')
   }, [project])
+
+  useEffect(() => {
+    setConflictChoices({})
+  }, [sharingStatus?.member?.conflict?.detected_at])
 
   useEffect(() => {
     if (!project?.id || !sharingStatus?.sharing_enabled || sharingStatus.member) {
@@ -189,6 +194,37 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
     }
   }
 
+  const resolveConflict = async (resolution: 'team' | 'mine' | 'merge') => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      const result = await api.resolveSharingConflict(project.id, resolution, resolution === 'merge' ? conflictChoices : undefined)
+      onSharingStatusChange(result.status)
+      await onProjectListChange()
+      toast.success(resolution === 'team' ? 'Team version applied' : resolution === 'mine' ? 'Your changes applied to the latest revision' : 'Selected changes merged successfully')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not resolve sharing conflict')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const retryConnection = async () => {
+    if (!project?.id || sharingBusy) return
+    setSharingBusy(true)
+    try {
+      const result = await api.syncSharedProject(project.id)
+      onSharingStatusChange(result.status)
+      if (result.changed) await onProjectListChange()
+      if (result.status.member?.connection_state === 'connected') toast.success('Reconnected to sharing host')
+      else toast.info('Host is still unavailable; your local snapshot is safe')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not reach sharing host')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl animate-fade-in pb-24">
       <div className="mb-6 flex items-start justify-between gap-4 border-b border-border pb-5">
@@ -276,6 +312,9 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                         {sharingStatus.host.host_device_ip} · {sharingStatus.host.host_device_id}
                       </div>
                     ) : null}
+                    <div className="mt-0.5 truncate font-mono text-[8px] text-muted-foreground" title={sharingStatus.member?.certificate_fingerprint || sharingStatus.host?.certificate_fingerprint}>
+                      TLS {sharingStatus.member?.certificate_fingerprint || sharingStatus.host?.certificate_fingerprint || 'starting…'}
+                    </div>
                   </div>
                   <div className="px-4 py-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><History className="h-3 w-3" /> Source revision</div>
@@ -283,11 +322,117 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                   </div>
                 </div>
 
+                {isMember && sharingStatus.member?.conflict ? (
+                  <div className="border-t border-red-500/25 bg-red-500/[0.055] p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 rounded-md bg-red-500/10 p-2 text-red-500"><AlertTriangle className="h-4 w-4" /></div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-semibold text-red-600 dark:text-red-400">Source changes need your decision</h4>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          Team source advanced to r{sharingStatus.member.conflict.current_revision} while this device had unsynced edits.
+                          Requests still run locally, but source sync is paused until this is resolved.
+                        </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-md border border-border bg-background/60 p-3">
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Team version</div>
+                            <div className="mt-1 truncate text-xs font-medium">{String(sharingStatus.member.conflict.team_source?.name || 'Latest shared source')}</div>
+                            <p className="mt-1 text-[10px] text-muted-foreground">Discard this device's conflicting source edits.</p>
+                          </div>
+                          <div className="rounded-md border border-border bg-background/60 p-3">
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">My version</div>
+                            <div className="mt-1 truncate text-xs font-medium">{String(sharingStatus.member.conflict.local_source?.name || 'Local source')}</div>
+                            <p className="mt-1 text-[10px] text-muted-foreground">Apply the complete local source on top of the latest revision.</p>
+                          </div>
+                        </div>
+                        {(sharingStatus.member.conflict.fields?.length || 0) > 0 ? (
+                          <div className="mt-3 space-y-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Conflicting fields</div>
+                            {sharingStatus.member.conflict.fields!.map((field) => {
+                              const display = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value)
+                              return (
+                                <div key={field.label} className="rounded-md border border-red-500/15 bg-background/55 p-3">
+                                  <div className="mb-2 truncate font-mono text-[10px] font-semibold">{field.label || 'project source'}</div>
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    <button type="button" onClick={() => setConflictChoices((current) => ({ ...current, [field.label]: 'team' }))}
+                                      className={cn('rounded border p-2 text-left text-[10px]', conflictChoices[field.label] === 'team' ? 'border-blue-500 bg-blue-500/10' : 'border-border hover:border-blue-500/40')}>
+                                      <span className="block font-semibold text-blue-600 dark:text-blue-400">Use team</span>
+                                      <span className="mt-1 block max-h-16 overflow-auto break-all font-mono text-muted-foreground">{display(field.team_value)}</span>
+                                    </button>
+                                    <button type="button" onClick={() => setConflictChoices((current) => ({ ...current, [field.label]: 'mine' }))}
+                                      className={cn('rounded border p-2 text-left text-[10px]', conflictChoices[field.label] === 'mine' ? 'border-violet-500 bg-violet-500/10' : 'border-border hover:border-violet-500/40')}>
+                                      <span className="block font-semibold text-violet-600 dark:text-violet-400">Keep mine</span>
+                                      <span className="mt-1 block max-h-16 overflow-auto break-all font-mono text-muted-foreground">{display(field.local_value)}</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] text-emerald-600 dark:text-emerald-400">
+                            Beacon found no overlapping fields. These changes can be merged safely.
+                          </div>
+                        )}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" className="h-8 text-[11px]" disabled={sharingBusy} onClick={() => resolveConflict('team')}>Use team version</Button>
+                          <Button size="sm" className="h-8 text-[11px]" disabled={sharingBusy || isViewer} onClick={() => resolveConflict('mine')}>Keep my version</Button>
+                          <Button size="sm" variant="secondary" className="h-8 text-[11px]" disabled={sharingBusy || isViewer || (sharingStatus.member.conflict.fields || []).some((field) => !conflictChoices[field.label])}
+                            onClick={() => resolveConflict('merge')}>{sharingStatus.member.conflict.fields?.length ? 'Merge selected fields' : 'Apply safe merge'}</Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {isMember && ['host_offline', 'access_expired'].includes(sharingStatus.member?.connection_state || '') ? (
+                  <div className="border-t border-amber-500/25 bg-amber-500/[0.06] p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 rounded-md bg-amber-500/10 p-2 text-amber-500"><AlertTriangle className="h-4 w-4" /></div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                          {sharingStatus.member.connection_state === 'access_expired' ? 'Host restarted — rejoin required' : 'Sharing host is offline'}
+                        </h4>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          Your latest local snapshot remains available and requests can still run on this device. Source changes stay local until the connection returns.
+                        </p>
+                        {sharingStatus.member.offline_since ? (
+                          <p className="mt-1 font-mono text-[9px] text-muted-foreground">Offline since {new Date(sharingStatus.member.offline_since).toLocaleString()} · {sharingStatus.member.retry_count || 0} retries</p>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" className="h-8 text-[11px]" disabled={sharingBusy} onClick={retryConnection}>
+                            {sharingBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Retry connection
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 text-[11px]" disabled={sharingBusy} onClick={duplicatePrivate}>Make private copy</Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-[11px] text-red-500" disabled={sharingBusy} onClick={leaveProject}>Leave project</Button>
+                        </div>
+                        {sharingStatus.member.connection_state === 'access_expired' ? (
+                          <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">Ask the owner to enable sharing again, then leave and rejoin using the new address and pairing code.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {isMember && sharingStatus.member?.connection_state === 'identity_changed' ? (
+                  <div className="border-t border-red-500/30 bg-red-500/[0.07] p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-md bg-red-500/10 p-2 text-red-500"><ShieldCheck className="h-4 w-4" /></div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-red-600 dark:text-red-400">Host identity changed</h4>
+                        <p className="mt-1 text-[11px] text-muted-foreground">Beacon stopped before sending credentials or project source. Confirm with the owner whether the host device was reinstalled. If legitimate, revoke this trust and pair again.</p>
+                        <div className="mt-2 break-all font-mono text-[9px] text-muted-foreground">Pinned fingerprint: {sharingStatus.member.certificate_fingerprint}</div>
+                        <div className="mt-3 flex gap-2"><Button size="sm" variant="outline" className="h-8 text-[11px]" onClick={duplicatePrivate}>Make private copy</Button><Button size="sm" variant="ghost" className="h-8 text-[11px] text-red-500" onClick={leaveProject}>Leave project</Button></div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {isMember ? (
                   <div className="grid grid-cols-2 gap-3 border-t border-blue-500/15 px-4 py-3">
                     <div>
                       <div className="text-[10px] text-muted-foreground">Connection</div>
                       <div className="mt-1 text-xs font-semibold capitalize">{sharingStatus.member?.connection_state?.replace('_', ' ') || 'connected'}</div>
+                      {sharingStatus.member?.discovered_at ? <div className="mt-0.5 text-[9px] text-muted-foreground">Host auto-discovered · {new Date(sharingStatus.member.discovered_at).toLocaleTimeString()}</div> : null}
                     </div>
                     <div>
                       <div className="text-[10px] text-muted-foreground">Permission</div>
@@ -330,6 +475,7 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-xs font-semibold">{request.device_name}</div>
                             <div className="truncate font-mono text-[9px] text-muted-foreground">{request.device_ip || 'IP unavailable'} · {request.device_id}</div>
+                            <div className="mt-0.5 text-[9px] text-muted-foreground">Beacon {request.app_version || 'unknown'} · {request.platform || 'unknown'} · protocol {request.protocol || 1}</div>
                           </div>
                           <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={sharingBusy}
                             onClick={() => decidePairing(request.request_id, false, 'viewer')}>Reject</Button>
@@ -347,8 +493,11 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                   {sharingStatus.host?.connected_members?.length ? sharingStatus.host.connected_members.map((member) => (
                     <div key={member.device_id} className="flex items-center justify-between gap-2 py-1 text-[11px]">
                       <span className="min-w-0 flex-1 truncate">
-                        <span className="block">{member.device_name}</span>
+                        <span className="flex items-center gap-1.5"><span className={cn('h-1.5 w-1.5 rounded-full', member.connection_state === 'offline' ? 'bg-muted-foreground' : 'bg-emerald-500')} />{member.device_name}</span>
                         <span className="block font-mono text-[9px] text-muted-foreground">{member.device_ip || 'IP unavailable'} · {member.device_id}</span>
+                        <span className="block text-[9px] text-muted-foreground">{member.connection_state || 'online'}{member.last_seen ? ` · last seen ${new Date(member.last_seen * 1000).toLocaleTimeString()}` : ''}</span>
+                        {member.activity && member.active_target_name ? <span className="block truncate text-[9px] font-medium text-blue-600 dark:text-blue-400">{member.activity} {member.active_target_name}</span> : null}
+                        <span className="block text-[9px] text-muted-foreground">Beacon {member.app_version || 'unknown'} · {member.platform || 'unknown'} · <span className={member.protocol === 2 ? 'text-emerald-500' : 'text-amber-500'}>{member.protocol === 2 ? 'compatible' : 'update required'}</span></span>
                       </span>
                       <Button size="sm" variant="ghost" className="h-6 px-2 text-[9px]" disabled={sharingBusy}
                         onClick={() => updateMember(member.device_id, member.role === 'viewer' ? 'editor' : 'viewer')}>
@@ -359,6 +508,29 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                     </div>
                   )) : <p className="text-[11px] text-muted-foreground">No teammate has joined this project yet.</p>}
                 </div> : null}
+
+                {!isMember && sharingStatus.trusted_devices?.length ? (
+                  <div className="border-t border-blue-500/15 px-4 py-3">
+                    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"><ShieldCheck className="h-3 w-3" /> Trusted devices</div>
+                    <div className="space-y-2">
+                      {sharingStatus.trusted_devices.map((device) => {
+                        const online = sharingStatus.host?.connected_members?.some((member) => member.device_id === device.device_id && member.connection_state !== 'offline')
+                        return (
+                          <div key={device.device_id} className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/40 p-2.5 text-[10px]">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 font-semibold"><span className={cn('h-1.5 w-1.5 rounded-full', online ? 'bg-emerald-500' : 'bg-muted-foreground')} />{device.device_name}</div>
+                              <div className="mt-0.5 truncate font-mono text-[9px] text-muted-foreground">{device.device_ip || 'IP may change'} · {device.device_id}</div>
+                              <div className="mt-0.5 text-[9px] text-muted-foreground">Last connected {new Date(device.last_seen_at).toLocaleString()}</div>
+                              <div className="mt-0.5 text-[9px] text-muted-foreground">Beacon {device.app_version || 'unknown'} · {device.platform || 'unknown'} · <span className={device.protocol === 2 ? 'text-emerald-500' : 'text-amber-500'}>{device.protocol === 2 ? 'Compatible' : 'Update required'}</span></div>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-[9px]" disabled={sharingBusy} onClick={() => updateMember(device.device_id, device.role === 'viewer' ? 'editor' : 'viewer')}>{device.role}</Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-[9px] text-red-500" disabled={sharingBusy} onClick={() => updateMember(device.device_id)}>Revoke trust</Button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
 
                 {!isMember ? <div className="border-t border-blue-500/15 px-4 py-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -391,7 +563,7 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                 </div> : null}
 
                 <div className="flex items-center gap-1.5 border-t border-amber-500/15 bg-amber-500/5 px-4 py-2.5 text-[10px] text-amber-600 dark:text-amber-400">
-                  <ShieldCheck className="h-3 w-3" /> Local authenticated transport. Use sharing only on a trusted network.
+                  <ShieldCheck className="h-3 w-3" /> HTTPS encrypted transport · pinned host fingerprint.
                 </div>
                 {isMember ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-500/15 px-4 py-3">

@@ -18,7 +18,7 @@ export function JoinLocalProjectDialog({ open, onOpenChange, onJoined }: Props) 
   const [code, setCode] = useState('')
   const [deviceName, setDeviceName] = useState('My Beacon device')
   const [joining, setJoining] = useState(false)
-  const [pending, setPending] = useState<{ address: string; requestId: string; projectName: string } | null>(null)
+  const [pending, setPending] = useState<{ address: string; requestId: string; projectName: string; fingerprint: string } | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -61,7 +61,7 @@ export function JoinLocalProjectDialog({ open, onOpenChange, onJoined }: Props) 
     setJoining(true)
     try {
       const result = await api.joinLocalProject(address.trim(), code, deviceName.trim() || 'Beacon device')
-      setPending({ address: result.address, requestId: result.request_id, projectName: result.project_name })
+      setPending({ address: result.address, requestId: result.request_id, projectName: result.project_name, fingerprint: result.certificate_fingerprint })
     } catch (error: any) {
       toast.error(error?.message || 'Could not join local project')
     } finally {
@@ -100,6 +100,11 @@ export function JoinLocalProjectDialog({ open, onOpenChange, onJoined }: Props) 
               <Loader2 className="mx-auto h-5 w-5 animate-spin text-blue-500" />
               <div className="mt-2 text-sm font-semibold">Waiting for host approval</div>
               <p className="mt-1 text-[11px] text-muted-foreground">Ask the owner of {pending.projectName} to approve this device as Viewer or Editor.</p>
+              <div className="mt-3 rounded border border-blue-500/20 bg-background/60 px-3 py-2 text-left">
+                <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Host TLS fingerprint</div>
+                <div className="mt-1 break-all font-mono text-[9px] text-blue-600 dark:text-blue-400">{pending.fingerprint}</div>
+                <p className="mt-1 text-[9px] text-muted-foreground">Compare this with the fingerprint shown on the host before approval.</p>
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-[11px] text-amber-600 dark:text-amber-400">

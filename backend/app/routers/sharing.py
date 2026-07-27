@@ -173,6 +173,35 @@ def sync_shared_project(project_id: str):
     return {"changed": bool(updated), "status": status}
 
 
+@router.get("/projects/{project_id}/watch")
+def watch_shared_project(
+    project_id: str, timeout: float = Query(5, ge=0.1, le=10),
+    active_target_id: str = None, active_target_name: str = None, activity: str = None,
+):
+    project = _joined_project(project_id)
+    updated = store.sharing.watch_updates(project, timeout, active_target_id, active_target_name, activity)
+    if updated:
+        store.projects[store.projects.index(project)] = updated
+        store.sync_current_config()
+        store.save(sync_sharing=False)
+    return {"changed": bool(updated), "status": store.sharing.status(project_id)}
+
+
+@router.post("/projects/{project_id}/conflict/{resolution}")
+def resolve_shared_project_conflict(project_id: str, resolution: str, data: dict = None):
+    project = _joined_project(project_id)
+    try:
+        updated = store.sharing.resolve_conflict(project, resolution, (data or {}).get("choices"))
+        store.projects[store.projects.index(project)] = updated
+        store.sync_current_config()
+        store.save(sync_sharing=False)
+        return {"resolved": True, "status": store.sharing.status(project_id)}
+    except requests.RequestException as error:
+        raise HTTPException(status_code=502, detail=f"Could not reach sharing host: {error}")
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
 @router.get("/projects/{project_id}/snapshot")
 def project_snapshot(project_id: str):
     snapshot = store.sharing.snapshot(project_id)

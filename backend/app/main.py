@@ -31,7 +31,7 @@ def system_info():
     return {
         "app_version": os.getenv("BEACON_APP_VERSION", "dev"),
         "api_protocol": 2,
-        "capabilities": ["scenario.start", "sharing.v1", "history.v1", "mcp.v1"],
+        "capabilities": ["scenario.start", "sharing.v1", "sharing.protocol.2", "history.v1", "mcp.v1"],
     }
 
 # CORS for the React dev server (the app also uses a Vite proxy in dev).

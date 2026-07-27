@@ -102,12 +102,30 @@ class SqliteSharedProjectRepository:
                     UNIQUE(project_id, revision),
                     UNIQUE(project_id, mutation_id)
                 );
+                CREATE TABLE IF NOT EXISTS trusted_devices (
+                    project_id TEXT NOT NULL REFERENCES shared_projects(project_id) ON DELETE CASCADE,
+                    device_id TEXT NOT NULL,
+                    device_name TEXT NOT NULL,
+                    credential_hash TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    device_ip TEXT,
+                    app_version TEXT,
+                    platform TEXT,
+                    protocol INTEGER,
+                    created_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, device_id)
+                );
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(project_revisions)")}
             if "actor_device_name" not in columns:
                 db.execute("ALTER TABLE project_revisions ADD COLUMN actor_device_name TEXT")
             if "actor_device_ip" not in columns:
                 db.execute("ALTER TABLE project_revisions ADD COLUMN actor_device_ip TEXT")
+            trusted_columns = {row[1] for row in db.execute("PRAGMA table_info(trusted_devices)")}
+            for name, definition in (("app_version", "TEXT"), ("platform", "TEXT"), ("protocol", "INTEGER")):
+                if name not in trusted_columns:
+                    db.execute(f"ALTER TABLE trusted_devices ADD COLUMN {name} {definition}")
 
     def pragma(self, name: str):
         with self._connect() as db:
@@ -188,6 +206,66 @@ class SqliteSharedProjectRepository:
     def disable_all_sharing(self) -> None:
         with self._connect() as db:
             db.execute("UPDATE shared_projects SET sharing_enabled = 0 WHERE sharing_enabled = 1")
+
+    def trust_device(self, project_id: str, device: dict, credential_hash: str) -> dict:
+        now = _now()
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO trusted_devices (
+                       project_id, device_id, device_name, credential_hash, role,
+                       device_ip, app_version, platform, protocol, created_at, last_seen_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(project_id, device_id) DO UPDATE SET
+                       device_name=excluded.device_name, credential_hash=excluded.credential_hash,
+                       role=excluded.role, device_ip=excluded.device_ip,
+                       app_version=excluded.app_version, platform=excluded.platform,
+                       protocol=excluded.protocol,
+                       last_seen_at=excluded.last_seen_at""",
+                (project_id, device["device_id"], device["device_name"], credential_hash,
+                 device["role"], device.get("device_ip"), device.get("app_version"),
+                 device.get("platform"), device.get("protocol"), now, now),
+            )
+        return self.trusted_device(project_id, device["device_id"])
+
+    def trusted_device(self, project_id: str, device_id: str) -> Optional[dict]:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM trusted_devices WHERE project_id=? AND device_id=?",
+                (project_id, device_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def trusted_devices(self, project_id: str) -> list[dict]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT project_id, device_id, device_name, role, device_ip,
+                          app_version, platform, protocol,
+                          created_at, last_seen_at FROM trusted_devices
+                   WHERE project_id=? ORDER BY last_seen_at DESC""", (project_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def touch_trusted_device(self, project_id: str, device_id: str, device_ip: Optional[str] = None) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE trusted_devices SET last_seen_at=?, device_ip=COALESCE(?, device_ip) WHERE project_id=? AND device_id=?",
+                (_now(), device_ip, project_id, device_id),
+            )
+
+    def revoke_trusted_device(self, project_id: str, device_id: str) -> bool:
+        with self._connect() as db:
+            cursor = db.execute(
+                "DELETE FROM trusted_devices WHERE project_id=? AND device_id=?", (project_id, device_id),
+            )
+        return cursor.rowcount == 1
+
+    def update_trusted_device_role(self, project_id: str, device_id: str, role: str) -> bool:
+        with self._connect() as db:
+            cursor = db.execute(
+                "UPDATE trusted_devices SET role=?, last_seen_at=? WHERE project_id=? AND device_id=?",
+                (role, _now(), project_id, device_id),
+            )
+        return cursor.rowcount == 1
 
     def apply_mutation(
         self, mutation: Mutation, actor_device_id: str, summary: str,

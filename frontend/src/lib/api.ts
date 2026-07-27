@@ -215,7 +215,7 @@ export const api = {
   refreshPairingCode: (id: string) =>
     req<NonNullable<SharingStatus['host']>>(`/sharing/projects/${id}/pairing-code`, jsonInit('POST')),
   joinLocalProject: (address: string, code: string, device_name: string) =>
-    req<{ address: string; request_id: string; status: 'pending'; project_name: string }>(
+    req<{ address: string; request_id: string; status: 'pending'; project_name: string; certificate_fingerprint: string }>(
       '/sharing/join', jsonInit('POST', { address, code, device_name }),
     ),
   localJoinStatus: (address: string, request_id: string) =>
@@ -234,6 +234,15 @@ export const api = {
     req<{ left: boolean; current_project_id?: string }>(`/sharing/projects/${projectId}/leave`, jsonInit('POST')),
   syncSharedProject: (projectId: string) =>
     req<{ changed: boolean; status: SharingStatus }>(`/sharing/projects/${projectId}/sync`, jsonInit('POST')),
+  watchSharedProject: (projectId: string, timeout = 5, presence?: { targetId?: string; targetName?: string; activity?: 'viewing' | 'editing' }) => {
+    const params = new URLSearchParams({ timeout: String(timeout) })
+    if (presence?.targetId) params.set('active_target_id', presence.targetId)
+    if (presence?.targetName) params.set('active_target_name', presence.targetName)
+    if (presence?.activity) params.set('activity', presence.activity)
+    return req<{ changed: boolean; status: SharingStatus }>(`/sharing/projects/${projectId}/watch?${params}`)
+  },
+  resolveSharingConflict: (projectId: string, resolution: 'team' | 'mine' | 'merge', choices?: Record<string, 'team' | 'mine'>) =>
+    req<{ resolved: boolean; status: SharingStatus }>(`/sharing/projects/${projectId}/conflict/${resolution}`, jsonInit('POST', { choices })),
 
   // Environments
   createEnvironment: (projectId: string, env: { name: string; base_url: string; variables?: Record<string, string> }) =>

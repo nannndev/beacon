@@ -72,9 +72,13 @@ export interface Project {
     host_address: string
     host_device_id?: string
     role: 'viewer' | 'editor'
+    app_version?: string | null
+    platform?: string | null
+    protocol?: number | null
     revision: number
-    connection_state?: 'connected' | 'read_only' | 'host_offline'
+    connection_state?: 'connected' | 'read_only' | 'host_offline' | 'access_expired' | 'identity_changed' | 'conflict'
     sync_error?: string | null
+    conflict?: SharingConflict | null
   }
 }
 
@@ -83,6 +87,15 @@ export interface SharingStatus {
   sharing_enabled: boolean
   revision: number | null
   owner_device_id?: string
+  trusted_devices?: Array<{
+    project_id: string
+    device_id: string
+    device_name: string
+    role: 'viewer' | 'editor'
+    device_ip?: string | null
+    created_at: string
+    last_seen_at: string
+  }>
   source_schema_version?: number
   created_at?: string
   updated_at?: string
@@ -93,10 +106,11 @@ export interface SharingStatus {
     host_device_name?: string
     host_device_id?: string
     host_device_ip?: string
+    certificate_fingerprint?: string
     address?: string | null
     pairing_code?: string | null
     pairing_expires_at?: number | null
-    connected_members?: Array<{ device_id: string; device_name: string; device_ip?: string; created_at: number; role: 'viewer' | 'editor' }>
+    connected_members?: Array<{ device_id: string; device_name: string; device_ip?: string; created_at: number; last_seen?: number; connection_state?: 'online' | 'offline'; role: 'viewer' | 'editor'; active_target_id?: string | null; active_target_name?: string | null; activity?: 'viewing' | 'editing' | null; app_version?: string; platform?: string; protocol?: number; capabilities?: string[] }>
     pending_requests?: Array<{
       request_id: string
       device_id: string
@@ -104,15 +118,39 @@ export interface SharingStatus {
       device_ip?: string
       created_at: number
       status: 'pending'
+      app_version?: string
+      platform?: string
+      protocol?: number
     }>
     transport?: string | null
   }
   member?: {
     role: 'viewer' | 'editor'
     host_address: string
-    connection_state: 'connected' | 'read_only' | 'host_offline'
+    connection_state: 'connected' | 'read_only' | 'host_offline' | 'access_expired' | 'identity_changed' | 'conflict'
     sync_error?: string | null
+    conflict?: SharingConflict | null
+    last_seen_at?: string | null
+    offline_since?: string | null
+    retry_count?: number
+    discovered_at?: string | null
+    certificate_fingerprint?: string | null
   }
+}
+
+export interface SharingConflict {
+  current_revision: number
+  local_source?: Record<string, unknown>
+  team_source?: Record<string, unknown>
+  detected_at: string
+  merged_source?: Record<string, unknown>
+  fields?: Array<{
+    path: Array<string | number>
+    label: string
+    base_value: unknown
+    team_value: unknown
+    local_value: unknown
+  }>
 }
 
 export interface ProjectRevision {

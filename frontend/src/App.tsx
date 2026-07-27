@@ -192,24 +192,28 @@ function App() {
   useEffect(() => {
     if (!currentProjectId || !sharingStatus?.sharing_enabled) return
     let cancelled = false
-    let running = false
-    const sync = async () => {
-      if (running) return
-      running = true
+    let retryTimer: number | undefined
+    const watch = async () => {
       try {
-        const result = await api.syncSharedProject(currentProjectId)
+        const result = sharingStatus?.member
+          ? await api.watchSharedProject(currentProjectId, 5, {
+              targetId: showEditor ? editingId || undefined : selectedTestId || undefined,
+              targetName: showEditor
+                ? effectiveTests.find((test) => test.id === editingId)?.name
+                : selectedName,
+              activity: showEditor && editingId ? 'editing' : selectedTestId ? 'viewing' : undefined,
+            })
+          : await api.syncSharedProject(currentProjectId)
         if (!cancelled) setSharingStatus(result.status)
         if (!cancelled && result.changed) await fetchAll()
       } catch {
         // Connection state is reported by the backend on the next status read.
-      } finally {
-        running = false
       }
+      if (!cancelled) retryTimer = window.setTimeout(watch, sharingStatus?.member ? 100 : 1500)
     }
-    void sync()
-    const timer = window.setInterval(sync, 1500)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [currentProjectId, sharingStatus?.sharing_enabled])
+    void watch()
+    return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer) }
+  }, [currentProjectId, sharingStatus?.sharing_enabled, Boolean(sharingStatus?.member), showEditor, editingId, selectedTestId, selectedName])
 
   // The backend sidecar is launched and supervised by the Tauri Rust layer
   // (see src-tauri/src/main.rs), not from here — the React unmount cleanup did

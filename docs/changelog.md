@@ -3,6 +3,30 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.4] - 2026-07-27
+
+### Added
+
+- Encrypted local project sharing over HTTPS with a persistent per-device identity and visible SHA-256 fingerprint.
+- Trusted-device reconnect, stable sharing ports, automatic LAN rediscovery, live revision events, presence, and active endpoint indicators.
+- Three-way source merging with automatic non-overlapping merges and per-field conflict resolution.
+- Granular sharing activity attribution with device name, device ID, IP address, revision, and safe change summaries.
+- Sharing protocol compatibility metadata and clear update-required states for incompatible Beacon versions.
+
+### Improved
+
+- Project sharing now distinguishes connected, offline, access-expired, read-only, conflict, and host-identity-changed states.
+- Owners can inspect and manage trusted devices even when a member has no active session.
+- Certificate fingerprints are pinned on the same HTTPS connection carrying each request, preventing source transmission when host identity changes.
+
+### Fixed
+
+- Shared projects reconnect after the host restarts without requiring a new pairing code.
+- Joined devices can rediscover a trusted host when its LAN address changes.
+- Concurrent edits no longer overwrite unrelated teammate changes.
+
+[Compare 0.4.3 → 0.4.4](https://github.com/nannndev/beacon/compare/v0.4.3...v0.4.4)
+
 ## [0.4.3] - 2026-07-27
 
 ### Fixed

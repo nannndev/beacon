@@ -1,6 +1,6 @@
 import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
-import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal, Loader2, Radio } from 'lucide-react'
+import { Settings, Download, Upload, Activity, Plug, SlidersHorizontal, Loader2, Radio, AlertTriangle } from 'lucide-react'
 import { Project, SharingStatus } from '../types'
 import { BrandMark } from './BrandMark'
 
@@ -16,6 +16,7 @@ interface Props {
 }
 
 export function Header({ currentProject, sharingStatus, onProjectSettings, onImport, onExport, exporting = false, onOpenMcp, onOpenSettings }: Props) {
+  const connectionProblem = ['host_offline', 'access_expired', 'identity_changed', 'conflict'].includes(sharingStatus?.member?.connection_state || '')
   return (
     <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-background/95 backdrop-blur">
       <div className="flex items-center gap-3">
@@ -33,10 +34,17 @@ export function Header({ currentProject, sharingStatus, onProjectSettings, onImp
               <button
                 type="button"
                 onClick={onProjectSettings}
-                className="inline-flex items-center gap-1 rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-blue-600 transition-colors hover:bg-blue-500/15 dark:text-blue-400"
+                className={connectionProblem
+                  ? 'inline-flex items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-red-600 transition-colors hover:bg-red-500/15 dark:text-red-400'
+                  : 'inline-flex items-center gap-1 rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-blue-600 transition-colors hover:bg-blue-500/15 dark:text-blue-400'}
                 title="This project source is shared locally"
               >
-                <Radio className="h-2.5 w-2.5" /> Shared r{sharingStatus.revision}
+                {connectionProblem ? <AlertTriangle className="h-2.5 w-2.5" /> : <Radio className="h-2.5 w-2.5" />}
+                {sharingStatus.member?.connection_state === 'conflict' ? 'Sync conflict'
+                  : sharingStatus.member?.connection_state === 'access_expired' ? 'Rejoin required'
+                  : sharingStatus.member?.connection_state === 'host_offline' ? 'Host offline'
+                  : sharingStatus.member?.connection_state === 'identity_changed' ? 'Identity changed'
+                  : `Shared r${sharingStatus.revision}`}
               </button>
             ) : null}
           </div>
