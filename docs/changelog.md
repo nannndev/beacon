@@ -3,6 +3,22 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.2] - 2026-07-27
+
+### Fixed
+
+- Added an explicit frontend/backend compatibility handshake so an outdated Windows sidecar is reported as a version mismatch instead of a generic `Not Found` error.
+- Windows release validation now checks the packaged backend for both Scenario and Sharing routes before publishing an installer.
+- Internal Beacon route errors are now distinguished from HTTP 404 responses returned by the API target being tested.
+
+### Added
+
+- Owners can change a connected member between Viewer and Editor or revoke access.
+- Members can preserve the latest synchronized snapshot as a private project or leave a shared project.
+- The landing page now explains local-first project sharing, device roles, revisioned source, local execution, and private data boundaries.
+
+[Compare 0.4.1 → 0.4.2](https://github.com/nannndev/beacon/compare/v0.4.1...v0.4.2)
+
 ## [0.4.1] - 2026-07-27
 
 ### Fixed

@@ -141,13 +141,16 @@ jobs:
             $ready = $false
             for ($attempt = 0; $attempt -lt 30; $attempt++) {
               try {
-                $status = Invoke-RestMethod "http://127.0.0.1:18765/sharing/projects/smoke-project"
-                if ($status.sharing_enabled -eq $false) { $ready = $true; break }
+                $openapi = Invoke-RestMethod "http://127.0.0.1:18765/openapi.json"
+                $hasSharing = $null -ne $openapi.paths.'/sharing/projects/{project_id}'
+                $hasScenario = $null -ne $openapi.paths.'/scenario/start'
+                $info = Invoke-RestMethod "http://127.0.0.1:18765/system/info"
+                if ($hasSharing -and $hasScenario -and $info.capabilities -contains 'sharing.v1') { $ready = $true; break }
               } catch {
                 Start-Sleep -Seconds 1
               }
             }
-            if (-not $ready) { throw "Packaged backend did not expose the sharing routes" }
+            if (-not $ready) { throw "Packaged backend did not expose Scenario + Sharing capabilities" }
           } finally {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           }

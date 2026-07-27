@@ -250,6 +250,7 @@ fn main() {
                 .expect("backend sidecar not configured")
                 .env("BEACON_PORT", port.to_string())
                 .env("BEACON_DATA_DIR", data_dir.to_string_lossy().to_string())
+                .env("BEACON_APP_VERSION", env!("CARGO_PKG_VERSION"))
                 // Sharing is explicitly opt-in from Project Settings and is
                 // protected by a short-lived pairing code plus owner approval.
                 // Keep the LAN listener available in packaged desktop builds;

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Security Tools API", lifespan=lifespan)
+
+
+@app.get("/system/info")
+def system_info():
+    return {
+        "app_version": os.getenv("BEACON_APP_VERSION", "dev"),
+        "api_protocol": 2,
+        "capabilities": ["scenario.start", "sharing.v1", "history.v1", "mcp.v1"],
+    }
 
 # CORS for the React dev server (the app also uses a Vite proxy in dev).
 app.add_middleware(

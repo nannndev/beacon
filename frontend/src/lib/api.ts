@@ -58,6 +58,9 @@ async function req<T = any>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       /* ignore */
     }
+    if (res.status === 404 && (url.startsWith('/scenario') || url.startsWith('/sharing'))) {
+      throw new Error('Beacon backend is incompatible with this app version. Fully close Beacon, reopen it, or reinstall the latest release.')
+    }
     throw new Error(detail)
   }
   // 204 / empty
@@ -169,6 +172,7 @@ export interface ImportProjectResponse {
 }
 
 export const api = {
+  systemInfo: () => req<{ app_version: string; api_protocol: number; capabilities: string[] }>('/system/info'),
   // Config
   getConfig: () => req<TestConfig>('/config'),
 

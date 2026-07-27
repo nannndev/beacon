@@ -35,6 +35,7 @@ import { buildRunPayload } from './lib/modePayload'
 import { useConfirmDialog } from './components/ui/confirm-dialog'
 import { SendResponsePanel } from './components/SendResponsePanel'
 import { WorkspaceTraceBackground } from './components/WorkspaceTraceBackground'
+import { isDesktop } from './lib/platform'
 
 function loadGlobalSettings(): ExecSettings {
   try {
@@ -99,6 +100,27 @@ function App() {
   const [sharingStatusLoading, setSharingStatusLoading] = useState(false)
   const [sendingTestId, setSendingTestId] = useState<string | null>(null)
   const [sendResult, setSendResult] = useState<{ endpointId: string; endpointName: string; response: SendResponse | null } | null>(null)
+
+  useEffect(() => {
+    if (!isDesktop()) return
+    let cancelled = false
+    const verifyBackend = async () => {
+      try {
+        const info = await api.systemInfo()
+        const required = ['scenario.start', 'sharing.v1']
+        const missing = required.filter((capability) => !info.capabilities?.includes(capability))
+        if (!cancelled && missing.length) {
+          toast.error('Beacon backend is older than the desktop UI. Fully close Beacon and install the latest release.')
+        }
+      } catch (error: any) {
+        if (!cancelled && /incompatible|not found/i.test(error?.message || '')) {
+          toast.error('Backend version mismatch detected. Fully close Beacon and reinstall the latest release.')
+        }
+      }
+    }
+    void verifyBackend()
+    return () => { cancelled = true }
+  }, [])
 
   // Execution settings: a global default (persisted) + an active view that may
   // be a per-endpoint override.
