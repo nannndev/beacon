@@ -57,8 +57,8 @@ export function UpdatePrompt() {
 
             {u.status === 'downloading' && (
               <>
-                <h2 className="mt-3 text-lg font-bold">Downloading update…</h2>
-                <p className="mt-1 text-sm text-muted-foreground">v{u.version} · {pct}%</p>
+                <h2 className="mt-3 text-lg font-bold">{pct >= 100 ? 'Installing update…' : 'Downloading update…'}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">v{u.version} · {pct}%{pct >= 100 ? ' · keep Beacon open' : ''}</p>
                 <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div className="h-full rounded-full bg-cyan-500 transition-all" style={{ width: `${pct}%` }} />
                 </div>
@@ -93,7 +93,7 @@ export function UpdatePrompt() {
               </>
             )}
             {u.status === 'downloading' && (
-              <p className="text-xs text-muted-foreground">You can keep working — this runs in the background.</p>
+              <p className="text-xs text-muted-foreground">{pct >= 100 ? 'Backend stopped safely while all app files are replaced.' : 'You can keep working while the update downloads.'}</p>
             )}
           </div>
         </DialogContent>

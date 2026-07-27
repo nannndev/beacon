@@ -3,6 +3,16 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.3] - 2026-07-27
+
+### Fixed
+
+- Windows in-app updates now download completely before Beacon stops its backend sidecar and starts installation.
+- The updater explicitly terminates the backend process tree before replacing packaged files, preventing a locked old `backend.exe` from surviving beside a newer frontend.
+- Installation failures remain failures and instruct the user to restart before retrying instead of presenting a partially updated app as ready.
+
+[Compare 0.4.2 → 0.4.3](https://github.com/nannndev/beacon/compare/v0.4.2...v0.4.3)
+
 ## [0.4.2] - 2026-07-27
 
 ### Fixed

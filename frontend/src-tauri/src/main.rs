@@ -73,6 +73,18 @@ fn backend_port(state: State<BackendPort>) -> u16 {
     state.0
 }
 
+/// Release the packaged backend binary before the updater replaces application
+/// files. This is essential on Windows, where a running sidecar keeps the EXE
+/// locked and can leave the UI updated while the backend remains old.
+#[tauri::command]
+fn prepare_for_update(state: State<BackendChild>) -> Result<(), String> {
+    if let Some(child) = state.0.lock().unwrap().take() {
+        kill_tree(child);
+    }
+    reap_stale_backends();
+    Ok(())
+}
+
 #[tauri::command]
 fn mcp_server_path(state: State<McpServerPath>) -> String {
     state.0.lock().unwrap().to_string_lossy().to_string()
@@ -159,6 +171,7 @@ fn main() {
         .manage(BackendChild(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             backend_port,
+            prepare_for_update,
             mcp_server_path,
             mcp_skill_path,
             analytics_diagnostic,

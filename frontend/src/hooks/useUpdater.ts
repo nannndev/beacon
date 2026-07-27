@@ -77,7 +77,7 @@ export function useUpdater(): Updater {
     downloaded.current = 0
     setState((s) => ({ ...s, status: 'downloading', progress: 0, error: undefined }))
     try {
-      await update.downloadAndInstall((event: any) => {
+      await update.download((event: any) => {
         switch (event?.event) {
           case 'Started':
             contentLength.current = event.data?.contentLength || 0
@@ -95,9 +95,18 @@ export function useUpdater(): Updater {
             break
         }
       })
+      // Download first so Beacon remains usable. Only release the backend EXE
+      // immediately before installation, preventing Windows from partially
+      // updating the UI while keeping a locked, older sidecar.
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('prepare_for_update')
+      await update.install()
       setState((s) => ({ ...s, status: 'ready', progress: 1 }))
     } catch (e: any) {
-      setState({ status: 'error', progress: 0, error: String(e?.message || e) })
+      setState({
+        status: 'error', progress: 0,
+        error: `Installation did not complete. Restart Beacon before retrying. ${String(e?.message || e)}`,
+      })
     }
   }, [])
 
