@@ -385,7 +385,7 @@ jobs:
         env:
           REL_VER: ${{ steps.ver.outputs.release_version }}
         run: |
-          CHANGELOG=$(awk -v v="$REL_VER" '$0 ~ ("^## \\[" v "\\]") {f=1; next} /^## \\[/{f=0} f' docs/changelog.md | sed '/^\[Compare/d')
+          CHANGELOG=$(awk -v v="$REL_VER" 'index($0, "## [" v "]") == 1 {f=1; next} index($0, "## [") == 1 {f=0} f' docs/changelog.md | sed '/^\[Compare/d')
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="See the generated commit notes below for changes in this release."
           fi
