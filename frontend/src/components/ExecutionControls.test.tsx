@@ -41,7 +41,7 @@ describe('ExecutionControls scenario scope', () => {
     )
 
     expect(screen.getByText('Protected profile')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Run selected' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run selected endpoint' }))
 
     expect(onRun).toHaveBeenCalledWith(expect.objectContaining({ __scenario: true, virtual_users: 1, iterations: 1 }))
     expect(onRunAll).not.toHaveBeenCalled()

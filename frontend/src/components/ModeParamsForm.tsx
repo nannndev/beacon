@@ -254,7 +254,7 @@ function ScenarioForm({ p, set, endpointCount }: { p: ScenarioParams; set: (v: S
   const presets: Array<{ name: string; hint: string; values: ScenarioParams }> = [
     {
       name: 'Quick check',
-      hint: '1 user · run the journey once',
+      hint: '1 user · run the selected scope once',
       values: { ...MODE_DEFAULTS.scenario } as ScenarioParams,
     },
     {
@@ -304,19 +304,19 @@ function ScenarioForm({ p, set, endpointCount }: { p: ScenarioParams; set: (v: S
       <ParameterGrid columns={4}>
         <N label="Retries / step" help="Extra attempts when an endpoint fails. Zero means do not retry." value={p.retries} onChange={(n) => set({ ...p, retries: Math.max(0, n) })} />
         <N label="Retry delay" help="Pause before trying a failed endpoint again. Used only when retries is above zero." value={p.retry_delay_ms} onChange={(n) => set({ ...p, retry_delay_ms: Math.max(0, n) })} unit="ms" />
-        <N label="Stop above failures" help="Automatically stop when the percentage of failed journeys exceeds this value." value={p.stop_failure_pct} onChange={(n) => set({ ...p, stop_failure_pct: Math.min(100, Math.max(0, n)) })} unit="%" step={1} />
+        <N label="Stop above failures" help="Automatically stop when failed requests or journeys exceed this percentage, depending on the run scope." value={p.stop_failure_pct} onChange={(n) => set({ ...p, stop_failure_pct: Math.min(100, Math.max(0, n)) })} unit="%" step={1} />
         <Toggle fieldLabel="Failure behavior" label="Continue failed flow" checked={p.continue_on_error} onChange={(v) => set({ ...p, continue_on_error: v })} />
       </ParameterGrid>
       <div className="grid gap-1 text-[10px] text-muted-foreground sm:grid-cols-3">
         <span><strong className="text-foreground">Users</strong> run in parallel</span>
-        <span><strong className="text-foreground">Iterations</strong> repeat the full journey</span>
+        <span><strong className="text-foreground">Iterations</strong> repeat the selected endpoint or journey</span>
         <span><strong className="text-foreground">Think time</strong> pauses between steps</span>
       </div>
       <div className={`rounded-md border px-2.5 py-2 text-[10px] ${plannedJourneys > 10_000 ? 'border-red-500/35 bg-red-500/10 text-red-200' : plannedJourneys > 1_000 ? 'border-amber-500/35 bg-amber-500/10 text-amber-200' : 'border-border bg-muted/30 text-muted-foreground'}`}>
-        <strong className="text-foreground">{plannedJourneys.toLocaleString()} planned journeys</strong> · each virtual user gets isolated variables and tokens.
+        <strong className="text-foreground">Choose the run scope below</strong> · each virtual user gets isolated variables and tokens.
         <div className="mt-1.5 grid gap-1 sm:grid-cols-2">
           <span className="rounded border border-border/70 bg-background/50 px-2 py-1"><strong className="text-foreground">Selected endpoint</strong> · {plannedJourneys.toLocaleString()} requests</span>
-          <span className="rounded border border-border/70 bg-background/50 px-2 py-1"><strong className="text-foreground">Project journey</strong> · up to {(plannedJourneys * endpointCount).toLocaleString()} requests across {endpointCount} endpoints</span>
+          <span className="rounded border border-border/70 bg-background/50 px-2 py-1"><strong className="text-foreground">Project journey</strong> · {plannedJourneys.toLocaleString()} journeys, up to {(plannedJourneys * endpointCount).toLocaleString()} requests</span>
         </div>
         {plannedJourneys > 10_000 && <span className="block mt-0.5">Heavy traffic: lower the values unless this target is authorized and designed for this load.</span>}
         {plannedJourneys > 1_000 && plannedJourneys <= 10_000 && <span className="block mt-0.5">High traffic: verify the target and expected capacity before running.</span>}

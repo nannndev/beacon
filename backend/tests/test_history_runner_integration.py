@@ -185,6 +185,44 @@ class HistoryRunnerIntegrationTests(unittest.TestCase):
         self.assertEqual(status["status"], "finished")
         self.assertTrue(status["result"]["passed"])
         self.assertEqual(status["result"]["completed"], 2)
+        self.assertEqual(status["progress"]["scope"], "journey")
+        self.assertEqual(status["progress"]["completed_flows"], 1)
+        self.assertEqual(status["progress"]["requests_completed"], 2)
+        self.assertEqual([step["state"] for step in status["scenario_steps"]], ["passed", "passed"])
+        self.assertEqual(len(status["recent_events"]), 2)
+
+    def test_async_endpoint_scenario_exposes_structured_failure(self):
+        history = RecordingHistory()
+        fake_store = target_store(history)
+
+        class AssertionFailTester(FakeTester):
+            def send_once(self, **kwargs):
+                return {
+                    "ok": True,
+                    "status": 403,
+                    "time_ms": 18,
+                    "passed": False,
+                    "assertions": [{
+                        "ok": False,
+                        "message": "status code eq 200; received 403",
+                        "expected": 200,
+                        "actual": 403,
+                    }],
+                }
+
+        with (
+            patch.object(runs, "store", fake_store),
+            patch.object(runs, "APITester", AssertionFailTester),
+            patch.object(runs.threading, "Thread", ImmediateThread),
+        ):
+            started = runs.start_scenario({"test_ids": ["e1"]})
+            status = runs.get_status(started["run_id"])
+
+        self.assertEqual(status["progress"]["scope"], "endpoint")
+        self.assertEqual(status["progress"]["failed_requests"], 1)
+        self.assertEqual(status["scenario_steps"][0]["state"], "failed")
+        self.assertEqual(status["scenario_steps"][0]["failure"]["kind"], "assertion_failed")
+        self.assertEqual(status["recent_events"][0]["failure"]["status"], 403)
 
     def test_stop_marks_scenario_as_stopping_and_sets_cancellation_flag(self):
         history = RecordingHistory()

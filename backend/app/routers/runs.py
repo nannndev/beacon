@@ -1,4 +1,5 @@
 import os
+import copy
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -215,7 +216,45 @@ def _scenario_step(test, result: dict) -> dict:
     }
     if not result.get("ok"):
         step["error"] = result.get("error")
+    failure = _scenario_failure(result)
+    if failure:
+        step["failure"] = failure
     return step
+
+
+def _scenario_failure(result: dict):
+    """Return a stable, UI-friendly reason without exposing response bodies."""
+    if not result.get("ok"):
+        message = str(result.get("error") or "Request failed")
+        lowered = message.lower()
+        kind = "timeout" if "timeout" in lowered or "timed out" in lowered else "transport_error"
+        return {"kind": kind, "message": message}
+
+    failed_assertions = [
+        {
+            "message": assertion.get("message"),
+            "expected": assertion.get("expected"),
+            "actual": assertion.get("actual"),
+        }
+        for assertion in (result.get("assertions") or [])
+        if not assertion.get("ok")
+    ]
+    if failed_assertions:
+        return {
+            "kind": "assertion_failed",
+            "message": failed_assertions[0].get("message") or "Response assertion failed",
+            "status": result.get("status"),
+            "assertion_failures": failed_assertions,
+        }
+
+    status = result.get("status")
+    if status is not None and status >= 400:
+        return {
+            "kind": "http_error",
+            "message": f"HTTP {status} returned by the endpoint",
+            "status": status,
+        }
+    return None
 
 
 def _step_succeeded(result: dict) -> bool:
@@ -254,6 +293,103 @@ def run_scenario(data: dict):
         raise HTTPException(status_code=400, detail="scenario settings must be numbers")
 
     by_id = {t.id: t for t in store.current_config.tests}
+    live_run = store.current_runs.get(data.get("_run_id")) if data.get("_run_id") else None
+    live_lock = live_run.get("lock") if live_run else None
+    total_flows = virtual_users * iterations
+
+    def with_live_update(update):
+        if not live_run:
+            return
+        if live_lock:
+            with live_lock:
+                update(live_run)
+        else:
+            update(live_run)
+
+    def initialize_live(run):
+        run["progress"] = {
+            "scope": "endpoint" if len(ids) == 1 else "journey",
+            "total_flows": total_flows,
+            "completed_flows": 0,
+            "successful_flows": 0,
+            "failed_flows": 0,
+            "active_users": 0,
+            "requests_completed": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "rate_limited": 0,
+        }
+        run["scenario_steps"] = [
+            {
+                "test_id": tid,
+                "name": by_id[tid].name if tid in by_id else None,
+                "method": by_id[tid].method if tid in by_id else None,
+                "state": "waiting",
+                "attempts": 0,
+                "successful": 0,
+                "failed": 0,
+                "success_rate": 0.0,
+                "avg_ms": None,
+                "p95_ms": None,
+                "last_status": None,
+                "failure": None,
+                "_latencies": [],
+            }
+            for tid in ids
+        ]
+        run["recent_events"] = []
+
+    def record_live_step(step_index, record):
+        def update(run):
+            progress = run["progress"]
+            step = run["scenario_steps"][step_index]
+            succeeded = bool(record.get("success"))
+            step["attempts"] += 1
+            step["successful"] += 1 if succeeded else 0
+            step["failed"] += 0 if succeeded else 1
+            step["success_rate"] = round(step["successful"] / step["attempts"] * 100.0, 1)
+            step["last_status"] = record.get("status")
+            latency = record.get("time_ms")
+            if latency is not None:
+                step["_latencies"].append(float(latency))
+                values = sorted(step["_latencies"])
+                step["avg_ms"] = round(sum(values) / len(values), 1)
+                step["p95_ms"] = round(values[max(0, int((len(values) - 1) * 0.95))], 1)
+            failure = record.get("failure")
+            if failure:
+                step["failure"] = failure
+            step["state"] = "failed" if step["failed"] else "running"
+            progress["requests_completed"] += 1
+            progress["successful_requests"] += 1 if succeeded else 0
+            progress["failed_requests"] += 0 if succeeded else 1
+            progress["rate_limited"] += 1 if record.get("status") == 429 else 0
+            event = {
+                "at_ms": int(time.time() * 1000),
+                "step_index": step_index,
+                "test_id": record.get("test_id"),
+                "name": record.get("name"),
+                "method": by_id.get(record.get("test_id")).method if by_id.get(record.get("test_id")) else None,
+                "user": record.get("user", 1),
+                "iteration": record.get("iteration", 1),
+                "state": "passed" if succeeded else "failed",
+                "status": record.get("status"),
+                "time_ms": record.get("time_ms"),
+                "attempts": record.get("attempts"),
+                "extracted": record.get("extracted") or [],
+                "failure": failure,
+            }
+            run["recent_events"] = (run["recent_events"] + [event])[-100:]
+        with_live_update(update)
+
+    def record_live_flow(flow_success):
+        def update(run):
+            progress = run["progress"]
+            progress["completed_flows"] += 1
+            progress["successful_flows"] += 1 if flow_success else 0
+            progress["failed_flows"] += 0 if flow_success else 1
+        with_live_update(update)
+
+    with_live_update(initialize_live)
     history_id = str(os.urandom(8).hex())
     active_project = next(
         (p for p in store.projects if p.get("id") == store.current_project_id),
@@ -301,53 +437,65 @@ def run_scenario(data: dict):
             if ramp_up_s > 0 and virtual_users > 1:
                 scheduled_at = started + (user_index / (virtual_users - 1)) * ramp_up_s
                 stop_event.wait(max(0.0, scheduled_at - time.monotonic()))
+            with_live_update(lambda run: run["progress"].update(
+                active_users=run["progress"]["active_users"] + 1
+            ))
             user_config = TestConfig.from_dict(base_config)
             user_tests = {test.id: test for test in user_config.tests}
-
-            for iteration_index in range(iterations):
-                if stop_event.is_set() or external_stop_flag.get("stop"):
-                    break
-                flow_success = True
-                for step_index, tid in enumerate(ids):
+            try:
+                for iteration_index in range(iterations):
                     if stop_event.is_set() or external_stop_flag.get("stop"):
-                        flow_success = False
                         break
-                    test = user_tests.get(tid)
-                    if not test:
-                        result = {"ok": False, "error": "Endpoint not found", "attempts": 1}
-                    else:
-                        result = APITester(test, user_config).send_once(
-                            retries=retries, retry_delay=retry_delay
-                        )
-                    succeeded = _step_succeeded(result)
-                    details = _scenario_step(test, result) if test else {
-                        "test_id": tid, "name": None, "ok": False,
-                        "error": "Endpoint not found",
-                    }
-                    record = {
-                        "user": user_index + 1,
-                        "iteration": iteration_index + 1,
-                        "success": succeeded,
-                        **details,
-                    }
-                    with state_lock:
-                        records_by_step[step_index].append(record)
-                    if not succeeded:
-                        flow_success = False
-                        if not cont:
+                    flow_success = True
+                    for step_index, tid in enumerate(ids):
+                        if stop_event.is_set() or external_stop_flag.get("stop"):
+                            flow_success = False
                             break
-                    if think_time_s > 0 and step_index < len(ids) - 1:
-                        stop_event.wait(think_time_s)
+                        with_live_update(lambda run, index=step_index: run["scenario_steps"][index].update(state="running"))
+                        test = user_tests.get(tid)
+                        if not test:
+                            result = {"ok": False, "error": "Endpoint not found", "attempts": 1}
+                            details = {
+                                "test_id": tid, "name": None, "ok": False,
+                                "error": "Endpoint not found",
+                                "failure": {"kind": "endpoint_missing", "message": "Endpoint not found"},
+                            }
+                        else:
+                            result = APITester(test, user_config).send_once(
+                                retries=retries, retry_delay=retry_delay
+                            )
+                            details = _scenario_step(test, result)
+                        succeeded = _step_succeeded(result)
+                        record = {
+                            "user": user_index + 1,
+                            "iteration": iteration_index + 1,
+                            "success": succeeded,
+                            **details,
+                        }
+                        with state_lock:
+                            records_by_step[step_index].append(record)
+                        record_live_step(step_index, record)
+                        if not succeeded:
+                            flow_success = False
+                            if not cont:
+                                break
+                        if think_time_s > 0 and step_index < len(ids) - 1:
+                            stop_event.wait(think_time_s)
 
-                with state_lock:
-                    completed_flows += 1
-                    if flow_success:
-                        successful_flows += 1
-                    failures = completed_flows - successful_flows
-                    failure_pct = failures / completed_flows * 100.0
-                    if completed_flows >= virtual_users and failure_pct > stop_failure_pct:
-                        stopped_early = True
-                        stop_event.set()
+                    with state_lock:
+                        completed_flows += 1
+                        if flow_success:
+                            successful_flows += 1
+                        failures = completed_flows - successful_flows
+                        failure_pct = failures / completed_flows * 100.0
+                        if completed_flows >= virtual_users and failure_pct > stop_failure_pct:
+                            stopped_early = True
+                            stop_event.set()
+                    record_live_flow(flow_success)
+            finally:
+                with_live_update(lambda run: run["progress"].update(
+                    active_users=max(0, run["progress"]["active_users"] - 1)
+                ))
 
         # A large virtual-user count must not create thousands of OS threads.
         # The bounded pool still executes every virtual user while remaining
@@ -398,6 +546,32 @@ def run_scenario(data: dict):
             (summary for summary in summaries if summary.get("p95_ms") is not None),
             key=lambda summary: summary["p95_ms"], default=None,
         )
+        def finalize_virtual_live(run):
+            progress = run["progress"]
+            progress.update({
+                "active_users": 0,
+                "completed_flows": completed_flows,
+                "successful_flows": successful_flows,
+                "failed_flows": failed_flows,
+            })
+            for index, summary in enumerate(summaries):
+                step = run["scenario_steps"][index]
+                step.update({
+                    key: summary.get(key)
+                    for key in ("attempts", "successful", "failed", "success_rate", "avg_ms", "p95_ms")
+                })
+                step["state"] = "passed" if summary.get("success") else "failed"
+                step.pop("_latencies", None)
+            terminal_state = "cancelled" if stopped_by_user else "skipped"
+            for step in run["scenario_steps"]:
+                if step["state"] == "waiting":
+                    step["state"] = terminal_state
+            if stopped_early:
+                run["failure"] = {
+                    "kind": "failure_threshold",
+                    "message": f"Stopped after failed journeys exceeded {stop_failure_pct:g}%",
+                }
+        with_live_update(finalize_virtual_live)
         store.history.finish_run(history_id, "stopped" if stopped_by_user else "completed" if passed else "failed")
         return {
             "steps": summaries, "passed": passed,
@@ -415,12 +589,20 @@ def run_scenario(data: dict):
 
     steps = []
     changed = False
+    with_live_update(lambda run: run["progress"].update(active_users=1))
     for step_index, tid in enumerate(ids):
         if external_stop_flag.get("stop"):
             break
+        with_live_update(lambda run, index=step_index: run["scenario_steps"][index].update(state="running"))
         test = by_id.get(tid)
         if not test:
-            steps.append({"test_id": tid, "name": None, "ok": False, "success": False, "error": "Endpoint not found"})
+            step = {
+                "test_id": tid, "name": None, "ok": False, "success": False,
+                "error": "Endpoint not found",
+                "failure": {"kind": "endpoint_missing", "message": "Endpoint not found"},
+            }
+            steps.append(step)
+            record_live_step(step_index, {"user": 1, "iteration": 1, **step})
             if not cont:
                 break
             continue
@@ -431,6 +613,7 @@ def run_scenario(data: dict):
         step = _scenario_step(test, result)
         step["success"] = _step_succeeded(result)  # got a response AND status<400 AND no failed assertion
         steps.append(step)
+        record_live_step(step_index, {"user": 1, "iteration": 1, **step})
         attempts = int(result.get("attempts") or 1)
         store.history.record_stats(history_id, step_index, {
             "attempts": attempts,
@@ -443,10 +626,20 @@ def run_scenario(data: dict):
         )
         if not step["success"] and not cont:
             break
+    record_live_flow(len(steps) == len(ids) and all(step.get("success") for step in steps))
     if changed:
         store.save()  # persist tokens refreshed along the chain
     stopped_by_user = bool(external_stop_flag.get("stop"))
     passed = not stopped_by_user and len(steps) == len(ids) and all(s.get("success") for s in steps)
+    def finalize_single_live(run):
+        run["progress"]["active_users"] = 0
+        for index, step in enumerate(run["scenario_steps"]):
+            step.pop("_latencies", None)
+            if index < len(steps):
+                step["state"] = "passed" if steps[index].get("success") else "failed"
+            elif step["state"] == "waiting":
+                step["state"] = "cancelled" if stopped_by_user else "skipped"
+    with_live_update(finalize_single_live)
     store.history.finish_run(history_id, "stopped" if stopped_by_user else "completed" if passed else "failed")
     return {"steps": steps, "passed": passed,
             "completed": len(steps), "total": len(ids), "history_id": history_id,
@@ -461,15 +654,18 @@ def start_scenario(data: dict):
     store.current_runs[run_id] = {
         "status": "running", "mode": "scenario", "logs": [],
         "responses": [], "stats": {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0},
-        "stop_flag": stop_flag, "result": None,
+        "stop_flag": stop_flag, "result": None, "lock": threading.Lock(),
+        "progress": None, "scenario_steps": [], "recent_events": [], "failure": None,
     }
 
     def run_in_thread():
         try:
-            result = run_scenario({**data, "_stop_flag": stop_flag})
+            result = run_scenario({**data, "_stop_flag": stop_flag, "_run_id": run_id})
             store.current_runs[run_id]["result"] = result
             store.current_runs[run_id]["status"] = "stopped" if stop_flag["stop"] else "finished"
         except Exception as exc:
+            failure = {"kind": "unknown", "message": str(exc)}
+            store.current_runs[run_id]["failure"] = failure
             store.current_runs[run_id]["result"] = {"passed": False, "error": str(exc), "steps": []}
             store.current_runs[run_id]["status"] = "failed"
 
@@ -490,12 +686,30 @@ def get_status(run_id: str):
     if run_id not in store.current_runs:
         raise HTTPException(status_code=404, detail="Run not found")
     run = store.current_runs[run_id]
+    lock = run.get("lock")
+    if lock:
+        with lock:
+            progress = copy.deepcopy(run.get("progress"))
+            scenario_steps = copy.deepcopy(run.get("scenario_steps", []))
+            recent_events = copy.deepcopy(run.get("recent_events", []))
+            failure = copy.deepcopy(run.get("failure"))
+    else:
+        progress = copy.deepcopy(run.get("progress"))
+        scenario_steps = copy.deepcopy(run.get("scenario_steps", []))
+        recent_events = copy.deepcopy(run.get("recent_events", []))
+        failure = copy.deepcopy(run.get("failure"))
+    for step in scenario_steps:
+        step.pop("_latencies", None)
     return {
         "status": run["status"],
         "stats": run["stats"],
         "logs": run["logs"][-100:],
         "responses": run.get("responses", [])[-100:],
         "result": run.get("result"),
+        "progress": progress,
+        "scenario_steps": scenario_steps,
+        "recent_events": recent_events,
+        "failure": failure,
     }
 
 

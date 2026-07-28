@@ -117,6 +117,7 @@ export interface ScenarioStep {
   extracted?: string[]
   attempts?: number
   error?: string
+  failure?: ScenarioFailure
   successful?: number
   failed?: number
   success_rate?: number
@@ -142,6 +143,68 @@ export interface ScenarioResult {
   stopped?: boolean
   error?: string
   bottleneck?: { test_id: string; name?: string; p95_ms: number } | null
+}
+
+export type ScenarioStepState = 'waiting' | 'running' | 'retrying' | 'passed' | 'failed' | 'skipped' | 'cancelled'
+
+export interface ScenarioFailure {
+  kind: 'transport_error' | 'timeout' | 'http_error' | 'assertion_failed' | 'endpoint_missing' | 'failure_threshold' | 'cancelled' | 'unknown'
+  message: string
+  status?: number
+  assertion_failures?: Array<{ message?: string; expected?: unknown; actual?: unknown }>
+}
+
+export interface ScenarioLiveStep {
+  test_id: string
+  name?: string
+  method?: string
+  state: ScenarioStepState
+  attempts: number
+  successful: number
+  failed: number
+  success_rate: number
+  avg_ms?: number | null
+  p95_ms?: number | null
+  last_status?: number | null
+  failure?: ScenarioFailure | null
+}
+
+export interface ScenarioEvent {
+  at_ms: number
+  step_index: number
+  test_id: string
+  name?: string
+  method?: string
+  user: number
+  iteration: number
+  state: 'passed' | 'failed'
+  status?: number | null
+  time_ms?: number | null
+  attempts?: number
+  extracted?: string[]
+  failure?: ScenarioFailure | null
+}
+
+export interface ScenarioProgress {
+  scope: 'endpoint' | 'journey'
+  total_flows: number
+  completed_flows: number
+  successful_flows: number
+  failed_flows: number
+  active_users: number
+  requests_completed: number
+  successful_requests: number
+  failed_requests: number
+  rate_limited: number
+}
+
+export interface ScenarioRunStatus {
+  status?: 'running' | 'stopping' | 'stopped' | 'finished' | 'failed'
+  result?: ScenarioResult
+  progress?: ScenarioProgress
+  scenario_steps?: ScenarioLiveStep[]
+  recent_events?: ScenarioEvent[]
+  failure?: ScenarioFailure | null
 }
 
 export interface ScenarioOptions {
@@ -274,7 +337,7 @@ export const api = {
   startRun: (payload: Record<string, unknown>) =>
     req<{ run_id: string; mode: string; history_id: string | null }>('/run', jsonInit('POST', payload)),
   stopRun: (runId: string) => req(`/stop/${runId}`, jsonInit('POST')),
-  getStatus: (runId: string) => req(`/status/${runId}`),
+  getStatus: (runId: string) => req<ScenarioRunStatus>(`/status/${runId}`),
 
   // Run history
   listHistory: (filters: HistoryFilters = {}) => {

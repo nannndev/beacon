@@ -228,7 +228,7 @@ export function ExecutionControls({
               size="sm"
               className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running scenario…' : mode === 'scenario' ? 'Run selected' : 'Run'}
+              <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running…' : mode === 'scenario' ? 'Run selected endpoint' : 'Run'}
             </Button>
             <Button onClick={onStop} disabled={!running} size="sm" variant="destructive" className="h-8 gap-1.5">
               <Square className="h-3 w-3" /> Stop

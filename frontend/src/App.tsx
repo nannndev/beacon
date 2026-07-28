@@ -22,7 +22,7 @@ import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
 import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
 import { ScenarioMonitor } from './components/ScenarioMonitor'
-import type { ScenarioResult, SendResponse } from './lib/api'
+import type { ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
 import { useRun } from './hooks/useRun'
 import { api } from './lib/api'
 import { toast } from './components/ui/toast'
@@ -90,10 +90,11 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
+  const [scenarioLive, setScenarioLive] = useState<ScenarioRunStatus | null>(null)
   const [scenarioBusy, setScenarioBusy] = useState(false)
   const [scenarioRunId, setScenarioRunId] = useState<string | null>(null)
   const [scenarioPlan, setScenarioPlan] = useState<{ params: ScenarioParams; startedAt: number } | null>(null)
-  const [scenarioEndpoints, setScenarioEndpoints] = useState<Array<{ id: string; name: string; method?: string }>>([])
+  const [scenarioEndpoints, setScenarioEndpoints] = useState<Array<{ id: string; name: string; method?: string; targetType?: 'api' | 'web' }>>([])
   const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
   const [exportingProject, setExportingProject] = useState(false)
   const [sharingStatus, setSharingStatus] = useState<SharingStatus | null>(null)
@@ -134,11 +135,13 @@ function App() {
   const { confirm, confirmationDialog } = useConfirmDialog()
 
   const executeScenario = async (testIds: string[], options: Parameters<typeof api.startScenario>[1]) => {
+    setScenarioLive(null)
     const started = await api.startScenario(testIds, options)
     setScenarioRunId(started.run_id)
     while (true) {
       await new Promise((resolve) => window.setTimeout(resolve, 500))
-      const state = await api.getStatus(started.run_id) as { status?: string; result?: ScenarioResult }
+      const state = await api.getStatus(started.run_id)
+      setScenarioLive(state)
       if (state.status && state.status !== 'running' && state.status !== 'stopping') {
         if (!state.result) throw new Error('Scenario finished without a result')
         return state.result
@@ -397,7 +400,7 @@ function App() {
       const params = MODE_DEFAULTS.scenario as ScenarioParams
       setScenarioResult(null)
       setScenarioPlan({ params, startedAt: Date.now() })
-      setScenarioEndpoints(tests.map(({ id, name, method }) => ({ id, name, method })))
+      setScenarioEndpoints(tests.map(({ id, name, method, target_type }) => ({ id, name, method, targetType: target_type })))
       setScenarioBusy(true)
       const result = await executeScenario(tests.map((ep) => ep.id), { continue_on_error: false })
       setScenarioResult(result)
@@ -629,7 +632,7 @@ function App() {
       try {
         setScenarioResult(null)
         setScenarioPlan({ params: scenario, startedAt: Date.now() })
-        setScenarioEndpoints([{ id: ep.id, name: ep.name, method: ep.method }])
+        setScenarioEndpoints([{ id: ep.id, name: ep.name, method: ep.method, targetType: ep.target_type }])
         setScenarioBusy(true)
         const result = await executeScenario([ep.id], {
           continue_on_error: scenario.continue_on_error,
@@ -713,7 +716,7 @@ function App() {
       const scenario = (modeParams || MODE_DEFAULTS.scenario) as ScenarioParams
       setScenarioResult(null)
       setScenarioPlan({ params: scenario, startedAt: Date.now() })
-      setScenarioEndpoints(tests.map(({ id, name, method }) => ({ id, name, method })))
+      setScenarioEndpoints(tests.map(({ id, name, method, target_type }) => ({ id, name, method, targetType: target_type })))
       setScenarioBusy(true)
       void executeScenario(tests.map((ep) => ep.id), {
         continue_on_error: scenario.continue_on_error,
@@ -905,8 +908,9 @@ function App() {
                 busy={scenarioBusy}
                 plan={scenarioPlan}
                 result={scenarioResult}
+                live={scenarioLive}
                 endpoints={scenarioEndpoints}
-                onClear={() => { setScenarioResult(null); setScenarioPlan(null); setScenarioEndpoints([]) }}
+                onClear={() => { setScenarioResult(null); setScenarioLive(null); setScenarioPlan(null); setScenarioEndpoints([]) }}
               />
 
               <EndpointTable

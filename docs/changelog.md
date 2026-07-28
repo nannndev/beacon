@@ -3,6 +3,30 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.5] - 2026-07-28
+
+### Added
+
+- Live Scenario progress for selected API endpoints, Web document requests, and multi-step project journeys.
+- Per-step execution states, active virtual-user counts, request progress, throughput, average latency, P95 latency, and recent activity events.
+- Structured failure explanations for transport errors, timeouts, HTTP failures, assertion mismatches, missing endpoints, and failure-threshold stops.
+- A scrollable activity feed with Follow, Pause, and Jump to latest controls.
+- A current-release changelog section on the Beacon landing page.
+
+### Improved
+
+- Scenario controls now distinguish selected-endpoint requests from full project journeys and explain how Web targets measure HTTP document loading rather than browser rendering.
+- The Scenario monitor uses previously empty space for useful live signals and keeps up to 100 recent execution events available for inspection.
+- Landing-page copy is shorter, more direct, and less formal across the product, sharing, workflow, MCP, desktop, contributor, and support sections.
+
+### Fixed
+
+- Opening the Scenario monitor no longer crashes the React tree because of a conditional Hooks-order violation.
+- Desktop development builds now expose the same live Scenario status contract as the frontend after rebuilding the bundled backend sidecar.
+- Scenario runs no longer appear to jump directly to Passed while work is still executing when the current backend is installed.
+
+[Compare 0.4.4 → 0.4.5](https://github.com/nannndev/beacon/compare/v0.4.4...v0.4.5)
+
 ## [0.4.4] - 2026-07-27
 
 ### Added
