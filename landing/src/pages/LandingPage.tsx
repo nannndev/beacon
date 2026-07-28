@@ -29,6 +29,7 @@ import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { NetworkBackground } from '../components/NetworkBackground'
 import { ContributorWall } from '../components/ContributorWall'
+import { HeroStats } from '../components/HeroStats'
 import { startDownload } from '../lib/download'
 import {
   CountUp,
@@ -290,6 +291,9 @@ export default function LandingPage() {
             </a>
           </RevealItem>
 
+          <RevealItem>
+            <HeroStats />
+          </RevealItem>
         </RevealGroup>
 
         <HeroProductCapture />
