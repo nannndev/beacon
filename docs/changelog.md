@@ -3,6 +3,29 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.7] - 2026-07-29
+
+### Added
+
+- Git-backed project folders with readable YAML for endpoints, folders, environments, assertions, extractors, and test configuration.
+- Repository import that opens existing Beacon projects, discovers supported API definitions, or initializes an empty repository safely.
+- Built-in Git status, managed-file diff review, commit, fast-forward pull, push, fetch, branch creation, and branch switching.
+- Branch comparison with unique commit counts, added, modified, and deleted project files, plus line additions and deletions.
+
+### Improved
+
+- Project Settings now uses a compact responsive layout while keeping Git actions, branch controls, diffs, local sharing, notifications, and project actions within reach.
+- Import accepts Beacon, Postman, OpenAPI 3, Swagger 2, Insomnia, HAR, JSON, and YAML from pasted content, files, folders, and repositories.
+- Git authentication errors now explain whether to configure an SSH key, credential manager, or HTTPS origin.
+
+### Security
+
+- Private environment values remain in the ignored `.beacon/` overlay; responses, run history, logs, cookies, and generated values remain local.
+- Repository inspection never installs dependencies or executes cloned source code.
+- Branch switching requires a clean repository and verifies the target branch belongs to the same Beacon project.
+
+[Compare 0.4.6 → 0.4.7](https://github.com/nannndev/beacon/compare/v0.4.6...v0.4.7)
+
 ## [0.4.6] - 2026-07-29
 
 ### Added

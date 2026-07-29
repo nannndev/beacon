@@ -14,6 +14,9 @@ from .catalogs import build_jsonplaceholder_project
 from .history.service import HistoryService
 from .history.sqlite_repository import SqliteRunHistoryRepository
 from .repository import Repository, JsonRepository
+from .services.project_file_sync import ProjectFileSyncService
+from .services.project_git import ProjectGitService
+from .services.project_repository_inspector import ProjectRepositoryInspector
 from .sharing.service import SharedProjectService
 from .sharing.sqlite_repository import SqliteSharedProjectRepository
 
@@ -31,6 +34,9 @@ class Store:
         self.global_variables: dict = {}
         self.current_config = TestConfig()
         self.current_runs: Dict[str, dict] = {}
+        self.file_sync = ProjectFileSyncService()
+        self.project_git = ProjectGitService()
+        self.repository_inspector = ProjectRepositoryInspector()
         # mtime of tests.json at our last read/write — lets us notice writes made
         # by the *other* process (the MCP server shares this file) and reload.
         self._last_mtime: Optional[float] = None
@@ -221,6 +227,11 @@ class Store:
 
     def save(self, sync_sharing: bool = True):
         self.save_active_project()
+        # Linked folders are the readable project source. Write them before the
+        # workspace cache; external edits are never overwritten and instead
+        # mark the cached project as locally dirty for explicit resolution.
+        for project in self.projects:
+            self.file_sync.sync_before_save(project)
         if sync_sharing:
             active = next((p for p in self.projects if p.get("id") == self.current_project_id), None)
             if active:

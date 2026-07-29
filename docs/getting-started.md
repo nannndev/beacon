@@ -43,6 +43,8 @@ requests, and two requests per second.
 3. If you already had a Beacon workspace before this sample was introduced,
    use **Add Sample Project** in the project sidebar. The action is idempotent
    and never overwrites an existing project.
+4. To collaborate through Git, open **Project Settings**, link the project to a
+   folder, then initialize a repository or add an existing remote.
 
 ## Using Folders
 
@@ -66,6 +68,7 @@ See the [Desktop App](./desktop.md) section for how to build and use the native 
 - [Scenarios](./features/scenarios.md) — run ordered multi-step flows with state carried by extractors
 - [Send & Response Inspector](./features/send-inspect.md) — fire one request and inspect everything (with click-to-extract)
 - [Run History](./features/run-history.md) — retain, pin, expand charts, and compare two test runs
+- [Git-backed Projects](./features/git-backed-projects.md) — store readable project files, review changes, and sync branches
 
 See the full list under `docs/features/`.
 

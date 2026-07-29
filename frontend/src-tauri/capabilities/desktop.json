@@ -10,6 +10,7 @@
     "shell:allow-spawn",
     "shell:allow-kill",
     "shell:default",
+    "dialog:allow-open",
     "updater:default",
     "process:default",
     "process:allow-restart",

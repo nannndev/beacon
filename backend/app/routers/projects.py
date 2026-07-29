@@ -9,6 +9,9 @@ from ..core.tester import EndpointTest
 from ..catalogs import JSONPLACEHOLDER_TEMPLATE_ID, build_jsonplaceholder_project
 from ..services.notify_discord import send_test_message
 from ..services.project_importer import ProjectImportError, materialize_items, normalize_project
+from ..services.project_file_sync import ProjectFileSyncError
+from ..services.project_git import ProjectGitError
+from ..services.project_repository_inspector import ProjectRepositoryInspectionError
 
 router = APIRouter(tags=["projects"])
 
@@ -34,6 +37,7 @@ def list_projects():
                 "current_environment_id": p.get("current_environment_id"),
                 "notifications": p.get("notifications", {}),
                 "shared_origin": p.get("shared_origin"),
+                "file_sync": p.get("file_sync"),
                 "items": p.get("items") or [
                     {"type": "request", **t} for t in p.get("tests", [])
                 ],
@@ -156,6 +160,280 @@ def update_project(project_id: str, data: dict):
     store.sync_current_config()
     store.save()
     return {"status": "updated", "project": proj}
+
+
+def _project_or_404(project_id: str) -> dict:
+    project = next((item for item in store.projects if item.get("id") == project_id), None)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+@router.get("/projects/{project_id}/file-sync")
+def project_file_sync_status(project_id: str):
+    return store.file_sync.status(_project_or_404(project_id))
+
+
+@router.post("/projects/{project_id}/file-sync/link")
+def link_project_folder(project_id: str, data: dict):
+    project = _project_or_404(project_id)
+    try:
+        status = store.file_sync.link(project, str((data or {}).get("path") or ""))
+        store.save(sync_sharing=False)
+        return status
+    except ProjectFileSyncError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/projects/{project_id}/file-sync/reload")
+def reload_project_folder(project_id: str):
+    project = _project_or_404(project_id)
+    try:
+        status = store.file_sync.reload(project)
+        store.sync_current_config()
+        store.save(sync_sharing=False)
+        return status
+    except ProjectFileSyncError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.delete("/projects/{project_id}/file-sync")
+def unlink_project_folder(project_id: str):
+    project = _project_or_404(project_id)
+    status = store.file_sync.unlink(project)
+    store.save(sync_sharing=False)
+    return status
+
+
+def _open_linked_project(path: str, cloned_path: str | None = None):
+    try:
+        project = store.file_sync.open_existing(path, {str(item.get("id")) for item in store.projects})
+        store.projects.append(project)
+        store.current_project_id = project["id"]
+        store.sync_current_config()
+        store.save(sync_sharing=False)
+        return {
+            "project_id": project["id"],
+            "project_name": project["name"],
+            "path": project["file_sync"]["path"],
+            "cloned_path": cloned_path,
+            "missing_private_values": store.file_sync.missing_private_values(project),
+        }
+    except ProjectFileSyncError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/projects/file-sync/open")
+def open_existing_project_folder(data: dict):
+    return _open_linked_project(str((data or {}).get("path") or ""))
+
+
+@router.post("/projects/file-sync/clone")
+def clone_project_repository(data: dict):
+    try:
+        target = store.project_git.clone(
+            str((data or {}).get("url") or ""),
+            str((data or {}).get("destination") or ""),
+        )
+    except ProjectGitError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    try:
+        inspection = store.repository_inspector.inspect(str(target))
+        if inspection["mode"] == "beacon_project":
+            return {"mode": "opened", **_open_linked_project(str(target), cloned_path=str(target))}
+        return {
+            **inspection,
+            "mode": "inspection_required",
+            "inspection_mode": inspection["mode"],
+            "cloned_path": str(target),
+        }
+    except ProjectRepositoryInspectionError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+def _persist_import_report(report: dict, linked_path: str | None = None):
+    payload = report["project"]
+    try:
+        items, validated_flat = materialize_items(payload["items"])
+    except ProjectImportError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    envs = [{
+        "id": str(uuid.uuid4()), "name": env.get("name") or "Imported",
+        "base_url": env.get("base_url", "") or "", "variables": env.get("variables", {}) or {},
+    } for env in payload["environments"]]
+    pid = str(uuid.uuid4())
+    project = {
+        "id": pid,
+        "name": payload["name"],
+        "environments": envs,
+        "current_environment_id": envs[0]["id"],
+        "items": items,
+        "tests": validated_flat,
+    }
+    if linked_path:
+        try:
+            store.file_sync.link(project, linked_path)
+        except ProjectFileSyncError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    store.projects.append(project)
+    store.current_project_id = pid
+    store.sync_current_config()
+    store.save(sync_sharing=False if linked_path else True)
+    return {
+        "id": pid,
+        "project_id": pid,
+        "name": project["name"],
+        "project_name": project["name"],
+        "path": linked_path,
+        "imported": {"tests": len(validated_flat), "environments": len(envs)},
+        "format": report["format"],
+        "warnings": report["warnings"],
+        "missing_private_values": store.file_sync.missing_private_values(project),
+        "config": store.current_config.to_dict(),
+    }
+
+
+@router.post("/projects/file-sync/import-candidate")
+def import_repository_candidate(data: dict):
+    root = str((data or {}).get("path") or "")
+    candidate = str((data or {}).get("candidate") or "")
+    try:
+        report = store.repository_inspector.load_candidate(root, candidate)
+    except ProjectRepositoryInspectionError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return _persist_import_report(report, linked_path=root)
+
+
+@router.post("/projects/file-sync/initialize")
+def initialize_repository_project(data: dict):
+    raw_path = str((data or {}).get("path") or "")
+    try:
+        inspection = store.repository_inspector.inspect(raw_path)
+        if inspection["mode"] == "beacon_project":
+            raise ProjectRepositoryInspectionError("This repository already contains beacon.yaml")
+        root = inspection["repository_path"]
+        name = str((data or {}).get("name") or inspection["repository_name"] or "API Project").strip()
+        if not name:
+            name = "API Project"
+        env_id = str(uuid.uuid4())
+        project = {
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "environments": [{"id": env_id, "name": "Local", "base_url": "", "variables": {}}],
+            "current_environment_id": env_id,
+            "items": [],
+        }
+        store.file_sync.link(project, root)
+    except (ProjectRepositoryInspectionError, ProjectFileSyncError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    store.projects.append(project)
+    store.current_project_id = project["id"]
+    store.sync_current_config()
+    store.save(sync_sharing=False)
+    return {
+        "project_id": project["id"], "project_name": project["name"],
+        "path": root, "cloned_path": root, "missing_private_values": [],
+    }
+
+
+def _git_action(project_id: str, action, *, reload_after: bool = False):
+    project = _project_or_404(project_id)
+    try:
+        result = action(project)
+        if reload_after:
+            store.file_sync.reload(project)
+            store.sync_current_config()
+            store.save(sync_sharing=False)
+        return result
+    except (ProjectGitError, ProjectFileSyncError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/projects/{project_id}/git")
+def project_git_status(project_id: str):
+    return _git_action(project_id, store.project_git.status)
+
+
+@router.get("/projects/{project_id}/git/branches")
+def project_git_branches(project_id: str):
+    return _git_action(project_id, store.project_git.branches)
+
+
+@router.post("/projects/{project_id}/git/fetch")
+def fetch_project_git_branches(project_id: str):
+    return _git_action(project_id, store.project_git.fetch)
+
+
+@router.post("/projects/{project_id}/git/compare")
+def compare_project_git_branch(project_id: str, data: dict):
+    return _git_action(
+        project_id,
+        lambda project: store.project_git.compare_branch(project, str((data or {}).get("branch") or "")),
+    )
+
+
+@router.post("/projects/{project_id}/git/branches")
+def create_project_git_branch(project_id: str, data: dict):
+    return _git_action(
+        project_id,
+        lambda project: store.project_git.create_branch(project, str((data or {}).get("name") or "")),
+    )
+
+
+@router.post("/projects/{project_id}/git/switch")
+def switch_project_git_branch(project_id: str, data: dict):
+    project = _project_or_404(project_id)
+    previous = None
+    switched = False
+    try:
+        previous = store.project_git.status(project).get("branch")
+        result = store.project_git.switch_branch(project, str((data or {}).get("branch") or ""))
+        switched = result.get("current") != previous
+        if switched:
+            try:
+                store.file_sync.reload(project)
+            except ProjectFileSyncError as reload_error:
+                if previous:
+                    store.project_git.switch_branch(project, previous)
+                    store.file_sync.reload(project)
+                raise ProjectGitError(
+                    f"Could not load that branch as a Beacon project: {reload_error}"
+                ) from reload_error
+            store.sync_current_config()
+            store.save(sync_sharing=False)
+        return result
+    except (ProjectGitError, ProjectFileSyncError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/projects/{project_id}/git/init")
+def init_project_git(project_id: str):
+    return _git_action(project_id, store.project_git.init)
+
+
+@router.put("/projects/{project_id}/git/remote")
+def set_project_git_remote(project_id: str, data: dict):
+    return _git_action(project_id, lambda project: store.project_git.set_remote(project, str((data or {}).get("url") or "")))
+
+
+@router.post("/projects/{project_id}/git/commit")
+def commit_project_git(project_id: str, data: dict):
+    return _git_action(project_id, lambda project: store.project_git.commit(project, str((data or {}).get("message") or "")))
+
+
+@router.post("/projects/{project_id}/git/pull")
+def pull_project_git(project_id: str):
+    return _git_action(project_id, store.project_git.pull, reload_after=True)
+
+
+@router.post("/projects/{project_id}/git/push")
+def push_project_git(project_id: str):
+    return _git_action(project_id, store.project_git.push)
+
+
+@router.get("/projects/{project_id}/git/diff")
+def project_git_diff(project_id: str, scope: str = "working", path: str | None = None):
+    return _git_action(project_id, lambda project: store.project_git.diff(project, scope, path))
 
 
 @router.post("/projects/{project_id}/notifications/test")
@@ -364,39 +642,7 @@ def import_project(data: Any = Body(...)):
         report = normalize_project(data)
     except ProjectImportError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    payload = report["project"]
-    name = payload["name"]
-
-    try:
-        items, validated_flat = materialize_items(payload["items"])
-    except ProjectImportError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    envs = [{
-        "id": str(uuid.uuid4()), "name": env.get("name") or "Imported",
-        "base_url": env.get("base_url", "") or "", "variables": env.get("variables", {}) or {},
-    } for env in payload["environments"]]
-
-    pid = str(uuid.uuid4())
-    store.projects.append({
-        "id": pid,
-        "name": name,
-        "environments": envs,
-        "current_environment_id": envs[0]["id"],
-        "items": items,
-        # also keep flat for backward
-        "tests": validated_flat,
-    })
-    store.current_project_id = pid
-    store.sync_current_config()
-    store.save()
-    return {
-        "id": pid,
-        "name": name,
-        "imported": {"tests": len(validated_flat), "environments": len(envs)},
-        "format": report["format"],
-        "warnings": report["warnings"],
-        "config": store.current_config.to_dict(),
-    }
+    return _persist_import_report(report)
 
 
 @router.put("/global")

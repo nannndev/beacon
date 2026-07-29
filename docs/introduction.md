@@ -30,6 +30,7 @@ Beacon aims to be the sweet spot:
 - Concurrent execution with configurable delay and max requests
 - Desktop app via Tauri (React frontend + Python backend as sidecar)
 - Portable projects (export/import as JSON)
+- Git-backed readable YAML projects with change review, remote synchronization, and branch workflows
 
 ## Tech Stack
 

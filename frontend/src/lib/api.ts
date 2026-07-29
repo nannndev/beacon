@@ -1,6 +1,6 @@
 // Centralized backend calls. All paths are proxied to the FastAPI backend by Vite.
 // For desktop builds (Tauri production), we use a full backend URL.
-import { TestConfig, Endpoint, RunConfig, ProjectNotifications, ProjectRevision, SharingStatus } from '../types'
+import { TestConfig, Endpoint, RunConfig, ProjectNotifications, ProjectRevision, SharingStatus, ProjectFileSyncStatus, ProjectGitStatus, ProjectGitDiff, ProjectGitBranches, ProjectGitBranchComparison } from '../types'
 import { isDesktop } from './platform'
 import type {
   HistoryCompareResult,
@@ -58,7 +58,7 @@ async function req<T = any>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       /* ignore */
     }
-    if (res.status === 404 && (url.startsWith('/scenario') || url.startsWith('/sharing'))) {
+    if (res.status === 404 && (url.startsWith('/scenario') || url.startsWith('/sharing') || url.startsWith('/projects/import') || url.startsWith('/projects/file-sync'))) {
       throw new Error('Beacon backend is incompatible with this app version. Fully close Beacon, reopen it, or reinstall the latest release.')
     }
     throw new Error(detail)
@@ -249,6 +249,37 @@ export interface ImportPreview {
   warnings: string[]
 }
 
+export interface LinkedProjectImportResult {
+  project_id: string
+  project_name: string
+  path: string
+  cloned_path?: string | null
+  missing_private_values: Array<{
+    environment_id: string
+    environment_name: string
+    key: string
+  }>
+}
+
+export interface RepositoryImportCandidate {
+  path: string
+  format: string
+  format_label: string
+  summary: ImportPreview['summary']
+  warnings: string[]
+}
+
+export type CloneRepositoryResult =
+  | ({ mode: 'opened' } & LinkedProjectImportResult)
+  | {
+      mode: 'inspection_required'
+      inspection_mode: 'import_candidates' | 'empty_repository'
+      cloned_path: string
+      repository_path: string
+      repository_name: string
+      candidates: RepositoryImportCandidate[]
+    }
+
 export const api = {
   systemInfo: () => req<{ app_version: string; api_protocol: number; capabilities: string[] }>('/system/info'),
   // Config
@@ -277,9 +308,40 @@ export const api = {
   updateEnvironments: (id: string, environments: any[]) =>
     req(`/projects/${id}`, jsonInit('PUT', { environments })),
   deleteProject: (id: string) => req(`/projects/${id}`, jsonInit('DELETE')),
+  projectFileSyncStatus: (id: string) => req<ProjectFileSyncStatus>(`/projects/${id}/file-sync`),
+  linkProjectFolder: (id: string, path: string) =>
+    req<ProjectFileSyncStatus>(`/projects/${id}/file-sync/link`, jsonInit('POST', { path })),
+  reloadProjectFolder: (id: string) =>
+    req<ProjectFileSyncStatus>(`/projects/${id}/file-sync/reload`, jsonInit('POST')),
+  unlinkProjectFolder: (id: string) =>
+    req<ProjectFileSyncStatus>(`/projects/${id}/file-sync`, jsonInit('DELETE')),
+  projectGitStatus: (id: string) => req<ProjectGitStatus>(`/projects/${id}/git`),
+  projectGitBranches: (id: string) => req<ProjectGitBranches>(`/projects/${id}/git/branches`),
+  fetchProjectGitBranches: (id: string) => req<ProjectGitBranches>(`/projects/${id}/git/fetch`, jsonInit('POST')),
+  compareProjectGitBranch: (id: string, branch: string) => req<ProjectGitBranchComparison>(`/projects/${id}/git/compare`, jsonInit('POST', { branch })),
+  createProjectGitBranch: (id: string, name: string) => req<ProjectGitBranches>(`/projects/${id}/git/branches`, jsonInit('POST', { name })),
+  switchProjectGitBranch: (id: string, branch: string) => req<ProjectGitBranches>(`/projects/${id}/git/switch`, jsonInit('POST', { branch })),
+  initProjectGit: (id: string) => req<ProjectGitStatus>(`/projects/${id}/git/init`, jsonInit('POST')),
+  setProjectGitRemote: (id: string, url: string) => req<ProjectGitStatus>(`/projects/${id}/git/remote`, jsonInit('PUT', { url })),
+  commitProjectGit: (id: string, message: string) => req<ProjectGitStatus>(`/projects/${id}/git/commit`, jsonInit('POST', { message })),
+  pullProjectGit: (id: string) => req<ProjectGitStatus>(`/projects/${id}/git/pull`, jsonInit('POST')),
+  pushProjectGit: (id: string) => req<ProjectGitStatus>(`/projects/${id}/git/push`, jsonInit('POST')),
+  projectGitDiff: (id: string, scope: 'working' | 'last_commit') =>
+    req<ProjectGitDiff>(`/projects/${id}/git/diff?scope=${scope}`),
   projectTemplate: () => req<Record<string, unknown>>('/projects/template'),
   previewProjectImport: (payload: unknown) =>
     req<ImportPreview>('/projects/import/preview', jsonInit('POST', payload)),
+  openExistingProjectFolder: (path: string) =>
+    req<LinkedProjectImportResult>('/projects/file-sync/open', jsonInit('POST', { path })),
+  cloneProjectRepository: (url: string, destination: string) =>
+    req<CloneRepositoryResult>('/projects/file-sync/clone', jsonInit('POST', { url, destination })),
+  importRepositoryCandidate: (path: string, candidate: string) =>
+    req<LinkedProjectImportResult & ImportProjectResponse>(
+      '/projects/file-sync/import-candidate',
+      jsonInit('POST', { path, candidate }),
+    ),
+  initializeRepositoryProject: (path: string, name: string) =>
+    req<LinkedProjectImportResult>('/projects/file-sync/initialize', jsonInit('POST', { path, name })),
   exportProject: (id: string, includeSecrets = false) =>
     req<Record<string, unknown>>(`/projects/${id}/export?include_secrets=${includeSecrets ? 'true' : 'false'}`),
   importProject: (payload: unknown) =>

@@ -23,6 +23,9 @@ features:
   - icon: 📥
     title: Postman Import
     details: Import existing Postman collections while preserving your entire folder structure.
+  - icon: 🌿
+    title: Git-backed Projects
+    details: Keep readable project files in Git, review changes, sync remotes, and compare branches while secrets stay local.
   - icon: 🔗
     title: Variables & Extractors
     details: Use {{random_email}}, {{uuid}}, timestamps and more. Extract tokens from responses to chain requests.

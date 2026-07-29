@@ -46,6 +46,7 @@ import assertionsShot from '../assets/features/assertions.png'
 import environmentsShot from '../assets/features/environments.png'
 import scenarioResultsShot from '../assets/features/load-soak-v044.png'
 import runHistoryShot from '../assets/features/run-history.png'
+import gitProjectShot from '../assets/features/git-project-sync.png'
 
 // URLs injected from the root .env via vite.config.ts (define block).
 const DOCS_URL =
@@ -54,7 +55,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.4.6'
+const RELEASE_VERSION = '0.4.7'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -342,6 +343,7 @@ export default function LandingPage() {
               { icon: FileCode2, title: 'Use the body you need', body: 'JSON, forms, multipart, raw text, XML, and GraphQL are all first-class requests.' },
               { icon: Activity, title: 'Watch traffic live', body: 'See throughput, latency, failures, rate limits, and individual activity while the run is still moving.' },
               { icon: Repeat, title: 'Control the pressure', body: 'Tune concurrency, pacing, retries, request limits, and failure thresholds per endpoint.' },
+              { icon: GitBranch, title: 'Keep the project in Git', body: 'Review readable project files, commit changes, sync remotes, and move between branches from Beacon.' },
               { icon: Users, title: 'Share on your network', body: 'Sync project source with nearby teammates. Everyone still runs requests and keeps secrets on their own device.' },
             ].map(({ icon: Icon, title, body }) => (
               <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-5">
@@ -588,7 +590,7 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-4 max-w-lg text-lg leading-8 text-muted-foreground">
-              Scenario runs are easier to follow now. See the work moving, pause the activity feed, and understand why something failed.
+              Beacon projects can now live in Git. Review readable files, sync a remote, compare branches, and keep private values on each device.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -597,10 +599,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Follow a run live', 'Watch completed requests, active users, throughput, average latency, P95, and progress while workers are still running.'],
-              ['See each step move', 'Single API requests, Web document loads, and multi-step journeys now have distinct states and clearer language.'],
-              ['Understand failures', 'HTTP errors, timeouts, and assertion mismatches show a direct explanation with expected and received values.'],
-              ['Control the activity feed', 'Scroll through up to 100 recent events, pause live follow, then jump back to the newest request.'],
+              ['Readable project files', 'Endpoints, folders, assertions, extractors, and test settings are stored as reviewable YAML.'],
+              ['Git without another account', 'Commit, pull, push, fetch, create branches, and switch using the credentials already configured on your device.'],
+              ['Compare before switching', 'See branch commits, changed project files, additions, and deletions before moving to another version.'],
+              ['Import from a repository', 'Open an existing Beacon project or discover OpenAPI, Swagger, Postman, Insomnia, and HAR files in another repository.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-6 py-5 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-6">
                 <h3 className="font-semibold">{title}</h3>
@@ -785,6 +787,21 @@ function FeatureGallery() {
             </p>
           </div>
           <ScreenFrame src={runHistoryShot} alt="Beacon Run History showing a completed load run with searchable filters and comparison controls" />
+        </Reveal>
+
+        <Reveal className="mt-24 grid gap-8 rounded-[2rem] border border-violet-500/20 bg-violet-500/[0.035] p-5 md:p-8 lg:grid-cols-[0.42fr_1.58fr] lg:items-center lg:p-10">
+          <div className="lg:pr-4">
+            <GitBranch className="h-7 w-7 text-violet-400" />
+            <p className="mt-6 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-violet-400">Git-backed projects</p>
+            <h3 className="mt-3 text-3xl font-semibold tracking-tight">Your API project belongs in the repo.</h3>
+            <p className="mt-4 leading-7 text-muted-foreground">
+              Keep Beacon source as readable YAML. Review diffs, commit, pull, push, compare branches, and switch versions without leaving the app.
+            </p>
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              Secrets, responses, and run history stay local. Git uses the SSH key or credential manager already configured on the device.
+            </p>
+          </div>
+          <ScreenFrame src={gitProjectShot} alt="Beacon Project Settings showing Git branches, remote synchronization, change review, and local-only private values" />
         </Reveal>
 
         <div className="mt-24 grid gap-6 md:grid-cols-[0.92fr_1.08fr] md:gap-8">

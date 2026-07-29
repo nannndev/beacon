@@ -68,6 +68,14 @@ export interface Project {
   items: CollectionItem[]   // tree structure like Postman (supports folders)
   // legacy flat support during migration
   tests?: Endpoint[]
+  file_sync?: {
+    path: string
+    schema_version: number
+    last_synced_hash?: string | null
+    last_synced_at?: string | null
+    last_error?: string | null
+    local_dirty?: boolean
+  }
   shared_origin?: {
     host_address: string
     host_device_id?: string
@@ -80,6 +88,82 @@ export interface Project {
     sync_error?: string | null
     conflict?: SharingConflict | null
   }
+}
+
+export type ProjectFileSyncState = 'unlinked' | 'clean' | 'external_changes' | 'conflict' | 'missing_folder' | 'invalid_source' | 'write_error'
+
+export interface ProjectFileSyncStatus {
+  linked: boolean
+  path: string | null
+  state: ProjectFileSyncState
+  last_synced_at: string | null
+  local_dirty?: boolean
+  last_error?: string | null
+  changes: Array<{ path: string; kind: 'added' | 'modified' | 'deleted' }>
+  message: string
+}
+
+export interface ProjectGitStatus {
+  available: boolean
+  repository: boolean
+  branch: string | null
+  remote_url: string | null
+  upstream: string | null
+  ahead: number
+  behind: number
+  changes: Array<{ path: string; status: string }>
+  message: string
+}
+
+export interface ProjectGitBranch {
+  name: string
+  full_name: string
+  kind: 'local' | 'remote'
+  current: boolean
+  upstream: string | null
+  local_name?: string | null
+}
+
+export interface ProjectGitBranches {
+  current: string | null
+  remote_url: string | null
+  local: ProjectGitBranch[]
+  remote: ProjectGitBranch[]
+}
+
+export interface ProjectGitBranchComparison {
+  current: string | null
+  target: string
+  current_only_commits: number
+  target_only_commits: number
+  summary: { added: number; modified: number; deleted: number }
+  files: Array<{
+    path: string
+    status: 'added' | 'modified' | 'deleted'
+    additions: number
+    deletions: number
+  }>
+}
+
+export interface ProjectGitDiffFile {
+  path: string
+  status: string
+  patch: string
+  additions: number
+  deletions: number
+  truncated: boolean
+}
+
+export interface ProjectGitDiff {
+  scope: 'working' | 'last_commit'
+  commit: null | {
+    id: string
+    short_id: string
+    subject: string
+    author: string
+    committed_at: string
+  }
+  files: ProjectGitDiffFile[]
 }
 
 export interface SharingStatus {

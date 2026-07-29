@@ -1,6 +1,6 @@
 [package]
 name = "beacon"
-version = "0.4.6"
+version = "0.4.7"
 description = "Beacon - API Workspace"
 authors = ["you"]
 license = ""
@@ -18,6 +18,7 @@ serde = { version = "1.0", features = ["derive"] }
 # "shell-open" cargo feature no longer exists on the tauri crate).
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
 # Guarantees a single app process so we never spawn a second backend sidecar
 # against the same config file (concurrent backends clobber each other's writes).
 tauri-plugin-single-instance = "2"

@@ -22,7 +22,7 @@ import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
 import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
 import { ScenarioMonitor } from './components/ScenarioMonitor'
-import type { ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
+import type { CloneRepositoryResult, LinkedProjectImportResult, ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
 import { useRun } from './hooks/useRun'
 import { api } from './lib/api'
 import { toast } from './components/ui/toast'
@@ -108,7 +108,7 @@ function App() {
     const verifyBackend = async () => {
       try {
         const info = await api.systemInfo()
-        const required = ['scenario.start', 'sharing.v1']
+        const required = ['scenario.start', 'sharing.v1', 'project.import.preview', 'project.file-sync.v1', 'project.file-sync.import.v1', 'project.repository.inspect.v1', 'project.git.v1', 'project.git.diff.v1', 'project.git.branches.v1', 'project.git.compare.v1']
         const missing = required.filter((capability) => !info.capabilities?.includes(capability))
         if (!cancelled && missing.length) {
           toast.error('Beacon backend is older than the desktop UI. Fully close Beacon and install the latest release.')
@@ -473,6 +473,37 @@ function App() {
     const res = await api.importProject(payload)
     toast.success(`Imported "${res.name}" — ${res.imported.tests} endpoint(s)`)
     await switchProject(res.id)
+  }
+
+  const finishLinkedProjectImport = async (result: LinkedProjectImportResult, source: 'folder' | 'git') => {
+    await fetchAll()
+    const sourceLabel = source === 'git' ? 'repository' : 'folder'
+    toast.success(`Opened "${result.project_name}" from ${sourceLabel}`)
+    if (result.missing_private_values.length > 0) {
+      toast.info(`${result.missing_private_values.length} private environment value(s) need setup`)
+      setShowEnvDialog(true)
+    }
+  }
+
+  const openExistingProjectFolder = async (path: string) => {
+    const result = await api.openExistingProjectFolder(path)
+    await finishLinkedProjectImport(result, 'folder')
+  }
+
+  const cloneProjectRepository = async (url: string, destination: string): Promise<CloneRepositoryResult> => {
+    const result = await api.cloneProjectRepository(url, destination)
+    if (result.mode === 'opened') await finishLinkedProjectImport(result, 'git')
+    return result
+  }
+
+  const importRepositoryCandidate = async (path: string, candidate: string) => {
+    const result = await api.importRepositoryCandidate(path, candidate)
+    await finishLinkedProjectImport(result, 'git')
+  }
+
+  const initializeRepositoryProject = async (path: string, name: string) => {
+    const result = await api.initializeRepositoryProject(path, name)
+    await finishLinkedProjectImport(result, 'git')
   }
 
   const saveEnvironments = async (envs: any[]) => {
@@ -970,7 +1001,17 @@ function App() {
       {/* Dialogs */}
       <ProjectDialog open={showProjectDialog} onOpenChange={setShowProjectDialog} onCreate={createProject} />
       <JoinLocalProjectDialog open={showJoinProjectDialog} onOpenChange={setShowJoinProjectDialog} onJoined={fetchAll} />
-      <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} onImport={doImport} onPreview={api.previewProjectImport} fetchTemplate={api.projectTemplate} />
+      <ImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImport={doImport}
+        onPreview={api.previewProjectImport}
+        fetchTemplate={api.projectTemplate}
+        onOpenExistingFolder={openExistingProjectFolder}
+        onCloneRepository={cloneProjectRepository}
+        onImportRepositoryCandidate={importRepositoryCandidate}
+        onInitializeRepository={initializeRepositoryProject}
+      />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />

@@ -40,8 +40,32 @@ fn reap_stale_backends() {
     }
     #[cfg(not(windows))]
     {
-        // Match the triple-suffixed sidecar name to avoid killing unrelated
-        // processes that merely contain "backend" in their command line.
+        // Packaged macOS/Linux apps launch a sibling binary named exactly
+        // `backend`. Older cleanup only matched the triple-suffixed development
+        // binary (`backend-*`), so packaged sidecars survived app updates as
+        // PPID-1 orphans. Match our absolute sibling path first to avoid
+        // touching unrelated processes named "backend".
+        if let Some(path) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|parent| parent.join("backend")))
+            .filter(|path| path.exists())
+        {
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", &path.to_string_lossy()])
+                .output();
+        }
+
+        // A development build has a different sibling path than an installed
+        // macOS build. If the installed app was force-quit before launching
+        // `tauri dev`, reap that app-bundle sidecar as well.
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", "Beacon.app/Contents/MacOS/backend"])
+                .output();
+        }
+
+        // Development sidecars retain Tauri's target-triple suffix.
         let _ = std::process::Command::new("pkill")
             .args(["-f", "backend-"])
             .output();
@@ -152,6 +176,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         // Auto-update plumbing. The updater checks the GitHub Releases manifest
         // and verifies downloads against the embedded public key; the process
         // plugin lets the frontend relaunch the app after an update installs.

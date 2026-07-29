@@ -46,6 +46,14 @@ Search, filter, pin, inspect, export, and compare saved runs. History stays loca
 
 ![Beacon Run History](./assets/screenshots/run-history.png)
 
+### Git-backed projects
+
+Store a Beacon project as readable YAML, review its changed files, and use Git without leaving the desktop app. Beacon can initialize or clone a repository, commit project changes, pull and push, fetch branches, compare them before switching, and import API definitions discovered in a non-Beacon repository.
+
+Private environment values remain under the ignored `.beacon/` directory. Responses, run history, logs, and generated runtime values stay on the device that executes the request.
+
+![Beacon Git-backed project controls](./assets/screenshots/git-project-sync.png)
+
 ## Features
 
 - Project workspaces with nested, draggable request folders
@@ -53,6 +61,9 @@ Search, filter, pin, inspect, export, and compare saved runs. History stays loca
 - Environment and global variables using `{{variable}}` templates
 - Fresh-per-request generators such as `{{random_email}}`, `{{uuid}}`, `{{timestamp}}`, and `{{random_string:12}}`
 - Postman collection import and redacted project export
+- Beacon, Postman, OpenAPI, Swagger, Insomnia, HAR, JSON, and YAML import from a file, pasted content, folder, or Git repository
+- Readable Git-backed project files with status, diff review, commit, fast-forward pull, and push
+- Branch fetch, creation, comparison, and guarded switching for the same Beacon project
 - JSON, form, multipart, and raw request bodies
 - Web Page targets for HTML document load testing, redirects, TTFB, and throughput
 - Per-endpoint authentication, headers, cookies, extractors, and run overrides
@@ -125,6 +136,8 @@ In the desktop app, open **MCP Server** to register Beacon with a supported clie
 ## Documentation
 
 The full VitePress documentation lives in [`docs/`](./docs/index.md).
+
+For team workflows, see [Git-backed projects](./docs/features/git-backed-projects.md) and [local project sharing](./docs/superpowers/specs/2026-07-25-local-project-sharing-design.md).
 
 ```bash
 pnpm run dev:docs
