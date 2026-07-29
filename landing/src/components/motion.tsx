@@ -1,14 +1,18 @@
 import {
+  AnimatePresence,
   motion,
   useInView,
+  useMotionValueEvent,
   useReducedMotion,
+  useScroll,
   type Variants,
 } from 'framer-motion'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp } from 'lucide-react'
 
 // Shared easing + timing so every entrance in the page feels like one system.
 const EASE = [0.22, 1, 0.36, 1] as const
-const DURATION = 0.55
+const DURATION = 0.68
 
 // Statically resolved motion components. Resolving `as` through this map (rather
 // than calling motion(tag) during render) keeps a stable component identity, so
@@ -42,7 +46,7 @@ export function Reveal({
   children,
   className,
   delay = 0,
-  y = 16,
+  y = 28,
   as = 'div',
   once = true,
 }: RevealProps) {
@@ -52,10 +56,11 @@ export function Reveal({
   return (
     <MotionTag
       className={className}
-      initial={reduce ? undefined : { opacity: 0, y }}
-      whileInView={reduce ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once, margin: '0px 0px -12% 0px' }}
+      initial={reduce ? undefined : { opacity: 0, y, scale: 0.985 }}
+      whileInView={reduce ? undefined : { opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once, amount: 0.16, margin: '0px 0px -6% 0px' }}
       transition={{ duration: DURATION, ease: EASE, delay }}
+      style={reduce ? undefined : { willChange: 'transform, opacity' }}
     >
       {children}
     </MotionTag>
@@ -102,7 +107,7 @@ export function RevealGroup({
       variants={container}
       initial={reduce ? undefined : 'hidden'}
       whileInView={reduce ? undefined : 'show'}
-      viewport={{ once, margin: '0px 0px -10% 0px' }}
+      viewport={{ once, amount: 0.14, margin: '0px 0px -5% 0px' }}
     >
       {children}
     </MotionTag>
@@ -116,19 +121,66 @@ interface RevealItemProps {
   as?: MotionTagName
 }
 
-export function RevealItem({ children, className, y = 18, as = 'div' }: RevealItemProps) {
+export function RevealItem({ children, className, y = 26, as = 'div' }: RevealItemProps) {
   const reduce = useReducedMotion()
   const MotionTag = MOTION_TAGS[as]
 
   const item: Variants = {
-    hidden: { opacity: 0, y: reduce ? 0 : y },
-    show: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
+    hidden: { opacity: 0, y: reduce ? 0 : y, scale: reduce ? 1 : 0.985 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: DURATION, ease: EASE } },
   }
 
   return (
-    <MotionTag className={className} variants={item}>
+    <MotionTag
+      className={className}
+      variants={item}
+      style={reduce ? undefined : { willChange: 'transform, opacity' }}
+    >
       {children}
     </MotionTag>
+  )
+}
+
+/**
+ * BackToTopButton - appears after the opening story has passed and remains
+ * available through the footer. Scroll progress comes from Motion so the page
+ * does not install its own frame-by-frame window scroll listener.
+ */
+export function BackToTopButton() {
+  const reduce = useReducedMotion()
+  const { scrollYProgress } = useScroll()
+  const [visible, setVisible] = useState(false)
+
+  useMotionValueEvent(scrollYProgress, 'change', (progress) => {
+    const nextVisible = progress > 0.16
+    setVisible((current) => current === nextVisible ? current : nextVisible)
+  })
+
+  const returnToTop = () => {
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' })
+  }
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.button
+          type="button"
+          aria-label="Back to top"
+          title="Back to top"
+          onClick={returnToTop}
+          initial={reduce ? false : { opacity: 0, y: 14, scale: 0.94 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={reduce ? undefined : { opacity: 0, y: 10, scale: 0.94 }}
+          whileHover={reduce ? undefined : { y: -2 }}
+          whileTap={reduce ? undefined : { scale: 0.97 }}
+          transition={{ duration: 0.28, ease: EASE }}
+          className="liquid-glass fixed bottom-5 right-5 z-40 inline-flex h-12 items-center gap-2 rounded-full border-cyan-500/20 px-4 text-sm font-semibold text-foreground shadow-xl shadow-background/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background md:bottom-7 md:right-7"
+        >
+          <ArrowUp className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+          <span className="hidden sm:inline">Back to top</span>
+        </motion.button>
+      )}
+    </AnimatePresence>
   )
 }
 

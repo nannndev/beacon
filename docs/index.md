@@ -38,6 +38,9 @@ features:
   - icon: 🤖
     title: MCP Server
     details: Standard MCP server (not Claude-only). Control Beacon from Claude, Cursor, Windsurf, Cline, Continue, or any MCP client. Bundled as standalone binary in the desktop app.
+  - icon: ⌨️
+    title: CLI & CI
+    details: Run Git-backed projects headlessly, inject CI secrets, fail pull requests on broken assertions, and export JSON or JUnit reports.
   - icon: 🖥️
     title: Desktop App
     details: Native desktop experience powered by Tauri. Includes the backend as a sidecar for a true single-EXE experience.

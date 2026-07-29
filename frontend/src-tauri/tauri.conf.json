@@ -1,6 +1,6 @@
 {
   "productName": "Beacon",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "identifier": "com.beacon.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -48,7 +48,8 @@
     ],
     "externalBin": [
       "backend",
-      "mcp_server"
+      "mcp_server",
+      "beacon_cli"
     ],
     "resources": [
       "skills"

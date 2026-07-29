@@ -3,6 +3,30 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.8] - 2026-07-30
+
+### Added
+
+- Headless Beacon CLI for validating and running Git-backed projects without opening the desktop app.
+- Project, folder, and endpoint execution scopes with environment selection, iterations, retries, retry delays, and fail-fast behavior.
+- JSON and JUnit reports, GitHub Actions summaries, safe failure annotations, and meaningful CI exit codes.
+- `beacon ci init github` workflow generation with version pinning, repository discovery, secret guidance, dry-run previews, and overwrite protection.
+- A complete CLI guide inside Beacon Desktop plus tutorial, concepts, GitHub Actions, and command-reference documentation.
+- Standalone Beacon CLI binaries attached to Windows, macOS, and Linux releases and bundled with the desktop app.
+
+### Improved
+
+- CLI runs reuse Beacon's project files, assertions, extractors, templating, environment rules, and local secret overlays.
+- The landing page now uses current product screenshots across ten workflows, a compact feature gallery, animated transitions, auto-slide with interaction pause, and reduced-motion support.
+- Landing copy now presents Beacon as a local-first API workspace and highlights the CLI and CI workflow in the current release section.
+
+### Security
+
+- CI secrets can be supplied through ignored env files, `BEACON_VAR_*` environment variables, or explicit overrides without writing private values into project YAML.
+- GitHub summaries and annotations exclude response bodies and sensitive assertion values.
+
+[Compare 0.4.7 → 0.4.8](https://github.com/nannndev/beacon/compare/v0.4.7...v0.4.8)
+
 ## [0.4.7] - 2026-07-29
 
 ### Added

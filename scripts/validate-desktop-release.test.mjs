@@ -17,6 +17,13 @@ const releaseWorkflow = await readFile(
 const frontendPackage = JSON.parse(
   await readFile(new URL("../frontend/package.json", import.meta.url), "utf8"),
 );
+const tauriConfig = JSON.parse(
+  await readFile(new URL("../frontend/src-tauri/tauri.conf.json", import.meta.url), "utf8"),
+);
+const backendBuild = await readFile(
+  new URL("../backend/build_backend.py", import.meta.url),
+  "utf8",
+);
 
 test("desktop release does not compile with the Tauri devtools feature", () => {
   assert.doesNotMatch(
@@ -39,4 +46,13 @@ test("desktop release builds and publishes Linux packages", () => {
   assert.match(releaseWorkflow, /add_platform "linux-x86_64"/);
   assert.match(releaseWorkflow, /artifacts\/\*\*\/\*\.AppImage/);
   assert.match(releaseWorkflow, /artifacts\/\*\*\/\*\.deb/);
+});
+
+test("desktop release bundles and publishes the headless CLI", () => {
+  assert.ok(tauriConfig.bundle.externalBin.includes("beacon_cli"));
+  assert.match(backendBuild, /"--name", "beacon_cli"/);
+  assert.match(mainRs, /fn cli_path\(state: State<CliPath>\)/);
+  assert.match(releaseWorkflow, /beacon-windows-x64\.exe/);
+  assert.match(releaseWorkflow, /beacon-macos-arm64/);
+  assert.match(releaseWorkflow, /beacon-linux-x64/);
 });

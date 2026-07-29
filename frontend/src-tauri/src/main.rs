@@ -19,6 +19,15 @@ const MCP_BINARY_NAME: &str = "mcp_server.exe";
 #[cfg(not(windows))]
 const MCP_BINARY_NAME: &str = "mcp_server";
 
+#[cfg(windows)]
+const BUNDLED_CLI_NAME: &str = "beacon_cli.exe";
+#[cfg(not(windows))]
+const BUNDLED_CLI_NAME: &str = "beacon_cli";
+#[cfg(windows)]
+const STAGED_CLI_NAME: &str = "beacon.exe";
+#[cfg(not(windows))]
+const STAGED_CLI_NAME: &str = "beacon";
+
 const SKILL_RELATIVE: &str = "skills/beacon/SKILL.md";
 
 /// Kill any backend sidecar left over from a previous session that crashed or
@@ -85,6 +94,10 @@ pub(crate) struct McpServerPath(pub(crate) Mutex<PathBuf>);
 /// Absolute path to the staged agent skill for Claude Code etc.
 pub(crate) struct McpSkillPath(pub(crate) Mutex<PathBuf>);
 
+/// Absolute path to the staged headless CLI. Keeping this outside the app
+/// bundle means the path survives desktop updates and can be used by CI scripts.
+struct CliPath(Mutex<PathBuf>);
+
 /// The port the bundled backend sidecar was told to listen on. The frontend
 /// reads this via the `backend_port` command so it never hardcodes 8000.
 struct BackendPort(u16);
@@ -116,6 +129,11 @@ fn mcp_server_path(state: State<McpServerPath>) -> String {
 
 #[tauri::command]
 fn mcp_skill_path(state: State<McpSkillPath>) -> String {
+    state.0.lock().unwrap().to_string_lossy().to_string()
+}
+
+#[tauri::command]
+fn cli_path(state: State<CliPath>) -> String {
     state.0.lock().unwrap().to_string_lossy().to_string()
 }
 
@@ -199,6 +217,7 @@ fn main() {
             prepare_for_update,
             mcp_server_path,
             mcp_skill_path,
+            cli_path,
             analytics_diagnostic,
             mcp_registration::mcp_status,
             mcp_registration::mcp_register_claude_desktop,
@@ -274,6 +293,42 @@ fn main() {
                 }
             }
             app.manage(McpSkillPath(Mutex::new(staged_skill)));
+
+            // Stage the CLI to a stable, human-friendly executable name. It is
+            // not spawned by Beacon; terminals and CI runners execute it.
+            let staged_cli = data_dir.join(STAGED_CLI_NAME);
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let bundled_cli = resource_dir.join(BUNDLED_CLI_NAME);
+                if bundled_cli.exists() {
+                    let needs_copy = match (
+                        std::fs::metadata(&bundled_cli),
+                        std::fs::metadata(&staged_cli),
+                    ) {
+                        (Ok(b), Ok(s)) if b.len() == s.len() => {
+                            std::fs::read(&bundled_cli).ok() != std::fs::read(&staged_cli).ok()
+                        }
+                        (Ok(_), Ok(_)) => true,
+                        _ => true,
+                    };
+                    if needs_copy {
+                        if let Err(e) = std::fs::copy(&bundled_cli, &staged_cli) {
+                            eprintln!("[beacon] failed to stage CLI binary to {staged_cli:?}: {e}");
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            if let Ok(metadata) = std::fs::metadata(&staged_cli) {
+                                let mut permissions = metadata.permissions();
+                                permissions.set_mode(0o755);
+                                let _ = std::fs::set_permissions(&staged_cli, permissions);
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("[beacon] bundled CLI binary not found at {bundled_cli:?}");
+                }
+            }
+            app.manage(CliPath(Mutex::new(staged_cli)));
 
             // Reap any orphaned backend from a previous crashed session before
             // starting ours — two backends on the same tests.json revert each

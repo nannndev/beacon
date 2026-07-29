@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import {
   Activity,
-  Apple,
   ArrowRight,
   Bot,
   Braces,
+  ChevronLeft,
+  ChevronRight,
   Coffee,
   Download,
   FileCode2,
@@ -13,18 +15,20 @@ import {
   GitBranch,
   Globe2,
   History,
+  Maximize2,
   Menu,
   MessagesSquare,
   PanelsTopLeft,
   Repeat,
   Send,
   ShieldCheck,
-  Terminal,
+  SquareTerminal,
   Users,
   UserCheck,
   Wifi,
   X,
 } from 'lucide-react'
+import { FaApple, FaLinux, FaWindows } from 'react-icons/fa'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { NetworkBackground } from '../components/NetworkBackground'
@@ -32,6 +36,7 @@ import { ContributorWall } from '../components/ContributorWall'
 import { HeroStats } from '../components/HeroStats'
 import { startDownload } from '../lib/download'
 import {
+  BackToTopButton,
   CountUp,
   Reveal,
   RevealGroup,
@@ -39,14 +44,16 @@ import {
   motion,
   useReducedMotion,
 } from '../components/motion'
-import workspaceShot from '../assets/features/workspace-v044.png'
-import requestBuilderShot from '../assets/features/request-builder.png'
-import responseInspectorShot from '../assets/features/response-inspector.png'
-import assertionsShot from '../assets/features/assertions.png'
-import environmentsShot from '../assets/features/environments.png'
-import scenarioResultsShot from '../assets/features/load-soak-v044.png'
-import runHistoryShot from '../assets/features/run-history.png'
-import gitProjectShot from '../assets/features/git-project-sync.png'
+import requestBuilderShot from '../assets/features/request-builder-v047.png'
+import responseAssertionsShot from '../assets/features/response-assertions-v047.png'
+import scenarioConfigShot from '../assets/features/scenario-config-v047.png'
+import scenarioResultsShot from '../assets/features/scenario-live-v047.png'
+import liveMonitorShot from '../assets/features/live-monitor-v047.png'
+import environmentsShot from '../assets/features/environments-v047.png'
+import runHistoryShot from '../assets/features/run-history-v047.png'
+import gitProjectShot from '../assets/features/git-project-sync-v047.png'
+import mcpToolsShot from '../assets/features/mcp-tools-v047.png'
+import cliShot from '../assets/features/cli-v047.png'
 
 // URLs injected from the root .env via vite.config.ts (define block).
 const DOCS_URL =
@@ -55,7 +62,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.4.7'
+const RELEASE_VERSION = '0.4.8'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -255,28 +262,28 @@ export default function LandingPage() {
         )}
       </header>
 
-      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-x-12 gap-y-8 px-5 pb-14 pt-12 lg:px-8 lg:pb-20 lg:pt-20 xl:grid-cols-[0.82fr_1.18fr]">
+      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-x-10 gap-y-7 px-5 pb-10 pt-9 lg:px-8 lg:pb-14 lg:pt-12 xl:grid-cols-[0.82fr_1.18fr]">
         <div className="hero-atmosphere absolute inset-0 -z-10" aria-hidden="true" />
 
         <RevealGroup className="max-w-2xl" stagger={0.08} delayChildren={0.05}>
-          <RevealItem className="mb-6 inline-flex items-center rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
-            YOUR API WORKSPACE, WITHOUT THE CLOUD ACCOUNT
+          <RevealItem className="mb-4 inline-flex items-center rounded-full border border-border/60 bg-card/60 px-3 py-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
+            YOUR LOCAL-FIRST API WORKSPACE
           </RevealItem>
 
           <RevealItem as="div">
-            <h1 className="text-balance text-6xl font-semibold leading-[0.98] tracking-[-3.5px] md:text-[68px] md:tracking-[-4px]">
-              Build it. Send it.<br />See what actually happened.
+            <h1 className="text-balance text-5xl font-semibold leading-[0.98] tracking-[-3px] md:text-[62px] md:tracking-[-3.6px]">
+              Build, test, and ship APIs.<br />Locally.
             </h1>
           </RevealItem>
 
           <RevealItem
             as="div"
-            className="mt-6 max-w-xl text-pretty text-[17px] leading-relaxed text-muted-foreground"
+            className="mt-5 max-w-xl text-pretty text-base leading-7 text-muted-foreground"
           >
             Keep requests, tokens, tests, team projects, and load runs together. Your private data stays on your machine.
           </RevealItem>
 
-          <RevealItem className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <RevealItem className="mt-6 flex flex-col gap-3 sm:flex-row">
             <button
               onClick={download}
               className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-semibold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
@@ -303,19 +310,21 @@ export default function LandingPage() {
       </section>
 
       <section id="workspace" className="border-y border-border/60 bg-muted/15">
-        <RevealGroup className="mx-auto grid max-w-7xl gap-6 px-5 py-16 lg:grid-cols-4 lg:px-8">
+        <RevealGroup className="mx-auto grid max-w-7xl gap-px bg-border/70 px-5 py-px sm:grid-cols-2 lg:grid-cols-4 lg:px-8" stagger={0.05}>
           {[
             { icon: FolderKanban, title: 'Keep it organized', body: 'Group endpoints the way your product is actually built.' },
             { icon: Globe2, title: 'Switch context fast', body: 'Move between local, staging, and production without rewriting requests.' },
             { icon: Braces, title: 'Stop pasting values', body: 'Generate data and reuse tokens with variables that update themselves.' },
             { icon: History, title: 'Know what changed', body: 'Come back to any run and inspect its response, timing, status, and logs.' },
           ].map(({ icon: Icon, title, body }) => (
-            <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-6">
-              <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
-                <Icon className="h-4.5 w-4.5" />
+            <RevealItem key={title} as="article" className="group bg-background/90 px-4 py-4 sm:px-5">
+              <div className="flex items-center gap-3">
+                <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 transition-transform duration-300 group-hover:scale-105">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <h2 className="text-sm font-semibold tracking-tight group-hover:text-cyan-400 transition-colors">{title}</h2>
               </div>
-              <h2 className="text-lg font-semibold tracking-tight group-hover:text-cyan-400 transition-colors">{title}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+              <p className="mt-2 pl-11 text-xs leading-5 text-muted-foreground">{body}</p>
             </RevealItem>
           ))}
         </RevealGroup>
@@ -323,19 +332,19 @@ export default function LandingPage() {
 
       <FeatureGallery />
 
-      <section id="features" className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
+      <section id="features" className="mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
+        <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr] lg:items-start">
           <Reveal>
             <p className="text-sm font-bold text-cyan-500">Everything around the request</p>
-            <h2 className="mt-3 text-balance text-3xl font-extrabold tracking-tight md:text-5xl">
+            <h2 className="mt-2 text-balance text-3xl font-extrabold tracking-tight md:text-4xl">
               Less tab switching. More answers.
             </h2>
-            <p className="mt-5 max-w-lg text-pretty leading-7 text-muted-foreground">
+            <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
               Write the request, inspect the response, save what matters, then test it harder. It all happens in the same project.
             </p>
           </Reveal>
 
-          <RevealGroup className="grid gap-4 sm:grid-cols-2" stagger={0.07}>
+          <RevealGroup className="grid gap-3 sm:grid-cols-2" stagger={0.05}>
             {[
               { icon: Send, title: 'Send and inspect', body: 'Run one request and get the status, timing, headers, and formatted body right away.' },
               { icon: ShieldCheck, title: 'Prove the behavior', body: 'Turn status, timing, headers, text, and JSON fields into clear pass or fail checks.' },
@@ -345,15 +354,17 @@ export default function LandingPage() {
               { icon: Repeat, title: 'Control the pressure', body: 'Tune concurrency, pacing, retries, request limits, and failure thresholds per endpoint.' },
               { icon: GitBranch, title: 'Keep the project in Git', body: 'Review readable project files, commit changes, sync remotes, and move between branches from Beacon.' },
               { icon: Users, title: 'Share on your network', body: 'Sync project source with nearby teammates. Everyone still runs requests and keeps secrets on their own device.' },
+              { icon: SquareTerminal, title: 'Run it from the terminal', body: 'Validate, list, and run Beacon projects headlessly with the same local engine.' },
+              { icon: Github, title: 'Bring it into CI', body: 'Generate a GitHub Actions workflow with step summaries and useful failure annotations.' },
             ].map(({ icon: Icon, title, body }) => (
-              <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-2xl p-5">
+              <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-xl p-4">
                 <div className="flex items-center gap-3">
-                  <div className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/10 to-teal-500/10 text-cyan-400 transition group-hover:scale-110 group-hover:-rotate-3">
-                    <Icon className="h-4.5 w-4.5" />
+                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-cyan-500/10 text-cyan-400 transition group-hover:scale-105">
+                    <Icon className="h-4 w-4" />
                   </div>
                   <h3 className="font-semibold tracking-tight">{title}</h3>
                 </div>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{body}</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">{body}</p>
               </RevealItem>
             ))}
           </RevealGroup>
@@ -362,16 +373,16 @@ export default function LandingPage() {
 
       <section id="sharing" className="relative scroll-mt-20 overflow-hidden border-y border-border/60 bg-muted/15">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(6,182,212,0.10),transparent_34%),radial-gradient(circle_at_80%_70%,rgba(59,130,246,0.08),transparent_36%)]" />
-        <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:px-8 lg:py-24">
+        <div className="relative mx-auto grid max-w-7xl gap-8 px-5 py-14 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:px-8 lg:py-16">
           <Reveal>
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-4 py-1 text-xs font-semibold tracking-widest text-cyan-600 dark:text-cyan-400">
               <Wifi className="h-3.5 w-3.5" /> LOCAL-FIRST TEAMWORK
             </div>
-            <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">Work on the same project, from your own machine.</h2>
-            <p className="mt-5 max-w-xl leading-7 text-muted-foreground">
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">Work on the same project, from your own machine.</h2>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
               Share endpoint definitions over your local network. Requests, responses, run history, and private environment values stay on each teammate's device.
             </p>
-            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {[
                 [UserCheck, 'Trusted devices', 'Pairing codes, owner approval, roles, and automatic trusted reconnect.'],
                 [ShieldCheck, 'Pinned HTTPS', 'Beacon blocks synchronization if the host certificate fingerprint changes.'],
@@ -379,7 +390,7 @@ export default function LandingPage() {
                 [PanelsTopLeft, 'Local execution', 'Requests, responses, history, and private values stay on each device.'],
               ].map(([Icon, title, body]) => {
                 const SharingIcon = Icon as typeof Users
-                return <div key={title as string} className="rounded-2xl border border-border/70 bg-background/65 p-4 backdrop-blur-xl">
+                return <div key={title as string} className="rounded-xl border border-border/70 bg-background/65 p-3 backdrop-blur-xl">
                   <SharingIcon className="h-4 w-4 text-cyan-500" />
                   <div className="mt-3 text-sm font-semibold">{title as string}</div>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{body as string}</p>
@@ -425,12 +436,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="workflow" className="mx-auto max-w-7xl px-5 pb-20 lg:px-8">
-        <Reveal className="liquid-glass rounded-3xl p-8 md:p-10">
-          <div className="flex flex-col justify-between gap-6 border-b border-border pb-8 md:flex-row md:items-end">
+      <section id="workflow" className="mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
+        <Reveal className="liquid-glass rounded-2xl p-6 md:p-8">
+          <div className="flex flex-col justify-between gap-5 border-b border-border pb-6 md:flex-row md:items-end">
             <div>
               <div className="text-sm font-semibold tracking-widest text-cyan-400">WORKFLOW</div>
-              <h2 className="mt-2 text-4xl font-semibold tracking-tight">Start simple. Add pressure when you need it.</h2>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Start simple. Add pressure when you need it.</h2>
             </div>
             <button
               onClick={download}
@@ -440,33 +451,48 @@ export default function LandingPage() {
             </button>
           </div>
 
-          <RevealGroup className="grid gap-4 pt-8 md:grid-cols-4" stagger={0.09}>
+          <RevealGroup className="grid gap-3 pt-6 md:grid-cols-4" stagger={0.07}>
             {[
               ['Build the request', 'Choose the method, URL, auth, body, and variables.'],
               ['See the response', 'Send once, inspect the result, and capture any value you need next.'],
               ['Define success', 'Add checks for status, timing, headers, body, or JSON.'],
               ['Run it harder', 'Repeat one endpoint or move virtual users through the full journey.'],
             ].map(([title, body], index) => (
-              <RevealItem key={title} className="group relative rounded-2xl border border-border/50 bg-background/60 p-6 transition-colors hover:border-cyan-500/30">
-                <div className="mb-3 font-mono text-xs font-bold text-cyan-500/70">0{index + 1}</div>
-                <div className="text-xl font-semibold tracking-tight">{title}</div>
-                <p className="mt-2 text-[15px] leading-snug text-muted-foreground">{body}</p>
+              <RevealItem key={title} className="group relative rounded-xl border border-border/50 bg-background/60 p-4 transition-colors hover:border-cyan-500/30">
+                <div className="mb-2 font-mono text-[10px] font-bold text-cyan-500/70">0{index + 1}</div>
+                <div className="text-base font-semibold tracking-tight">{title}</div>
+                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{body}</p>
               </RevealItem>
             ))}
           </RevealGroup>
+
+          <div className="mt-6 grid gap-4 border-t border-border pt-6 lg:grid-cols-[0.7fr_1.3fr] lg:items-center">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <SquareTerminal className="h-4 w-4 text-cyan-500" /> Same project, headless when needed
+              </div>
+              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                Validate and run from the CLI, then generate a GitHub Actions workflow for pull requests.
+              </p>
+            </div>
+            <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-slate-950 px-4 py-3 font-mono text-[11px] text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+              <code className="truncate"><span className="text-cyan-400">$</span> beacon validate . &amp;&amp; beacon run . --github</code>
+              <code className="shrink-0 text-slate-500">beacon ci init github</code>
+            </div>
+          </div>
         </Reveal>
       </section>
 
-      <section id="mcp" className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <section id="mcp" className="mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
+        <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <Reveal>
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
               <Bot className="h-3.5 w-3.5 text-cyan-400" /> MCP INTEGRATION
             </div>
-            <h2 className="mt-4 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
               Let your AI use the same workspace.
             </h2>
-            <p className="mt-5 max-w-lg text-pretty leading-7 text-muted-foreground">
+            <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
               Beacon includes an MCP server, so an assistant can work with the projects you already have. It gets{' '}
               <span className="font-semibold text-foreground">
                 <CountUp value={17} durationMs={900} /> tools
@@ -502,95 +528,121 @@ claude mcp add beacon -- <path-to>/mcp_server
       </section>
 
       <section id="desktop" className="border-t border-border/60 bg-muted/20">
-        <div className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
+        <div className="mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
           <Reveal className="mx-auto max-w-2xl text-center">
-            <h2 className="mt-4 text-balance text-5xl font-semibold tracking-tighter">
+            <h2 className="text-balance text-4xl font-semibold tracking-tighter">
               Download it. Open it. Start sending.
             </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
+            <p className="mt-3 text-base text-muted-foreground">
               The desktop app already includes the backend and MCP server. No Python setup and no Beacon account required.
             </p>
           </Reveal>
 
-          <RevealGroup className="mx-auto mt-12 grid max-w-7xl gap-5 md:grid-cols-3" stagger={0.1}>
-            <RevealItem as="article" className="liquid-glass liquid-glass-interactive group flex min-h-72 flex-col rounded-3xl p-7 md:p-9">
-              <div className="flex items-center gap-5">
-                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-cyan-500/20 bg-cyan-500/10">
-                  <PanelsTopLeft className="h-8 w-8 text-cyan-500" strokeWidth={1.8} />
+          <RevealGroup className="mx-auto mt-8 grid max-w-7xl gap-4 md:grid-cols-3" stagger={0.08}>
+            <RevealItem as="article" className="platform-card platform-card-windows group flex min-h-[18rem] flex-col rounded-2xl p-5">
+              <div className="flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <span>Windows</span>
+                <span>x64</span>
+              </div>
+              <div className="mt-5 flex items-center gap-3">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-[#0078d4]/30 bg-[#0078d4]/10">
+                  <FaWindows className="h-6 w-6 text-[#168be3]" aria-hidden="true" />
                 </span>
-                <div>
-                  <div className="text-2xl font-semibold tracking-tight">Beacon for Windows</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Windows 10/11, x64 installer</div>
+                <div className="min-w-0">
+                  <div className="text-xl font-semibold tracking-tight">Beacon for Windows</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Windows 10 &amp; 11</div>
                 </div>
+              </div>
+              <p className="mt-5 text-sm leading-6 text-muted-foreground">
+                Native installer with the Beacon backend and MCP server bundled in.
+              </p>
+              <div className="mt-4 flex gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="rounded-full border border-border bg-background/60 px-2.5 py-1">EXE</span>
+                <span className="rounded-full border border-border bg-background/60 px-2.5 py-1">Desktop</span>
               </div>
               <button
                 onClick={() => void startDownload('windows')}
-                className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"
+                className="mt-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0878c9] px-6 text-sm font-semibold text-white shadow-[0_10px_28px_rgb(0_120_212_/_0.22)] transition-transform hover:-translate-y-px active:scale-[0.985]"
               >
-                <Download className="h-4 w-4" />
+                <Download className="h-4 w-4" aria-hidden="true" />
                 Download EXE
               </button>
             </RevealItem>
 
-            <RevealItem as="article" className="liquid-glass liquid-glass-interactive group flex min-h-72 flex-col rounded-3xl p-7 md:p-9">
-              <div className="flex items-center gap-5">
-                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-border bg-foreground text-background">
-                  <Apple className="h-8 w-8" strokeWidth={1.8} />
+            <RevealItem as="article" className="platform-card platform-card-macos group flex min-h-[18rem] flex-col rounded-2xl p-5">
+              <div className="flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <span>macOS</span>
+                <span>Apple silicon</span>
+              </div>
+              <div className="mt-5 flex items-center gap-3">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-border bg-foreground text-background shadow-sm">
+                  <FaApple className="h-7 w-7" aria-hidden="true" />
                 </span>
-                <div>
-                  <div className="text-2xl font-semibold tracking-tight">Beacon for macOS</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Apple Silicon, unsigned DMG</div>
+                <div className="min-w-0">
+                  <div className="text-xl font-semibold tracking-tight">Beacon for macOS</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Apple Silicon DMG</div>
                 </div>
               </div>
-              <div className="mt-6 space-y-2 text-sm leading-6 text-muted-foreground">
-                <p>First launch: Beacon isn't notarized yet, so macOS may say it's "damaged". It isn't. Gatekeeper is blocking an unsigned app. Clear it once in Terminal:</p>
-                <code className="block overflow-x-auto rounded-lg border border-border bg-muted/60 px-3 py-2 font-mono text-[12px] text-foreground">xattr -dr com.apple.quarantine /Applications/Beacon.app</code>
-              </div>
+              <p className="mt-5 text-sm leading-6 text-muted-foreground">
+                Unsigned community build. macOS may block the first launch until Gatekeeper is cleared once.
+              </p>
+              <details className="mt-4 rounded-xl border border-border bg-background/55 px-3 py-2 text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none font-medium text-foreground">First-launch command</summary>
+                <code className="mt-2 block overflow-x-auto font-mono text-[10px]">xattr -dr com.apple.quarantine /Applications/Beacon.app</code>
+              </details>
               <button
                 onClick={() => void startDownload('mac')}
-                className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"
+                className="mt-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition-transform hover:-translate-y-px active:scale-[0.985]"
               >
-                <Download className="h-4 w-4" />
+                <Download className="h-4 w-4" aria-hidden="true" />
                 Download DMG
               </button>
             </RevealItem>
 
-            <RevealItem as="article" className="liquid-glass liquid-glass-interactive group flex min-h-72 flex-col rounded-3xl p-7 md:p-9">
-              <div className="flex items-center gap-5">
-                <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                  <Terminal className="h-8 w-8 text-emerald-500" strokeWidth={1.8} />
+            <RevealItem as="article" className="platform-card platform-card-linux group flex min-h-[18rem] flex-col rounded-2xl p-5">
+              <div className="flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <span>Linux</span>
+                <span>x64</span>
+              </div>
+              <div className="mt-5 flex items-center gap-3">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-[#fcc624]/25 bg-[#fcc624]/10">
+                  <FaLinux className="h-7 w-7 text-[#fcc624]" aria-hidden="true" />
                 </span>
-                <div>
-                  <div className="text-2xl font-semibold tracking-tight">Beacon for Linux</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Linux x64, AppImage &amp; DEB</div>
+                <div className="min-w-0">
+                  <div className="text-xl font-semibold tracking-tight">Beacon for Linux</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Portable or native package</div>
                 </div>
               </div>
-              <div className="mt-6 text-sm leading-6 text-muted-foreground">
-                Portable AppImage for most distributions. A native DEB package is also available for Debian and Ubuntu.
+              <p className="mt-5 text-sm leading-6 text-muted-foreground">
+                Run the AppImage on most distributions, or install the native package on Debian and Ubuntu.
+              </p>
+              <div className="mt-4 flex gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="rounded-full border border-border bg-background/60 px-2.5 py-1">AppImage</span>
+                <span className="rounded-full border border-border bg-background/60 px-2.5 py-1">DEB</span>
               </div>
               <button
                 onClick={() => void startDownload('linux')}
-                className="mt-auto flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background transition hover:-translate-y-px active:scale-[0.985]"
+                className="mt-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-[#e6b30e] px-6 text-sm font-semibold text-black shadow-[0_10px_28px_rgb(252_198_36_/_0.16)] transition-transform hover:-translate-y-px active:scale-[0.985]"
               >
-                <Download className="h-4 w-4" />
+                <Download className="h-4 w-4" aria-hidden="true" />
                 Download AppImage
               </button>
             </RevealItem>
           </RevealGroup>
 
-          <div className="mt-8 text-center text-sm text-muted-foreground">
+          <div className="mt-5 text-center text-xs text-muted-foreground">
             Install, open Beacon, and start testing locally. No Python runtime or hosted Beacon account required.
           </div>
         </div>
       </section>
 
       <section id="release" className="border-t border-border/60 bg-muted/10">
-        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[0.72fr_1.28fr] lg:items-start lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-14 lg:grid-cols-[0.72fr_1.28fr] lg:items-start lg:px-8 lg:py-16">
           <Reveal>
             <History className="h-7 w-7 text-cyan-500" />
-            <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">What changed in {RELEASE_VERSION}</h2>
-            <p className="mt-4 max-w-lg text-lg leading-8 text-muted-foreground">
-              Beacon projects can now live in Git. Review readable files, sync a remote, compare branches, and keep private values on each device.
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
+            <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
+              Run the same Beacon project from the desktop, terminal, or CI. The new CLI keeps assertions, extractors, reports, and secrets in one workflow.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -599,12 +651,12 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Readable project files', 'Endpoints, folders, assertions, extractors, and test settings are stored as reviewable YAML.'],
-              ['Git without another account', 'Commit, pull, push, fetch, create branches, and switch using the credentials already configured on your device.'],
-              ['Compare before switching', 'See branch commits, changed project files, additions, and deletions before moving to another version.'],
-              ['Import from a repository', 'Open an existing Beacon project or discover OpenAPI, Swagger, Postman, Insomnia, and HAR files in another repository.'],
+              ['Headless project runs', 'Run a full project, one folder, or selected endpoints without opening the desktop app.'],
+              ['CI-ready reports', 'Export JSON and JUnit, add GitHub summaries, and fail pull requests when requests or assertions break.'],
+              ['Secrets stay outside Git', 'Supply private values from local overlays, env files, BEACON_VAR_* variables, or explicit CLI flags.'],
+              ['CLI included with Beacon', 'Use the bundled executable on Windows, macOS, and Linux—no separate Python runtime required.'],
             ].map(([title, body]) => (
-              <RevealItem key={title} className="bg-background/80 px-6 py-5 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-6">
+              <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground md:mt-0">{body}</p>
               </RevealItem>
@@ -614,24 +666,24 @@ claude mcp add beacon -- <path-to>/mcp_server
       </section>
 
       <section id="contributors" className="border-t border-border/60 bg-muted/15">
-        <div className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-24">
+        <div className="mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
           <Reveal className="max-w-3xl">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-500">
               <Users className="h-5 w-5" />
             </div>
-            <h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
               Beacon gets better when people use it out loud.
             </h2>
-            <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
+            <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
               Fix a bug, test a release, improve the docs, or just tell us what feels off. It all helps.
             </p>
           </Reveal>
-          <Reveal className="mt-10" delay={0.08}>
+          <Reveal className="mt-7" delay={0.08}>
             <ContributorWall />
           </Reveal>
           <a
             href="/contributors/"
-            className="group mt-8 inline-flex h-12 items-center gap-2 rounded-2xl border border-border bg-card px-6 text-sm font-semibold transition-all hover:-translate-y-px hover:bg-muted active:scale-[0.985]"
+            className="group mt-6 inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-card px-5 text-sm font-semibold transition-all hover:-translate-y-px hover:bg-muted active:scale-[0.985]"
           >
             See how to contribute <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </a>
@@ -639,17 +691,17 @@ claude mcp add beacon -- <path-to>/mcp_server
       </section>
 
       <section id="support" className="border-t border-border/60">
-        <Reveal className="mx-auto max-w-3xl px-5 py-20 text-center lg:px-8">
+        <Reveal className="mx-auto max-w-3xl px-5 py-14 text-center lg:px-8 lg:py-16">
           <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-1 text-xs font-semibold tracking-widest text-amber-600 dark:text-amber-400">
             <Coffee className="h-3.5 w-3.5" /> SUPPORT THE PROJECT
           </div>
-          <h2 className="mt-4 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+          <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
             Keep Beacon independent and open.
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
+          <p className="mt-3 text-base text-muted-foreground">
             Sponsor the work, contribute code, test a build, or help us decide what Beacon should become next.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
+          <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
             <a
               href="/contributors/"
               className="inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-bold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
@@ -696,208 +748,272 @@ claude mcp add beacon -- <path-to>/mcp_server
           <div className="text-xs">Local-first API work, built in the open.</div>
         </div>
       </footer>
+      <BackToTopButton />
     </main>
   )
 }
 
 function FeatureGallery() {
-  const signals = [
-    ['Send', 'directly from an endpoint row'],
-    ['Capture', 'response fields into variables'],
-    ['Assert', 'status, timing, headers, and JSON'],
-    ['Local', 'projects, history, and credentials'],
+  const AUTO_SLIDE_MS = 6500
+  const slides = [
+    {
+      label: 'Request builder',
+      title: 'Build the request without losing context.',
+      body: 'Set auth, payloads, query parameters, dynamic values, extractors, and assertions from one real endpoint screen.',
+      src: requestBuilderShot,
+      alt: 'Beacon request builder showing payload fields, response extractors, query parameters, and assertions',
+    },
+    {
+      label: 'Response & assertions',
+      title: 'Inspect the response. Prove the behavior.',
+      body: 'Read structured JSON, response metadata, and every assertion result side by side after a real request.',
+      src: responseAssertionsShot,
+      alt: 'Beacon response inspector showing structured JSON and four passed assertions',
+    },
+    {
+      label: 'Scenario setup',
+      title: 'Choose the traffic before you press run.',
+      body: 'Start from an understandable preset, then tune users, iterations, ramp-up, retries, and failure behavior.',
+      src: scenarioConfigShot,
+      alt: 'Beacon Scenario mode showing traffic presets and test configuration controls',
+    },
+    {
+      label: 'Scenario journey',
+      title: 'See the journey while it runs.',
+      body: 'Follow active users across each endpoint and inspect latency, failures, and recent requests per step.',
+      src: scenarioResultsShot,
+      alt: 'Beacon Scenario mode running a project journey with active users and endpoint steps',
+    },
+    {
+      label: 'Live monitor',
+      title: 'Watch the run, not a spinner.',
+      body: 'Track throughput, latency, errors, outcomes, and individual responses while the test is still moving.',
+      src: liveMonitorShot,
+      alt: 'Beacon Live Monitor showing request rate, response time, error rate, and live responses',
+    },
+    {
+      label: 'Environments',
+      title: 'Switch targets without rewriting requests.',
+      body: 'Keep base URLs, shared variables, auth, and local private values organized per environment.',
+      src: environmentsShot,
+      alt: 'Beacon environment editor showing a base URL and reusable variables',
+    },
+    {
+      label: 'Run history',
+      title: 'Come back to every useful result.',
+      body: 'Review previous runs, their status, duration, request count, success rate, and the endpoint that was tested.',
+      src: runHistoryShot,
+      alt: 'Beacon run history showing previous load tests and their results',
+    },
+    {
+      label: 'Git & local sharing',
+      title: 'Keep the project in Git or share it nearby.',
+      body: 'Review readable YAML, sync branches, and share project source over the local network while private values stay local.',
+      src: gitProjectShot,
+      alt: 'Beacon Project Settings showing Git synchronization, branches, and local project sharing',
+    },
+    {
+      label: 'MCP tools',
+      title: 'Let your AI agent work inside Beacon.',
+      body: 'Connect Cursor, Windsurf, Cline, VS Code, or Zed and give the agent a focused set of Beacon project and test tools.',
+      src: mcpToolsShot,
+      alt: 'Beacon MCP Server page showing AI client setup and available tools',
+    },
+    {
+      label: 'CLI & CI',
+      title: 'Run the same project without opening the app.',
+      body: 'Validate files, target endpoints or folders, pass local secrets, and generate a GitHub Actions workflow from the built-in guide.',
+      src: cliShot,
+      alt: 'Beacon CLI documentation showing commands, variables, and GitHub Actions setup',
+    },
   ]
+  const [selected, setSelected] = useState(0)
+  const [expanded, setExpanded] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [focusWithin, setFocusWithin] = useState(false)
+  const [inView, setInView] = useState(false)
+  const [direction, setDirection] = useState(1)
+  const galleryRef = useRef<HTMLDivElement>(null)
+  const reduce = useReducedMotion()
+  const paused = hovered || focusWithin
+  const active = slides[selected]
+
+  useEffect(() => {
+    const node = galleryRef.current
+    if (!node) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.3 },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (reduce || paused || expanded || !inView) return
+    const timer = window.setTimeout(() => {
+      setDirection(1)
+      setSelected((current) => (current + 1) % slides.length)
+    }, AUTO_SLIDE_MS)
+    return () => window.clearTimeout(timer)
+  }, [selected, paused, expanded, inView, reduce, slides.length])
+
+  useEffect(() => {
+    if (!expanded) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape)
+      document.body.style.overflow = ''
+    }
+  }, [expanded])
+
+  const move = (direction: number) => {
+    setDirection(direction > 0 ? 1 : -1)
+    setSelected((current) => (current + direction + slides.length) % slides.length)
+  }
+
+  const select = (index: number) => {
+    setDirection(index >= selected ? 1 : -1)
+    setSelected(index)
+  }
 
   return (
     <section id="product-preview" className="product-story relative scroll-mt-20 overflow-hidden border-y border-border/60">
       <div className="product-story-grid pointer-events-none absolute inset-0" />
-      <div className="relative mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-28">
-        <Reveal className="grid gap-8 lg:grid-cols-[1fr_0.62fr] lg:items-end">
-          <div className="max-w-3xl">
-            <p className="font-mono text-xs font-bold uppercase tracking-[0.24em] text-cyan-500">This is the real desktop app</p>
-            <h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.04em] md:text-6xl">
-              One request, all the context.
-            </h2>
-          </div>
-          <p className="max-w-xl text-lg leading-8 text-muted-foreground lg:pb-1">
-            Send from the list, turn a response into a variable, check the behavior, then run it under real pressure.
-          </p>
+      <div className="relative mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
+        <Reveal className="max-w-3xl">
+          <p className="font-mono text-xs font-bold uppercase tracking-[0.24em] text-cyan-500">Inside Beacon desktop</p>
+          <h2 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.04em] md:text-5xl">The whole workflow, one screen at a time.</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Pick a feature below. Click the screenshot when you want to inspect the full interface.</p>
         </Reveal>
 
-        <RevealGroup className="mt-10 grid border-y border-border/70 sm:grid-cols-2 lg:grid-cols-4" stagger={0.08}>
-          {signals.map(([value, label]) => (
-            <RevealItem key={label} className="border-b border-border/70 py-5 sm:border-r sm:px-5 lg:border-b-0 first:pl-0 last:border-r-0">
-              <div className="font-mono text-lg font-bold text-foreground">
-                {/^\d+$/.test(value) ? <CountUp value={Number(value)} /> : value}
+        <Reveal
+          className="mt-8 overflow-hidden rounded-2xl border border-border/80 bg-background/75 shadow-2xl backdrop-blur-xl"
+        >
+          <div
+            ref={galleryRef}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            onFocusCapture={() => setFocusWithin(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
+            }}
+          >
+          <div className="grid lg:grid-cols-[0.34fr_0.66fr]">
+            <div className="flex flex-col justify-between border-b border-border p-5 lg:border-b-0 lg:border-r lg:p-7">
+              <AnimatePresence mode="wait" initial={false} custom={direction}>
+                <motion.div
+                  key={active.label}
+                  custom={direction}
+                  initial={reduce ? false : { opacity: 0, x: direction * 18, filter: 'blur(6px)' }}
+                  animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                  exit={reduce ? undefined : { opacity: 0, x: direction * -12, filter: 'blur(4px)' }}
+                  transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[9.5rem]"
+                >
+                  <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-500">{active.label}</div>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-tight md:text-3xl">{active.title}</h3>
+                  <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{active.body}</p>
+                </motion.div>
+              </AnimatePresence>
+              <div className="mt-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-xs text-muted-foreground">{String(selected + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    <span className={`h-1.5 w-1.5 rounded-full ${paused || reduce ? 'bg-muted-foreground/50' : 'bg-cyan-500'}`} />
+                    {reduce ? 'Manual' : paused ? 'Paused' : 'Auto'}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => move(-1)} className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-card transition hover:bg-muted active:scale-95" aria-label="Previous feature">
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button type="button" onClick={() => move(1)} className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-card transition hover:bg-muted active:scale-95" aria-label="Next feature">
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <div className="mt-1 text-xs leading-5 text-muted-foreground">{label}</div>
-            </RevealItem>
-          ))}
-        </RevealGroup>
-
-        <Reveal className="mt-14 grid gap-8 lg:grid-cols-[minmax(0,1.58fr)_minmax(250px,0.42fr)] lg:items-center">
-          <ScreenFrame src={workspaceShot} alt="Beacon request builder with dynamic values, assertions, extractors, query parameters, headers, and cookies" priority />
-          <div className="lg:pl-4">
-            <div className="h-px w-16 bg-cyan-400" />
-            <h3 className="mt-6 text-3xl font-semibold tracking-tight">Everything stays within reach.</h3>
-            <p className="mt-4 leading-7 text-muted-foreground">
-              Build API and Web requests with dynamic values, assertions, extractors, parameters, headers, and cookies without bouncing between screens.
-            </p>
-            <div className="mt-7 space-y-3 font-mono text-xs text-muted-foreground">
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>SEND</span><span className="text-foreground">Endpoint row / editor</span></div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>MODES</span><span className="text-foreground">Single / load / scenario</span></div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-3"><span>RELEASE</span><span className="text-foreground">{RELEASE_VERSION} desktop</span></div>
             </div>
+
+            <button type="button" onClick={() => setExpanded(true)} className="group relative min-w-0 overflow-hidden bg-muted/20 text-left" aria-label={`Open ${active.label} screenshot full screen`}>
+              <div className="flex h-9 items-center gap-1.5 border-b border-border/70 bg-muted/35 px-4">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+                <span className="ml-auto flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground"><Maximize2 className="h-3.5 w-3.5" /> Expand</span>
+              </div>
+              <div className="aspect-[16/9] overflow-hidden">
+                <AnimatePresence mode="wait" initial={false} custom={direction}>
+                  <motion.img
+                    key={active.src}
+                    src={active.src}
+                    alt={active.alt}
+                    width="2056"
+                    height="1328"
+                    loading="eager"
+                    decoding="async"
+                    custom={direction}
+                    initial={reduce ? false : { opacity: 0, x: direction * 26, scale: 1.015 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={reduce ? undefined : { opacity: 0, x: direction * -18, scale: 0.99 }}
+                    transition={{ duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
+                    className="h-full w-full object-cover object-top group-hover:scale-[1.01]"
+                  />
+                </AnimatePresence>
+              </div>
+            </button>
           </div>
-        </Reveal>
 
-        <div className="mt-24">
-          <Reveal className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-            <div>
-              <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-cyan-500">Request → evidence</p>
-              <h3 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Keep setup and proof close together.</h3>
-            </div>
-            <p className="max-w-md text-sm leading-6 text-muted-foreground">No route changes, no context switch, no hidden cloud workspace.</p>
-          </Reveal>
-          <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:gap-8">
-            <FeatureFigure
-              src={requestBuilderShot}
-              alt="Current Beacon request builder with auth, extractors, dynamic helpers, and assertions"
-              eyebrow="Compose"
-              title="Build the request precisely"
-              body="Set method, auth, payloads, headers, extractors, retry behavior, and assertions in one focused editor."
-            />
-            <FeatureFigure
-              src={responseInspectorShot}
-              alt="Current Beacon live monitor showing a completed JSONPlaceholder load run and response body"
-              eyebrow="Inspect"
-              title="Read the run while it happens"
-              body="Track success, RPS, latency, errors, logs, and the complete response body without leaving the workspace."
-              focus="right"
-            />
+          <div className="h-0.5 overflow-hidden bg-border/50" aria-hidden="true">
+            {!reduce && !paused && inView && !expanded && (
+              <motion.div
+                key={`progress-${selected}`}
+                className="h-full bg-cyan-500"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: AUTO_SLIDE_MS / 1000, ease: 'linear' }}
+                style={{ transformOrigin: 'left center' }}
+              />
+            )}
           </div>
-        </div>
 
-        <Reveal className="mt-24 grid gap-8 rounded-[2rem] border border-cyan-500/20 bg-cyan-500/[0.035] p-5 md:p-8 lg:grid-cols-[0.42fr_1.58fr] lg:items-center lg:p-10">
-          <div className="lg:pr-4">
-            <History className="h-7 w-7 text-cyan-500" />
-            <h3 className="mt-6 text-3xl font-semibold tracking-tight">Runs now leave a trail.</h3>
-            <p className="mt-4 leading-7 text-muted-foreground">
-              Search, filter, pin, inspect, export, and compare saved runs. History is stored locally in SQLite and recovers interrupted work after a restart.
-            </p>
+          <div className="flex snap-x gap-2 overflow-x-auto border-t border-border p-3 [scrollbar-width:thin]">
+            {slides.map((slide, index) => (
+              <button key={slide.label} type="button" onClick={() => select(index)} className={`min-w-[9.5rem] snap-start rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.98] ${selected === index ? 'border-cyan-500/50 bg-cyan-500/10 text-foreground' : 'border-border/70 bg-card/60 text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-pressed={selected === index}>
+                <span className="block truncate text-xs font-semibold">{slide.label}</span>
+                <span className="mt-1 block truncate font-mono text-[9px]">{String(index + 1).padStart(2, '0')}</span>
+              </button>
+            ))}
           </div>
-          <ScreenFrame src={runHistoryShot} alt="Beacon Run History showing a completed load run with searchable filters and comparison controls" />
-        </Reveal>
-
-        <Reveal className="mt-24 grid gap-8 rounded-[2rem] border border-violet-500/20 bg-violet-500/[0.035] p-5 md:p-8 lg:grid-cols-[0.42fr_1.58fr] lg:items-center lg:p-10">
-          <div className="lg:pr-4">
-            <GitBranch className="h-7 w-7 text-violet-400" />
-            <p className="mt-6 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-violet-400">Git-backed projects</p>
-            <h3 className="mt-3 text-3xl font-semibold tracking-tight">Your API project belongs in the repo.</h3>
-            <p className="mt-4 leading-7 text-muted-foreground">
-              Keep Beacon source as readable YAML. Review diffs, commit, pull, push, compare branches, and switch versions without leaving the app.
-            </p>
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Secrets, responses, and run history stay local. Git uses the SSH key or credential manager already configured on the device.
-            </p>
-          </div>
-          <ScreenFrame src={gitProjectShot} alt="Beacon Project Settings showing Git branches, remote synchronization, change review, and local-only private values" />
-        </Reveal>
-
-        <div className="mt-24 grid gap-6 md:grid-cols-[0.92fr_1.08fr] md:gap-8">
-          <FeatureFigure
-            src={assertionsShot}
-            alt="Current Beacon endpoint editor showing status, timing, header, and JSON field assertions"
-            eyebrow="Validate"
-            title="Make success explicit"
-            body="Check status, response time, headers, body content, and JSON fields on every send or load run."
-            focus="right"
-          />
-          <FeatureFigure
-            src={environmentsShot}
-            alt="Current Beacon environment manager with JSONPlaceholder base URL and reusable variables"
-            eyebrow="Isolate"
-            title="Change environments, not endpoints"
-            body="Keep base URLs and reusable variables together, then switch the active context from the sidebar."
-          />
-        </div>
-
-        <Reveal className="mt-24 grid gap-8 lg:grid-cols-[1.58fr_0.42fr] lg:items-center">
-          <ScreenFrame src={scenarioResultsShot} alt="Beacon Soak mode running with live requests per second, response time, error rate, and latency metrics" />
-          <div className="lg:pl-4">
-            <GitBranch className="h-7 w-7 text-cyan-500" />
-            <h3 className="mt-6 text-3xl font-semibold tracking-tight">Pick the pressure profile.</h3>
-            <p className="mt-4 leading-7 text-muted-foreground">
-              Use Load for raw throughput, Scenario for complete user journeys, Rate Limit for quota discovery, or Soak for sustained endurance testing.
-            </p>
           </div>
         </Reveal>
       </div>
+
+      {expanded && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/92 p-3 backdrop-blur-2xl md:p-8" role="dialog" aria-modal="true" aria-label={`${active.label} screenshot preview`} onClick={() => setExpanded(false)}>
+          <div className="relative flex max-h-full w-full max-w-[1600px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4 md:px-5">
+              <div>
+                <div className="text-sm font-semibold">{active.label}</div>
+                <div className="hidden text-xs text-muted-foreground sm:block">{active.title}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => move(-1)} className="grid h-9 w-9 place-items-center rounded-lg border border-border hover:bg-muted" aria-label="Previous screenshot"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => move(1)} className="grid h-9 w-9 place-items-center rounded-lg border border-border hover:bg-muted" aria-label="Next screenshot"><ChevronRight className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setExpanded(false)} className="grid h-9 w-9 place-items-center rounded-lg border border-border hover:bg-muted" aria-label="Close screenshot preview"><X className="h-4 w-4" /></button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-2 md:p-4">
+              <img key={active.src} src={active.src} alt={active.alt} width="2056" height="1328" className="mx-auto block h-auto max-h-[calc(100dvh-7.5rem)] w-auto max-w-full rounded-lg object-contain" />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
-  )
-}
-
-interface FeatureFigureProps {
-  src: string
-  alt: string
-  eyebrow: string
-  title: string
-  body: string
-  focus?: 'right'
-}
-
-function FeatureFigure({ src, alt, eyebrow, title, body, focus }: FeatureFigureProps) {
-  return (
-    <figure className="group min-w-0 border-t border-border/80 pt-4">
-      <figcaption className="mb-5 grid gap-2 sm:grid-cols-[0.28fr_0.72fr]">
-        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-500">{eyebrow}</div>
-        <div>
-        <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{body}</p>
-        </div>
-      </figcaption>
-      <ScreenFrame src={src} alt={alt} focus={focus} />
-    </figure>
-  )
-}
-
-interface ScreenFrameProps {
-  src: string
-  alt: string
-  priority?: boolean
-  focus?: 'right'
-}
-
-function ScreenFrame({ src, alt, priority = false, focus }: ScreenFrameProps) {
-  const reduce = useReducedMotion()
-  return (
-    <motion.div
-      className="screen-frame group relative min-w-0 overflow-hidden rounded-[1.35rem] border border-border/80 bg-card"
-      initial={reduce ? undefined : { opacity: 0, y: 24, scale: 0.98 }}
-      whileInView={reduce ? undefined : { opacity: 1, y: 0, scale: 1 }}
-      viewport={{ once: true, margin: '0px 0px -12% 0px' }}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-    >
-      <div className="flex h-9 items-center gap-1.5 border-b border-border/70 bg-muted/35 px-4">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-        <span className="ml-3 font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Beacon desktop</span>
-      </div>
-      <div className={focus === 'right' ? 'aspect-[4/3] overflow-hidden' : ''}>
-        <img
-          src={src}
-          alt={alt}
-          width="1440"
-          height="1000"
-          loading={priority ? 'eager' : 'lazy'}
-          decoding="async"
-          className={`block transition-transform duration-700 ease-out motion-safe:group-hover:scale-[1.008] ${
-            focus === 'right' ? 'h-full w-[155%] max-w-none object-cover object-right' : 'h-auto w-full'
-          }`}
-        />
-      </div>
-    </motion.div>
   )
 }
 
@@ -906,7 +1022,7 @@ function HeroProductCapture() {
 
   return (
     <motion.figure
-      className="group relative min-h-[430px] min-w-0 sm:min-h-[500px] xl:min-h-[560px]"
+      className="group relative min-h-[390px] min-w-0 sm:min-h-[450px] xl:min-h-[500px]"
       initial={reduce ? undefined : { opacity: 0, y: 26, scale: 0.97 }}
       animate={reduce ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
@@ -917,22 +1033,22 @@ function HeroProductCapture() {
       />
 
       <StackedProductShot
-        src={workspaceShot}
-        alt="Beacon desktop workspace showing a real API project and request editor"
-        label="Workspace"
+        src={requestBuilderShot}
+        alt="Beacon desktop request builder showing payloads, extractors, query parameters, and assertions"
+        label="Request builder"
         eager
         className="absolute right-0 top-4 z-10 w-[92%] rotate-[1.2deg] transition-transform duration-500 ease-out group-hover:translate-y-[-4px] group-hover:rotate-[0.5deg]"
       />
       <StackedProductShot
-        src={assertionsShot}
-        alt="Beacon response assertions with passed and failed checks"
-        label="Assertions"
+        src={gitProjectShot}
+        alt="Beacon project settings with Git synchronization and local project sharing"
+        label="Git & sharing"
         className="absolute bottom-5 left-0 z-20 w-[62%] -rotate-[3.5deg] transition-transform duration-500 ease-out group-hover:-translate-x-2 group-hover:translate-y-1 group-hover:-rotate-[5deg]"
       />
       <StackedProductShot
         src={scenarioResultsShot}
-        alt="Beacon load test dashboard with live request and latency charts"
-        label="Load test"
+        alt="Beacon Scenario journey with active users, endpoint steps, and recent request activity"
+        label="Scenario"
         className="absolute bottom-0 right-0 z-30 w-[60%] rotate-[3deg] transition-transform duration-500 ease-out group-hover:translate-x-2 group-hover:translate-y-2 group-hover:rotate-[4.5deg]"
       />
     </motion.figure>

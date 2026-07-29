@@ -74,6 +74,7 @@ Private environment values remain under the ignored `.beacon/` directory. Respon
 - Live attempts, successes, rate limits, errors, response logs, latency trend, and exportable results
 - Local Run History with pinning, filters, expandable charts, and semantic two-run comparison
 - Desktop app via Tauri with bundled FastAPI and MCP sidecars
+- Headless CLI for endpoint, folder, and full-project checks with JSON/JUnit reports and CI exit codes
 - Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
 
 ## Quick Start
@@ -132,6 +133,19 @@ pnpm dev
 Beacon includes a standard stdio MCP server that can list and manage projects, folders, and endpoints; import collections; send individual requests; and run endpoints or chained scenarios.
 
 In the desktop app, open **MCP Server** to register Beacon with a supported client or copy a ready-to-use configuration. See [MCP Server documentation](./docs/mcp.md) for setup and the available tools.
+
+## Beacon CLI
+
+Desktop releases include a standalone `beacon` command for running the same Git-backed project files without opening the app or installing Python:
+
+```bash
+beacon validate ./api-tests --env CI
+beacon run ./api-tests --env CI --bail --github \
+  --report-junit api-tests/reports/beacon.xml
+beacon ci init github ./api-tests
+```
+
+Run a complete project, one folder, or selected endpoints, or generate a ready-to-review GitHub Actions workflow. Assertions and extractors use the same engine as the desktop app; private values can be supplied with `BEACON_VAR_*`, an ignored env file, or `--env-var`. See the [CLI tutorial](./docs/cli/index.md), [GitHub Actions guide](./docs/cli/github-actions.md), and [command reference](./docs/cli/reference.md).
 
 ## Documentation
 

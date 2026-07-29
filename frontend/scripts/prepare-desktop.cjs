@@ -82,6 +82,21 @@ if (!fs.existsSync(mcpSrcBinary)) {
 fs.copyFileSync(mcpSrcBinary, mcpDestBinary);
 console.log(`Copied ${mcpSrcName} -> ${mcpDestBinary}`);
 
+// Third bundled tool: the headless Beacon CLI. Tauri stages this to a stable
+// per-user path named `beacon` / `beacon.exe` when the desktop app launches.
+const cliSrcName = isWindows ? 'beacon_cli.exe' : 'beacon_cli';
+const cliDestName = isWindows ? `beacon_cli-${triple}.exe` : `beacon_cli-${triple}`;
+const cliSrcBinary = path.join(distDir, cliSrcName);
+const cliDestBinary = path.join(tauriDir, cliDestName);
+
+if (!fs.existsSync(cliSrcBinary)) {
+  console.error(`Beacon CLI binary not found at ${cliSrcBinary}`);
+  process.exit(1);
+}
+
+fs.copyFileSync(cliSrcBinary, cliDestBinary);
+console.log(`Copied ${cliSrcName} -> ${cliDestBinary}`);
+
 // Copy the agent skill (for Claude Code etc.)
 const skillSrcDir = path.join(__dirname, '..', '..', '.claude', 'skills', 'beacon');
 const skillDestDir = path.join(tauriDir, 'skills', 'beacon');
@@ -97,4 +112,4 @@ fs.mkdirSync(skillDestDir, { recursive: true });
 fs.copyFileSync(skillSrcFile, skillDestFile);
 console.log(`Copied skill -> ${skillDestFile}`);
 
-console.log('Backend sidecar ready. Now run: npm run tauri:build');
+console.log('Backend, MCP, and CLI sidecars ready. Now run: npm run tauri:build');

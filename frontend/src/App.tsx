@@ -17,10 +17,11 @@ import { JoinLocalProjectDialog } from './components/dialogs/JoinLocalProjectDia
 import { SettingsDialog } from './components/dialogs/SettingsDialog'
 import { LoadingScreen } from './components/LoadingScreen'
 import { McpPage } from './pages/McpPage'
+import { CliPage } from './pages/CliPage'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
-import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
+import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SquareTerminal, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
 import { ScenarioMonitor } from './components/ScenarioMonitor'
 import type { CloneRepositoryResult, LinkedProjectImportResult, ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
 import { useRun } from './hooks/useRun'
@@ -816,6 +817,7 @@ function App() {
     ...(run.status === 'running' ? [{ id: 'stop', label: 'Stop run', icon: Square, keywords: 'cancel halt', run: () => run.stop() } as Command] : []),
     { id: 'history', label: 'Open Run History', icon: HistoryIcon, keywords: 'runs past results', run: () => appView.openHistory() },
     { id: 'mcp', label: 'Open MCP Server', icon: PlugIcon, keywords: 'ai agent claude cursor', run: () => appView.openMcp() },
+    { id: 'cli', label: 'Open CLI guide', icon: SquareTerminal, keywords: 'terminal ci github actions headless', run: () => appView.openCli() },
     { id: 'settings', label: 'Open Settings', icon: SlidersHorizontal, keywords: 'preferences config', run: () => setShowSettings(true) },
     { id: 'environments', label: 'Manage environments', icon: Globe, keywords: 'env base url variables', run: () => setShowEnvDialog(true) },
     { id: 'global-vars', label: 'Global variables', icon: Braces, keywords: 'template', run: () => setShowGlobalDialog(true) },
@@ -854,6 +856,15 @@ function App() {
     )
   }
 
+  if (appView.view === 'cli') {
+    return (
+      <div className="app-surface animate-fade-in h-screen text-foreground">
+        <WorkspaceTraceBackground />
+        <CliPage onBack={appView.openWorkspace} />
+      </div>
+    )
+  }
+
   return (
     <div className="app-surface flex h-screen text-foreground">
       <WorkspaceTraceBackground />
@@ -878,6 +889,7 @@ function App() {
         onRunAll={() => runAll()}
         runAllDisabled={run.status === 'running'}
         onOpenMcp={() => appView.openMcp()}
+        onOpenCli={() => appView.openCli()}
         onOpenHistory={() => appView.openHistory()}
         activeView={appView.view}
       />

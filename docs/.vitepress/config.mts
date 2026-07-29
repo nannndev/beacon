@@ -31,6 +31,7 @@ export default defineConfig({
       { text: 'Guide', link: '/getting-started' },
       { text: 'Features', link: '/features/folders' },
       { text: 'Desktop', link: '/desktop' },
+      { text: 'CLI', link: '/cli/' },
       { text: 'Changelog', link: '/changelog' },
     ],
 
@@ -60,6 +61,15 @@ export default defineConfig({
           { text: 'Web Page Load Testing', link: '/features/web-load-testing' },
           { text: 'Rate Limit Testing', link: '/features/rate-limit' },
           { text: 'Chained Auth (Extractors)', link: '/features/chaining' },
+        ]
+      },
+      {
+        text: 'Command Line',
+        items: [
+          { text: 'Run your first project', link: '/cli/' },
+          { text: 'GitHub Actions', link: '/cli/github-actions' },
+          { text: 'Command reference', link: '/cli/reference' },
+          { text: 'How CLI execution works', link: '/cli/concepts' },
         ]
       },
       {

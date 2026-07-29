@@ -155,6 +155,12 @@ jobs:
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Prepare standalone Windows CLI
+        shell: pwsh
+        run: |
+          backend/dist/beacon_cli.exe --version
+          Copy-Item backend/dist/beacon_cli.exe beacon-windows-x64.exe
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -164,6 +170,7 @@ jobs:
           path: |
             frontend/src-tauri/target/release/bundle/nsis/*.exe
             frontend/src-tauri/target/release/bundle/nsis/*.sig
+            beacon-windows-x64.exe
 
   build-macos:
     runs-on: macos-15
@@ -237,6 +244,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm run desktop:build:mac
 
+      - name: Prepare standalone macOS CLI
+        run: |
+          backend/dist/beacon_cli --version
+          cp backend/dist/beacon_cli beacon-macos-arm64
+          chmod +x beacon-macos-arm64
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -249,6 +262,7 @@ jobs:
             frontend/src-tauri/target/release/bundle/dmg/*.dmg
             frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz
             frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+            beacon-macos-arm64
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -337,6 +351,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm run desktop:build:linux
 
+      - name: Prepare standalone Linux CLI
+        run: |
+          backend/dist/beacon_cli --version
+          cp backend/dist/beacon_cli beacon-linux-x64
+          chmod +x beacon-linux-x64
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -348,6 +368,7 @@ jobs:
             frontend/src-tauri/target/release/bundle/appimage/*.AppImage
             frontend/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
             frontend/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
+            beacon-linux-x64
 
   # Dedicated job: collects the verified Windows installer and creates one clean release.
   # This ensures we attach only the installers (no source code in the main assets).
@@ -393,7 +414,7 @@ jobs:
             printf '## Beacon %s\n\n' "$REL_VER"
             printf '%s\n\n' "$CHANGELOG"
             printf '## Downloads\n\n'
-            printf 'The desktop app includes the backend and MCP server. No Python installation is required.\n\n'
+            printf 'The desktop app includes the backend, MCP server, and Beacon CLI. No Python installation is required.\n\n'
             printf -- '- **Windows 10/11 (x64):** download and run the `.exe`.\n'
             printf -- '- **macOS (Apple Silicon):** open the `.dmg` and drag Beacon to Applications.\n'
             printf -- '- **Linux (x64):** use the `.AppImage` or install the `.deb`.\n\n'
@@ -475,6 +496,8 @@ jobs:
             artifacts/**/*.AppImage
             artifacts/**/*.app.tar.gz
             artifacts/**/*.AppImage.tar.gz
+            artifacts/**/beacon-macos-arm64
+            artifacts/**/beacon-linux-x64
             artifacts/latest.json
 
       # Announce inline here rather than via a separate `release: published`

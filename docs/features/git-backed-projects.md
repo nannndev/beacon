@@ -2,6 +2,8 @@
 
 Git-backed projects turn one Beacon project into readable files that can live beside application code or in a dedicated repository. This is the recommended collaboration mode for teammates who do not need the same LAN host to remain online.
 
+The same folder can be executed without the desktop app using [Beacon CLI](../cli/). This makes the project suitable for local terminal workflows and CI checks.
+
 No Beacon account or GitHub OAuth is required. Beacon uses the Git installation, SSH keys, and credential manager already configured on the device.
 
 ## What Beacon stores

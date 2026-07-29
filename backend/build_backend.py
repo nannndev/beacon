@@ -33,6 +33,16 @@ if __name__ == "__main__":
         "--add-data", f"app{os.pathsep}app",
     ])
 
-    print("\nBackend + MCP server built as dist/backend and dist/mcp_server")
+    PyInstaller.__main__.run([
+        "run_cli.py",
+        "--onefile",
+        "--name", "beacon_cli",
+        "--clean",
+        "--noconfirm",
+        "--log-level", "INFO",
+        "--add-data", f"app{os.pathsep}app",
+    ])
+
+    print("\nBackend, MCP server, and CLI built in dist/")
     print("(.exe on Windows). Run `npm run desktop:prepare` from frontend/ to")
     print("copy them into src-tauri/ with the required <target-triple> suffix.")
