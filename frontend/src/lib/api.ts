@@ -231,7 +231,22 @@ export interface ImportProjectResponse {
     tests: number
     environments: number
   }
+  format: string
+  warnings: string[]
   config: TestConfig
+}
+
+export interface ImportPreview {
+  format: string
+  format_label: string
+  summary: {
+    name: string
+    endpoints: number
+    folders: number
+    environments: number
+    warnings: number
+  }
+  warnings: string[]
 }
 
 export const api = {
@@ -263,6 +278,8 @@ export const api = {
     req(`/projects/${id}`, jsonInit('PUT', { environments })),
   deleteProject: (id: string) => req(`/projects/${id}`, jsonInit('DELETE')),
   projectTemplate: () => req<Record<string, unknown>>('/projects/template'),
+  previewProjectImport: (payload: unknown) =>
+    req<ImportPreview>('/projects/import/preview', jsonInit('POST', payload)),
   exportProject: (id: string, includeSecrets = false) =>
     req<Record<string, unknown>>(`/projects/${id}/export?include_secrets=${includeSecrets ? 'true' : 'false'}`),
   importProject: (payload: unknown) =>

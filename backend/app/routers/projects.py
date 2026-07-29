@@ -1,12 +1,14 @@
 import uuid
 import json
+from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 
 from ..state import store
 from ..core.tester import EndpointTest
 from ..catalogs import JSONPLACEHOLDER_TEMPLATE_ID, build_jsonplaceholder_project
 from ..services.notify_discord import send_test_message
+from ..services.project_importer import ProjectImportError, materialize_items, normalize_project
 
 router = APIRouter(tags=["projects"])
 
@@ -307,6 +309,16 @@ def project_template():
     return _blank_template()
 
 
+@router.post("/projects/import/preview")
+def preview_project_import(data: Any = Body(...)):
+    """Parse and normalize without mutating the workspace."""
+    try:
+        report = normalize_project(data)
+    except ProjectImportError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {key: value for key, value in report.items() if key != "project"}
+
+
 @router.get("/projects/{project_id}/export")
 def export_project(project_id: str, include_secrets: bool = False):
     """Export a project as a portable envelope.
@@ -346,101 +358,23 @@ def export_project(project_id: str, include_secrets: bool = False):
 
 
 @router.post("/projects/import")
-def import_project(data: dict):
-    """Import a project from an export envelope or a bare project object.
+def import_project(data: Any = Body(...)):
+    """Normalize, validate, then persist a project with collision-free ids."""
+    try:
+        report = normalize_project(data)
+    except ProjectImportError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    payload = report["project"]
+    name = payload["name"]
 
-    Fresh ids are minted for the project, every environment, and every endpoint
-    so an import never collides with or overwrites existing data.
-    """
-    payload = data.get("project") if isinstance(data, dict) and "project" in data else data
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Invalid import body: expected a project object")
-
-    # Detect Postman collection
-    if "info" in payload and "item" in payload:
-        name = payload.get("info", {}).get("name") or payload.get("name") or "Imported Postman Collection"
-        items = _convert_postman_to_our_items(payload)
-        # Create default env from Postman variables if any
-        env_vars = {}
-        for v in payload.get("variable", []) or []:
-            if isinstance(v, dict) and v.get("key"):
-                env_vars[v["key"]] = v.get("value", "")
-        payload = {
-            "name": name,
-            "environments": [{"name": "Imported", "base_url": "", "variables": env_vars}],
-            "items": items,
-        }
-
-    is_legacy_config = (
-        "tests" in payload
-        and ("base_url" in payload or "variables" in payload)
-        and "environments" not in payload
-    )
-    name = payload.get("name") or ("Imported Config" if is_legacy_config else "Imported Project")
-
-    # Support Postman-style nested items + legacy flat tests
-    raw_items = payload.get("items")
-    raw_tests = payload.get("tests") or []
-
-    def _assign_fresh_ids(node: dict) -> dict:
-        node = dict(node)  # copy
-        node["id"] = str(uuid.uuid4())
-        if node.get("type") == "folder" and node.get("items"):
-            node["items"] = [_assign_fresh_ids(child) for child in node["items"]]
-        return node
-
-    items: list = []
-    if raw_items:
-        items = [_assign_fresh_ids(item) for item in raw_items]
-    elif raw_tests:
-        # legacy flat -> top level requests
-        items = [
-            {"type": "request", **t, "id": str(uuid.uuid4())} for t in raw_tests
-        ]
-
-    # Flatten for validation against the engine (we still keep flat tests for execution)
-    flat_tests = []
-    def _collect_requests(nodes):
-        for n in nodes or []:
-            if n.get("type") == "request":
-                flat_tests.append(n)
-            elif n.get("type") == "folder":
-                _collect_requests(n.get("items", []))
-    _collect_requests(items)
-
-    # Validate endpoints
-    validated_flat = []
-    for idx, t in enumerate(flat_tests):
-        if not isinstance(t, dict):
-            raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} is not an object")
-        try:
-            et = EndpointTest.from_dict({**t, "id": t.get("id") or str(uuid.uuid4())})
-        except KeyError as e:
-            raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} missing required field {e}")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Endpoint #{idx + 1} invalid: {e}")
-        validated_flat.append(et.to_dict())
-
-    envs = []
-    if is_legacy_config:
-        envs.append({
-            "id": str(uuid.uuid4()),
-            "name": "Imported",
-            "base_url": payload.get("base_url", "") or "",
-            "variables": payload.get("variables", {}) or {},
-        })
-    else:
-        for e in payload.get("environments") or []:
-            if not isinstance(e, dict):
-                continue
-            envs.append({
-                "id": str(uuid.uuid4()),
-                "name": e.get("name") or "Imported",
-                "base_url": e.get("base_url", "") or "",
-                "variables": e.get("variables", {}) or {},
-            })
-    if not envs:
-        envs = [{"id": str(uuid.uuid4()), "name": "Local", "base_url": "", "variables": {}}]
+    try:
+        items, validated_flat = materialize_items(payload["items"])
+    except ProjectImportError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    envs = [{
+        "id": str(uuid.uuid4()), "name": env.get("name") or "Imported",
+        "base_url": env.get("base_url", "") or "", "variables": env.get("variables", {}) or {},
+    } for env in payload["environments"]]
 
     pid = str(uuid.uuid4())
     store.projects.append({
@@ -459,6 +393,8 @@ def import_project(data: dict):
         "id": pid,
         "name": name,
         "imported": {"tests": len(validated_flat), "environments": len(envs)},
+        "format": report["format"],
+        "warnings": report["warnings"],
         "config": store.current_config.to_dict(),
     }
 

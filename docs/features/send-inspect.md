@@ -50,10 +50,12 @@ The single-send flow supports optional `retries` and `retry_delay` (configurable
 ## MCP Tool: `send_request`
 
 ```text
-send_request(name_or_id, retries?, retry_delay?)
+send_request(name_or_id, retries?, retry_delay?, max_body_chars?)
 ```
 
 Returns the full `SendResponse` shape including `json`, `extracted`, `assertions`, and `passed`.
+The MCP response body defaults to 20,000 characters to protect the agent's
+context window and can be adjusted up to 100,000 with `max_body_chars`.
 
 This is extremely useful from AI agents:
 - "Send the Login request so the token is fresh"

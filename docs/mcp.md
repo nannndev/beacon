@@ -142,17 +142,25 @@ The tools are the same no matter which client you use.
 |------|--------------|
 | `list_projects` | Projects + active environment/base_url |
 | `list_endpoints` | Flattened endpoints in the active project |
+| `search_endpoints` | Search + paginate endpoints without filling agent context |
+| `get_endpoint` | Editable endpoint details, redacted sensitive headers, and preflight diagnostics |
 | `get_config` | base_url, variable **names** (values hidden), count |
 | `create_endpoint` | Add an API request or Web Page target (optionally into a folder) |
 | `create_folder` | Add a top-level folder |
 | `delete_endpoint` | Remove an endpoint by id or name |
-| `import_collection` | Import Postman v2.1 / Beacon export / raw list / single request |
+| `import_collection` | Import Beacon, Postman, OpenAPI/Swagger, Insomnia, HAR, JSON, or YAML into a folder |
 | `add_endpoint_from_curl` | Build an endpoint from a `curl` command |
+| `send_request` | Send once with extractors/assertions and a context-safe response-body limit |
 | `run_endpoint` | Fire an endpoint N times (optionally concurrent) → stats |
+| `run_scenario` | Run an ordered endpoint chain with shared extracted variables |
 
 `run_endpoint` returns the full snapshot: `attempts`, `success`,
 `rate_limited`, `errors`, latency `p50/p95/p99`, status-code mix, `rps`, and
 `first_rate_limited_at`.
+
+Tool failures keep the human-readable `error` field and also return a stable
+`error_code` such as `invalid_argument`, `endpoint_not_found`, or
+`folder_not_found`, allowing agents to recover without parsing prose.
 
 ## Agent skill
 

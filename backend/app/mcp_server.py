@@ -24,8 +24,10 @@ file at a time to avoid clobbering.
 from __future__ import annotations
 
 import os
-import json
+import copy
 import functools
+import json
+import re
 import shlex
 import sys
 import threading
@@ -64,6 +66,7 @@ _pin_data_dir()
 from .core.tester import APITester, EndpointTest
 from .history.models import RunStart, RunStepStart
 from .history.sanitize import sanitize_run_config
+from .services.project_importer import ProjectImportError, materialize_items, normalize_project
 from .state import store
 
 # FastMCP runs sync tool functions in a threadpool, so parallel tool calls
@@ -126,14 +129,62 @@ def _find_test(name_or_id: str) -> Optional[EndpointTest]:
     return next((t for t in tests if t.name.strip().lower() == lowered), None)
 
 
-def _endpoint_summary(t: EndpointTest) -> dict:
-    return {
+def _endpoint_summary(t: EndpointTest, base_url: str = "") -> dict:
+    summary = {
         "id": t.id,
         "name": t.name,
         "method": t.method,
         "url": t.url,
         "target_type": getattr(t, "target_type", "api"),
     }
+    if base_url:
+        summary["resolved_url"] = _resolved_target(base_url, t.url)
+    return summary
+
+
+def _error(code: str, message: str, **details) -> dict:
+    """Stable tool error shape that agents can branch on without parsing prose."""
+    return {"ok": False, "error": message, "error_code": code, **details}
+
+
+def _positive_int(value, name: str, *, minimum: int = 1, maximum: int = 100_000):
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        return None, _error("invalid_argument", f"{name} must be an integer.", field=name)
+    if normalized < minimum or normalized > maximum:
+        return None, _error(
+            "invalid_argument", f"{name} must be between {minimum} and {maximum}.", field=name
+        )
+    return normalized, None
+
+
+def _non_negative_float(value, name: str, *, maximum: float = 3600.0):
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError):
+        return None, _error("invalid_argument", f"{name} must be a number.", field=name)
+    if normalized < 0 or normalized > maximum:
+        return None, _error(
+            "invalid_argument", f"{name} must be between 0 and {maximum:g}.", field=name
+        )
+    return normalized, None
+
+
+def _unresolved_variables(test: EndpointTest) -> list[str]:
+    serialized = json.dumps(
+        {"url": test.url, "headers": test.headers, "payload": test.payload}, default=str
+    )
+    referenced = set(re.findall(r"\{\{\s*([^{}]+?)\s*\}\}", serialized))
+    dynamic_prefixes = (
+        "random_email", "random_phone", "random_uuid", "uuid", "timestamp",
+        "random_string", "random_number", "random_int",
+    )
+    return sorted(
+        token for token in referenced
+        if token not in store.current_config.variables
+        and not token.startswith(dynamic_prefixes)
+    )
 
 
 def _resolved_target(base_url: str, url: str) -> str:
@@ -225,9 +276,83 @@ def list_projects() -> list[dict]:
 @mcp.tool()
 @_locked
 def list_endpoints() -> list[dict]:
-    """List every endpoint in the active project (flattened across folders)."""
+    """List every endpoint in the active project in a compact form.
+
+    For large projects, prefer `search_endpoints` to paginate the result.
+    """
     _reload()
-    return [_endpoint_summary(t) for t in store.current_config.tests]
+    return [_endpoint_summary(test) for test in store.current_config.tests]
+
+
+@mcp.tool()
+@_locked
+def search_endpoints(query: Optional[str] = None, offset: int = 0, limit: int = 50) -> dict:
+    """Search endpoints in the active project without flooding agent context.
+
+    Returns at most `limit` compact records (default 50), plus total/offset and
+    whether more results exist. Match is case-insensitive across name, method,
+    URL, and id. Use `get_endpoint` for the editable details of one result.
+    """
+    _reload()
+    offset_value, error = _positive_int(offset, "offset", minimum=0, maximum=1_000_000)
+    if error:
+        return error
+    limit_value, error = _positive_int(limit, "limit", minimum=1, maximum=200)
+    if error:
+        return error
+    tests = store.current_config.tests
+    if query:
+        needle = query.strip().lower()
+        tests = [
+            test for test in tests
+            if needle in " ".join((test.id, test.name, test.method, test.url)).lower()
+        ]
+    page = tests[offset_value:offset_value + limit_value]
+    return {
+        "items": [_endpoint_summary(test) for test in page],
+        "total": len(tests),
+        "offset": offset_value,
+        "limit": limit_value,
+        "has_more": offset_value + len(page) < len(tests),
+    }
+
+
+@mcp.tool()
+@_locked
+def get_endpoint(name_or_id: str) -> dict:
+    """Inspect one endpoint's editable definition and preflight diagnostics.
+
+    Literal values of authorization, cookie, and API-key headers are redacted.
+    Variable references such as `Bearer {{access_token}}` remain visible.
+    """
+    _reload()
+    test = _find_test(name_or_id)
+    if not test:
+        return _error("endpoint_not_found", f"Endpoint not found: {name_or_id}")
+    sensitive = {"authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key"}
+    headers = {
+        key: value if "{{" in str(value) or key.lower() not in sensitive else "[REDACTED]"
+        for key, value in test.headers.items()
+    }
+    resolved_url = _resolved_target(store.current_config.base_url, test.url)
+    unresolved = _unresolved_variables(test)
+    return {
+        "endpoint": {
+            **_endpoint_summary(test),
+            "headers": headers,
+            "payload": test.payload,
+            "payload_type": test.payload_type,
+            "extractors": test.extractors,
+            "assertions": test.assertions,
+            "run_config": test.run_config,
+        },
+        "preflight": {
+            "resolved_url": resolved_url,
+            "valid_http_url": resolved_url.startswith(("http://", "https://")),
+            "unresolved_variables": unresolved,
+            "ready": resolved_url.startswith(("http://", "https://")) and not unresolved,
+        },
+    }
 
 
 @mcp.tool()
@@ -254,7 +379,7 @@ def create_endpoint(
     url: str,
     method: str = "GET",
     headers: Optional[dict] = None,
-    payload: Optional[dict] = None,
+    payload: Optional[Any] = None,
     payload_type: str = "json",
     target_type: str = "api",
     folder_id: Optional[str] = None,
@@ -265,18 +390,40 @@ def create_endpoint(
     HTML page load target; web targets should normally use GET and an absolute
     http(s) URL."""
     _reload()
-    test = EndpointTest(
-        None, name, url, method, headers or {}, payload or {}, payload_type,
-        target_type=target_type,
-    )
+    if not str(name or "").strip():
+        return _error("invalid_argument", "name must not be empty.", field="name")
+    if not str(url or "").strip():
+        return _error("invalid_argument", "url must not be empty.", field="url")
+    normalized_target = str(target_type or "api").lower()
+    if normalized_target not in {"api", "web"}:
+        return _error("invalid_argument", "target_type must be 'api' or 'web'.", field="target_type")
+    normalized_payload_type = str(payload_type or "json").lower()
+    if normalized_payload_type not in {"json", "form", "multipart", "raw"}:
+        return _error(
+            "invalid_argument", "payload_type must be json, form, multipart, or raw.",
+            field="payload_type",
+        )
     proj = _active_project()
+    if not proj:
+        return _error("project_not_found", "No active project.")
+    target_folder = None
+    if folder_id:
+        target_folder, _ = _resolve_node(proj.get("items", []), folder_id, kind="folder")
+        if not target_folder:
+            return _error("folder_not_found", f"Folder not found: {folder_id}")
+    test = EndpointTest(
+        None, name.strip(), url.strip(), method, headers or {},
+        {} if payload is None else payload, normalized_payload_type,
+        target_type=normalized_target,
+    )
     node = {**test.to_dict(), "type": "request"}
-    if folder_id and proj and _insert_into_folder(proj.get("items", []), folder_id, node):
+    if target_folder is not None:
+        target_folder.setdefault("items", []).append(node)
         store.sync_current_config()
     else:
         store.current_config.tests.append(test)
     store.save()
-    return _endpoint_summary(test)
+    return {"ok": True, **_endpoint_summary(test), "folder_id": folder_id}
 
 
 @mcp.tool()
@@ -367,18 +514,27 @@ def run_endpoint(
 
     WARNING: this sends real HTTP requests to the endpoint's target."""
     _reload()
+    concurrency_value, error = _positive_int(concurrency, "concurrency", maximum=1_000)
+    if error:
+        return error
+    count_value, error = _positive_int(count, "count", maximum=100_000)
+    if error:
+        return error
+    delay_value, error = _non_negative_float(delay, "delay")
+    if error:
+        return error
     test = _find_test(name_or_id)
     if not test:
-        return {"error": f"Endpoint not found: {name_or_id}"}
+        return _error("endpoint_not_found", f"Endpoint not found: {name_or_id}")
 
     _prepare_history()
     history_id = str(uuid.uuid4())
     project = _history_project()
     history_payload = {
         "mode": "load",
-        "concurrency": max(1, int(concurrency)),
-        "max_requests": int(count),
-        "delay": 0.001 if use_min_delay else float(delay),
+        "concurrency": concurrency_value,
+        "max_requests": count_value,
+        "delay": 0.001 if use_min_delay else delay_value,
         "use_min_delay": bool(use_min_delay),
     }
     store.history.start(
@@ -409,9 +565,9 @@ def run_endpoint(
     tester = APITester(
         test,
         store.current_config,
-        concurrency=max(1, int(concurrency)),
-        delay=0.001 if use_min_delay else float(delay),
-        max_requests=int(count),
+        concurrency=concurrency_value,
+        delay=0.001 if use_min_delay else delay_value,
+        max_requests=count_value,
         stats_callback=on_stats,
         response_callback=on_response,
         stop_flag={"stop": False},
@@ -429,14 +585,22 @@ def run_endpoint(
         "history_id": history_id,
         "endpoint": test.name,
         "target": _resolved_target(store.current_config.base_url, test.url),
-        "config": {"concurrency": concurrency, "count": count, "delay": delay},
+        "config": {
+            "concurrency": concurrency_value, "count": count_value,
+            "delay": 0.001 if use_min_delay else delay_value,
+        },
         "stats": snapshot or results,
     }
 
 
 @mcp.tool()
 @_locked
-def send_request(name_or_id: str, retries: int = 0, retry_delay: float = 0.0) -> dict:
+def send_request(
+    name_or_id: str,
+    retries: int = 0,
+    retry_delay: float = 0.0,
+    max_body_chars: int = 20_000,
+) -> dict:
     """Send an endpoint ONCE and return the full response for inspection:
     status, reason, time_ms, size_bytes, content_type, headers, body (capped),
     parsed json, `extracted` (names of variables refreshed by extractors on a
@@ -447,11 +611,21 @@ def send_request(name_or_id: str, retries: int = 0, retry_delay: float = 0.0) ->
     Use this to debug an endpoint or to prime a token (e.g. send 'Login' so
     {{access_token}} is refreshed) before other calls."""
     _reload()
+    retries_value, error = _positive_int(retries, "retries", minimum=0, maximum=10)
+    if error:
+        return error
+    retry_delay_value, error = _non_negative_float(retry_delay, "retry_delay", maximum=60)
+    if error:
+        return error
+    body_limit, error = _positive_int(max_body_chars, "max_body_chars", minimum=0, maximum=100_000)
+    if error:
+        return error
     test = _find_test(name_or_id)
     if not test:
-        return {"error": f"Endpoint not found: {name_or_id}"}
+        return _error("endpoint_not_found", f"Endpoint not found: {name_or_id}")
     result = APITester(test, store.current_config).send_once(
-        retries=max(0, int(retries)), retry_delay=float(retry_delay))
+        max_body=body_limit, retries=retries_value, retry_delay=retry_delay_value,
+    )
     if result.get("extracted"):
         store.save()  # persist tokens refreshed by extractors
     return result
@@ -467,6 +641,16 @@ def run_scenario(name_or_ids: list, continue_on_error: bool = False,
     Stops at the first failed step unless continue_on_error. Returns a compact
     per-step summary (status, time_ms, passed, extracted) — not full bodies."""
     _reload()
+    if not isinstance(name_or_ids, list) or not name_or_ids:
+        return _error("invalid_argument", "name_or_ids must contain at least one endpoint.", field="name_or_ids")
+    if len(name_or_ids) > 100:
+        return _error("invalid_argument", "A scenario may contain at most 100 steps.", field="name_or_ids")
+    retries_value, error = _positive_int(retries, "retries", minimum=0, maximum=10)
+    if error:
+        return error
+    retry_delay_value, error = _non_negative_float(retry_delay, "retry_delay", maximum=60)
+    if error:
+        return error
     _prepare_history()
     history_id = str(uuid.uuid4())
     resolved = [(_find_test(str(ref)), ref) for ref in (name_or_ids or [])]
@@ -500,7 +684,8 @@ def run_scenario(name_or_ids: list, continue_on_error: bool = False,
                 break
             continue
         result = APITester(test, store.current_config).send_once(
-            retries=max(0, int(retries)), retry_delay=float(retry_delay))
+            retries=retries_value, retry_delay=retry_delay_value,
+        )
         store.history.record_response(history_id, step_index, result)
         if result.get("extracted"):
             changed = True
@@ -534,93 +719,63 @@ def run_scenario(name_or_ids: list, continue_on_error: bool = False,
             "completed": len(steps), "total": len(name_or_ids or [])}
 
 
-# --------------------------------------------------------------------------- #
-# Flexible import
-# --------------------------------------------------------------------------- #
-def _detect_and_normalize(data: Any) -> list[dict]:
-    """Turn many shapes into a flat list of endpoint dicts. Deliberately NOT
-    Postman-only:
-      - Postman collection v2.1  ({info, item: [...]})
-      - Beacon project export     ({items: [...]} or {tests: [...]})
-      - a raw list of request dicts
-      - a single request dict
-    """
-    # Postman v2.1
-    if isinstance(data, dict) and "item" in data and "info" in data:
-        out: list[dict] = []
-
-        def walk(nodes: list) -> None:
-            for node in nodes or []:
-                if "item" in node:  # folder
-                    walk(node.get("item", []))
-                elif "request" in node:
-                    req = node["request"]
-                    raw_url = req.get("url", "")
-                    url = raw_url.get("raw", "") if isinstance(raw_url, dict) else raw_url
-                    headers = {h["key"]: h.get("value", "")
-                               for h in req.get("header", []) if h.get("key")}
-                    body = req.get("body", {}).get("raw", "")
-                    try:
-                        payload = json.loads(body) if body else {}
-                    except Exception:
-                        payload = {}
-                    out.append({
-                        "name": node.get("name", url),
-                        "url": url,
-                        "method": req.get("method", "GET"),
-                        "headers": headers,
-                        "payload": payload,
-                    })
-        walk(data.get("item", []))
-        return out
-
-    # Beacon project / items tree / tests
-    if isinstance(data, dict) and ("items" in data or "tests" in data):
-        flat = store._flatten_items(data.get("items", [])) if data.get("items") else data.get("tests", [])
-        return [dict(t) for t in flat]
-
-    # raw list or single dict
-    if isinstance(data, list):
-        return [dict(t) for t in data]
-    if isinstance(data, dict) and data.get("url"):
-        return [dict(data)]
-    return []
-
-
 @mcp.tool()
 @_locked
 def import_collection(data: dict | list, into_folder: Optional[str] = None) -> dict:
-    """Import endpoints from many formats (auto-detected): a Postman v2.1
-    collection, a Beacon project/items export, a raw list of request objects,
-    or a single request object. Adds them to the active project."""
+    """Import requests using the same converter as Beacon Desktop.
+
+    Supported formats: Beacon export, Postman v2, OpenAPI 3, Swagger 2,
+    Insomnia, HAR, and legacy Beacon config. For YAML/JSON text pass
+    `{"content": "...", "filename": "openapi.yaml"}`. `into_folder` may be
+    an existing folder id/name; when omitted, a folder named after the source
+    is created.
+    """
     _reload()
-    endpoints = _detect_and_normalize(data)
-    if not endpoints:
-        return {"error": "Could not recognize any endpoints in the provided data."}
-
     proj = _active_project()
-    folder_name = into_folder or "Imported"
-    folder = {"id": str(uuid.uuid4()), "name": folder_name, "type": "folder", "items": []}
-    for ep in endpoints:
-        node = {
-            "id": str(uuid.uuid4()),
-            "name": ep.get("name") or ep.get("url", "request"),
-            "url": ep.get("url", ""),
-            "method": (ep.get("method") or "GET").upper(),
-            "headers": ep.get("headers", {}),
-            "payload": ep.get("payload", {}),
-            "payload_type": ep.get("payload_type", "json"),
-            "extractors": ep.get("extractors", {}),
-            "run_config": ep.get("run_config"),
-            "type": "request",
-        }
-        folder["items"].append(node)
+    if not proj:
+        return _error("project_not_found", "No active project.")
+    source = data
+    if isinstance(data, list):
+        source = {"name": "Imported Collection", "base_url": "", "variables": {}, "tests": data}
+    elif isinstance(data, dict) and data.get("url") and not any(
+        key in data for key in ("items", "tests", "item", "paths", "log", "resources", "content")
+    ):
+        source = {"name": "Imported Request", "base_url": "", "variables": {}, "tests": [data]}
+    try:
+        normalized = normalize_project(source)
+    except ProjectImportError as error:
+        return _error("import_invalid", str(error))
 
-    if proj is not None:
-        proj.setdefault("items", []).append(folder)
-        store.sync_current_config()
-        store.save()
-    return {"imported": len(endpoints), "folder": folder_name}
+    try:
+        imported_items, _ = materialize_items(normalized["project"]["items"])
+    except ProjectImportError as error:
+        return _error("import_invalid", str(error))
+    target_folder = None
+    if into_folder:
+        target_folder, _ = _resolve_node(proj.get("items", []), into_folder, kind="folder")
+        if not target_folder:
+            return _error("folder_not_found", f"Folder not found: {into_folder}")
+    else:
+        target_folder = {
+            "id": str(uuid.uuid4()),
+            "name": normalized["project"]["name"],
+            "type": "folder",
+            "items": [],
+        }
+        proj.setdefault("items", []).append(target_folder)
+    target_folder.setdefault("items", []).extend(imported_items)
+    store.sync_current_config()
+    store.save()
+    return {
+        "ok": True,
+        "format": normalized["format"],
+        "format_label": normalized["format_label"],
+        "imported": normalized["summary"]["endpoints"],
+        "folders": normalized["summary"]["folders"],
+        "into_folder": target_folder.get("name"),
+        "folder_id": target_folder.get("id"),
+        "warnings": normalized["warnings"],
+    }
 
 
 @mcp.tool()
@@ -660,14 +815,16 @@ def add_endpoint_from_curl(curl: str, name: Optional[str] = None) -> dict:
         return {"error": "No URL found in the curl command."}
     if method is None:
         method = "POST" if data else "GET"
-    payload: dict = {}
+    payload: Any = {}
+    payload_type = "json"
     if data:
         try:
             payload = json.loads(data)
         except Exception:
-            payload = {"raw": data}
+            payload = data
+            payload_type = "raw"
 
-    test = EndpointTest(None, name or url, url, method, headers, payload)
+    test = EndpointTest(None, name or url, url, method, headers, payload, payload_type)
     store.current_config.tests.append(test)
     store.save()
     return _endpoint_summary(test)
@@ -697,7 +854,7 @@ def update_endpoint(
     url: Optional[str] = None,
     method: Optional[str] = None,
     headers: Optional[dict] = None,
-    payload: Optional[dict] = None,
+    payload: Optional[Any] = None,
     payload_type: Optional[str] = None,
     extractors: Optional[dict] = None,
     target_type: Optional[str] = None,
@@ -720,13 +877,21 @@ def update_endpoint(
     if payload is not None:
         test.payload = payload
     if payload_type is not None:
-        test.payload_type = payload_type
+        normalized_payload_type = str(payload_type).lower()
+        if normalized_payload_type not in {"json", "form", "multipart", "raw"}:
+            return _error(
+                "invalid_argument", "payload_type must be json, form, multipart, or raw.",
+                field="payload_type",
+            )
+        test.payload_type = normalized_payload_type
     if extractors is not None:
         test.extractors = extractors
     if target_type is not None:
         normalized = str(target_type).lower()
         if normalized not in {"api", "web"}:
-            return {"error": "target_type must be 'api' or 'web'"}
+            return _error(
+                "invalid_argument", "target_type must be 'api' or 'web'.", field="target_type"
+            )
         test.target_type = normalized
     store.save()  # reconcile updates the request node in place, by id
     return _endpoint_summary(test)
@@ -747,7 +912,7 @@ def duplicate_endpoint(name_or_id: str) -> dict:
         test.url,
         test.method,
         dict(test.headers),
-        dict(test.payload),
+        copy.deepcopy(test.payload),
         test.payload_type,
         dict(getattr(test, "extractors", {}) or {}),
         dict(test.run_config) if getattr(test, "run_config", None) else None,
@@ -850,10 +1015,18 @@ def main() -> None:
     # already bound to the right file here.
     store.load()
     transport = os.getenv("BEACON_MCP_TRANSPORT", "stdio").lower()
-    if transport in ("http", "streamable-http", "sse"):
-        mcp.run(transport="streamable-http" if transport != "sse" else "sse")
-    else:
-        mcp.run()
+    try:
+        if transport in ("http", "streamable-http", "sse"):
+            mcp.run(transport="streamable-http" if transport != "sse" else "sse")
+        else:
+            mcp.run()
+    finally:
+        # FastMCP closes stdin on an orderly stdio disconnect. PyInstaller's
+        # one-file cleanup then probes the already-closed stream and emits a
+        # misleading ValueError despite exiting 0. Silence only that post-run
+        # frozen cleanup; runtime/tool errors still use stderr normally.
+        if getattr(sys, "frozen", False):
+            sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -1,159 +1,17 @@
 import requests
 import time
-import uuid
 import random
-import re
 import string
 import threading
-import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Callable, Optional, Any
-import json
 
-
-def _dig(data, path):
-    """Walk a dot-path (leading 'body.' optional) through dicts and list indices."""
-    if data is None or not path:
-        return None
-    p = path[5:] if path.startswith("body.") else path
-    cur = data
-    for key in p.split("."):
-        if isinstance(cur, dict) and key in cur:
-            cur = cur[key]
-        elif isinstance(cur, list) and key.lstrip("-").isdigit() and -len(cur) <= int(key) < len(cur):
-            cur = cur[int(key)]
-        else:
-            return None
-    return cur
-
-
-def _assert_cmp(op, actual, expected):
-    try:
-        if op == "eq":
-            return str(actual) == str(expected)
-        if op == "ne":
-            return str(actual) != str(expected)
-        if op in ("lt", "gt", "lte", "gte"):
-            a, e = float(actual), float(expected)
-            return {"lt": a < e, "gt": a > e, "lte": a <= e, "gte": a >= e}[op]
-        if op == "contains":
-            return str(expected) in str(actual)
-        if op == "exists":
-            return actual is not None
-    except Exception:
-        return False
-    return False
-
-
-def evaluate_assertions(assertions, result):
-    """Check each rule against a send_once result dict. Returns a list of
-    {type, op, expected, actual, ok}. Types: status, time_ms, body_contains,
-    header, jsonpath."""
-    out = []
-    body = result.get("body") or ""
-    js = result.get("json")
-    headers = {str(k).lower(): v for k, v in (result.get("headers") or {}).items()}
-    for a in assertions or []:
-        t = a.get("type")
-        op = a.get("op", "eq")
-        val = a.get("value")
-        actual = None
-        if t == "status":
-            actual = result.get("status")
-            ok = _assert_cmp(op, actual, val)
-        elif t == "time_ms":
-            actual = result.get("time_ms")
-            ok = _assert_cmp(op, actual, val)
-        elif t == "body_contains":
-            ok = str(val) in body
-        elif t == "header":
-            actual = headers.get(str(a.get("name", "")).lower())
-            ok = (actual is not None) if op == "exists" else _assert_cmp(op, actual, val)
-        elif t == "jsonpath":
-            actual = _dig(js, a.get("path", ""))
-            ok = (actual is not None) if op == "exists" else _assert_cmp(op, actual, val)
-        else:
-            ok = False
-        subject = {
-            "status": "status code",
-            "time_ms": "response time (ms)",
-            "body_contains": "response body",
-            "header": f"header {a.get('name', '')}",
-            "jsonpath": f"JSON path {a.get('path', '')}",
-        }.get(t, str(t or "unknown assertion"))
-        message = f"{subject} {op} {val!r}"
-        if not ok:
-            message += f"; received {actual!r}"
-        out.append({
-            "type": t, "op": op, "expected": val, "actual": actual,
-            "ok": bool(ok), "message": message,
-        })
-    return out
-
-
-class EndpointTest:
-    def __init__(self, test_id: str, name: str, url: str, method: str = "POST",
-                 headers: Dict = None, payload: Dict = None, payload_type: str = "json",
-                 extractors: Dict = None, run_config: Dict = None, assertions: List = None,
-                 target_type: str = "api"):
-        self.id = test_id or str(uuid.uuid4())
-        self.name = name
-        self.url = url
-        self.method = method.upper()
-        self.headers = headers or {}
-        self.payload = payload or {}
-        self.payload_type = payload_type  # "json", "form", "multipart", "raw"
-        self.extractors = extractors or {}  # e.g. {"access_token": "body.access_token"}
-        # Optional per-endpoint run override: {concurrency, max_requests, delay, use_min_delay}
-        self.run_config = run_config or None
-        # Pass/fail rules checked against the response, e.g.
-        # {"type": "status", "op": "eq", "value": 200} or
-        # {"type": "jsonpath", "path": "body.ok", "op": "eq", "value": True}
-        self.assertions = assertions or []
-        normalized_target = str(target_type or "api").lower()
-        self.target_type = normalized_target if normalized_target in {"api", "web"} else "api"
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "url": self.url,
-            "method": self.method,
-            "headers": self.headers,
-            "payload": self.payload,
-            "payload_type": self.payload_type,
-            "extractors": self.extractors,
-            "run_config": self.run_config,
-            "assertions": self.assertions,
-            "target_type": self.target_type,
-        }
-
-    @staticmethod
-    def from_dict(d):
-        return EndpointTest(
-            d.get("id"), d["name"], d["url"], d.get("method", "POST"),
-            d.get("headers", {}), d.get("payload", {}), d.get("payload_type", "json"),
-            d.get("extractors", {}), d.get("run_config"), d.get("assertions", []),
-            d.get("target_type", "api")
-        )
-
-class TestConfig:
-    def __init__(self, base_url: str = "", variables: Dict = None, tests: List[EndpointTest] = None):
-        self.base_url = base_url
-        self.variables = variables or {}
-        self.tests = tests or []
-
-    def to_dict(self):
-        return {
-            "base_url": self.base_url,
-            "variables": self.variables,
-            "tests": [t.to_dict() for t in self.tests]
-        }
-
-    @staticmethod
-    def from_dict(d):
-        tests = [EndpointTest.from_dict(t) for t in d.get("tests", [])]
-        return TestConfig(d.get("base_url", ""), d.get("variables", {}), tests)
+from .assertions import evaluate_assertions
+from .extractors import ResponseExtractor
+from .metrics import RunMetrics, percentile
+from .models import EndpointTest, TestConfig
+from .templating import TemplateResolver
+from .transport import HttpTransport
 
 class APITester:
     def __init__(self, test: EndpointTest, config: TestConfig,
@@ -176,7 +34,15 @@ class APITester:
         # header dict race), which corrupts state under concurrency > 1.
         self._tls = threading.local()
         self._lock = threading.Lock()
-        self._reset_metrics()
+        self.metrics = RunMetrics()
+        self.templates = TemplateResolver(config.variables)
+        self.transport = HttpTransport()
+        self.extractor = ResponseExtractor()
+
+    @property
+    def results(self):
+        """Compatibility view while callers migrate to RunMetrics snapshots."""
+        return self.metrics.results
 
     def _session(self) -> "requests.Session":
         s = getattr(self._tls, "session", None)
@@ -186,186 +52,26 @@ class APITester:
         return s
 
     def _reset_metrics(self):
-        self.results = {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0}
-        self._codes: Dict[str, int] = {}
-        self._recent: List[int] = []
-        self._all_lat: List[float] = []  # full-run latencies, for percentiles
-        self._lat = {"sum": 0.0, "count": 0, "min": 0.0, "max": 0.0, "last": 0.0}
-        # Defense-validation metrics: at which attempt the target first threw a
-        # 429/throttle, and the last Retry-After it advertised.
-        self._first_rate_limited_at: Optional[int] = None
-        self._last_retry_after: Optional[str] = None
-        self._probe_threshold_rps: Optional[float] = None
-        self._capacity_safe_rps: Optional[float] = None
-        self._capacity_breaking_rps: Optional[float] = None
-        self._capacity_breach_reason: Optional[str] = None
-        self._t_start = time.time()
+        self.metrics.reset()
 
     def _record_latency(self, ms: float):
-        l = self._lat
-        l["sum"] += ms
-        l["count"] += 1
-        l["last"] = ms
-        l["min"] = ms if l["count"] == 1 else min(l["min"], ms)
-        l["max"] = max(l["max"], ms)
-        self._recent.append(round(ms))
-        if len(self._recent) > 60:
-            del self._recent[0]
-        self._all_lat.append(ms)
+        self.metrics.record_latency(ms)
 
     @staticmethod
     def _percentile(sorted_vals: List[float], pct: float) -> float:
-        """Linear-interpolated percentile over an already-sorted list."""
-        n = len(sorted_vals)
-        if n == 0:
-            return 0.0
-        if n == 1:
-            return sorted_vals[0]
-        rank = pct / 100.0 * (n - 1)
-        lo = int(rank)
-        hi = min(lo + 1, n - 1)
-        return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (rank - lo)
+        return percentile(sorted_vals, pct)
 
     def _snapshot(self) -> Dict:
-        """Build a stats snapshot (counters + latency + status mix + throughput)."""
-        l = self._lat
-        cnt = l["count"]
-        elapsed = max(time.time() - self._t_start, 1e-9)
-        snap = dict(self.results)
-        snap["status_codes"] = dict(self._codes)
-        snap["recent_ms"] = list(self._recent)
-        # Percentiles over the full run (modest run sizes; sort cost acceptable).
-        srt = sorted(self._all_lat)
-        snap["latency_ms"] = {
-            "avg": round(l["sum"] / cnt) if cnt else 0,
-            "min": round(l["min"]),
-            "max": round(l["max"]),
-            "last": round(l["last"]),
-            "p50": round(self._percentile(srt, 50)),
-            "p75": round(self._percentile(srt, 75)),
-            "p90": round(self._percentile(srt, 90)),
-            "p95": round(self._percentile(srt, 95)),
-            "p99": round(self._percentile(srt, 99)),
-            "p999": round(self._percentile(srt, 99.9)),
-        }
-        snap["elapsed_s"] = round(elapsed, 2)
-        snap["rps"] = round(self.results["attempts"] / elapsed, 1)
-        snap["first_rate_limited_at"] = self._first_rate_limited_at
-        snap["retry_after"] = self._last_retry_after
-        snap["probe_threshold_rps"] = self._probe_threshold_rps
-        snap["capacity_safe_rps"] = self._capacity_safe_rps
-        snap["capacity_breaking_rps"] = self._capacity_breaking_rps
-        snap["capacity_breach_reason"] = self._capacity_breach_reason
-        return snap
+        return self.metrics.snapshot()
 
     def _substitute(self, value: Any) -> Any:
-        if isinstance(value, str):
-            # 1. Replace static variables first
-            for k, v in self.config.variables.items():
-                value = value.replace(f"{{{{{k}}}}}", str(v))
-
-            # 2. Replace dynamic generators (fresh per request)
-            def dynamic_replacer(match):
-                inner = match.group(1).strip()
-                return self._generate_dynamic(inner)
-
-            value = re.sub(r'\{\{([^}]+)\}\}', dynamic_replacer, value)
-            return value
-        if isinstance(value, dict):
-            # Don't template embedded file fields (binary base64, not text).
-            if value.get("__file__"):
-                return value
-            return {k: self._substitute(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [self._substitute(item) for item in value]
-        return value
+        return self.templates.resolve(value)
 
     def _generate_dynamic(self, spec: str) -> str:
-        """Support special generators like {{random_phone}}, {{random_email}}, {{uuid}} etc."""
-        spec = spec.lower().strip()
-
-        if spec == "random_email":
-            return f"test{random.randint(100000, 9999999)}@mail.test"
-
-        if spec == "random_phone":
-            # Indonesian format: +62812xxxxxxxx (common mobile)
-            return "+62812" + "".join(str(random.randint(0, 9)) for _ in range(8))
-
-        if spec == "random_uuid" or spec == "uuid":
-            return str(uuid.uuid4())
-
-        if spec == "timestamp":
-            return str(int(time.time() * 1000))
-
-        # Bare versions (no params) - defaults
-        if spec == "random_string":
-            length = 8
-            chars = string.ascii_letters + string.digits
-            return ''.join(random.choice(chars) for _ in range(length))
-
-        if spec == "random_number" or spec == "random_int":
-            return str(random.randint(100000, 999999))
-
-        # Parameterized versions
-        if spec.startswith("random_int:"):
-            # e.g. random_int:1000:9999
-            try:
-                parts = spec.split(":")
-                min_v = int(parts[1])
-                max_v = int(parts[2])
-                return str(random.randint(min_v, max_v))
-            except:
-                return str(random.randint(1000, 9999))
-
-        if spec.startswith("random_string:"):
-            try:
-                length = int(spec.split(":")[1])
-                chars = string.ascii_letters + string.digits
-                return ''.join(random.choice(chars) for _ in range(max(1, length)))
-            except:
-                return "rnd" + str(random.randint(100,999))
-
-        # unknown - leave it (or return empty)
-        return "{{" + spec + "}}"
+        return self.templates.generate(spec)
 
     def _extract_from_response(self, resp):
-        """Extract values from response body or headers and update variables (fresh token support)."""
-        try:
-            body = resp.json() if 'application/json' in resp.headers.get('content-type', '') else {}
-        except Exception:
-            body = {}
-
-        for var_name, source in self.test.extractors.items():
-            value = None
-            src = source.lower()
-
-            if src.startswith("body."):
-                path = source[5:]
-                cur = body
-                for key in path.split("."):
-                    if isinstance(cur, dict) and key in cur:
-                        cur = cur[key]
-                    elif isinstance(cur, list) and key.lstrip("-").isdigit() and \
-                            -len(cur) <= int(key) < len(cur):
-                        cur = cur[int(key)]
-                    else:
-                        cur = None
-                        break
-                value = cur
-
-            elif "set-cookie" in src or "cookie" in src:
-                # Basic Set-Cookie parsing
-                set_cookie = resp.headers.get("Set-Cookie", "")
-                if var_name.lower() in set_cookie.lower():
-                    # crude parse access_token=xxx;
-                    import re as _re
-                    m = _re.search(rf"{var_name}=([^;]+)", set_cookie, _re.IGNORECASE)
-                    if m:
-                        value = m.group(1)
-
-            if value is not None:
-                self.config.variables[var_name] = str(value)
-                self.log(f"[extract] {var_name} updated from response")
+        return self.extractor.apply(self.test, resp, self.config.variables, self.log)
 
     def _build_request(self):
         url = self._substitute(self.test.url)
@@ -381,40 +87,7 @@ class APITester:
         return url, headers, payload
 
     def _do_request(self, session, url, headers, payload, timeout: int = 10):
-        """Issue one HTTP request honoring payload_type. Shared by the load run
-        and single-send so the two request paths never diverge."""
-        # A web-page target measures the document request itself. Do not attach
-        # a JSON body to GET requests: some proxies reject it and it does not
-        # represent what a browser does when navigating to a page.
-        if getattr(self.test, "target_type", "api") == "web":
-            return session.request(self.test.method, url, headers=headers, timeout=timeout)
-
-        ptype = (self.test.payload_type or "json").lower()
-        if ptype == "form":
-            return session.request(self.test.method, url, headers=headers, data=payload, timeout=timeout)
-        if ptype == "multipart":
-            # multipart/form-data — text fields + real file fields (base64-embedded)
-            files = {}
-            for k, v in (payload or {}).items():
-                if isinstance(v, dict) and v.get("__file__"):
-                    try:
-                        content = base64.b64decode(v.get("data", "") or "")
-                    except Exception:
-                        content = b""
-                    files[k] = (v.get("name") or "file", content, v.get("type") or "application/octet-stream")
-                else:
-                    files[k] = (None, str(v))
-            # drop content-type so requests sets the correct multipart boundary
-            h = {k: v for k, v in headers.items() if k.lower() != "content-type"}
-            return session.request(self.test.method, url, headers=h, files=files, timeout=timeout)
-        if ptype == "raw":
-            # Raw body (text / XML / GraphQL / etc.). The Content-Type is whatever
-            # the endpoint's headers declare; requests sends the bytes verbatim.
-            body = payload if isinstance(payload, str) else json.dumps(payload)
-            return session.request(self.test.method, url, headers=headers,
-                                   data=body.encode("utf-8"), timeout=timeout)
-        # json (default)
-        return session.request(self.test.method, url, headers=headers, json=payload, timeout=timeout)
+        return self.transport.send(session, self.test, url, headers, payload, timeout)
 
     def send_once(self, max_body: int = 262144, retries: int = 0, retry_delay: float = 0.0) -> Dict:
         """Fire a single request and return the full response for inspection
@@ -515,19 +188,7 @@ class APITester:
             )
 
             with self._lock:
-                self.results["attempts"] += 1
-                if is_success:
-                    self.results["success"] += 1
-                elif is_rate:
-                    self.results["rate_limited"] += 1
-                    if self._first_rate_limited_at is None:
-                        self._first_rate_limited_at = self.results["attempts"]
-                    if retry_after:
-                        self._last_retry_after = retry_after
-                else:
-                    self.results["errors"] += 1
-                self._codes[str(resp.status_code)] = self._codes.get(str(resp.status_code), 0) + 1
-                self._record_latency(elapsed * 1000.0)
+                self.metrics.record_response(resp.status_code, elapsed * 1000.0, is_rate, retry_after)
                 snapshot = self._snapshot()
 
             # === Process extractors (for fresh tokens from login/onboarding etc) ===
@@ -557,9 +218,7 @@ class APITester:
             return result
         except Exception as e:
             with self._lock:
-                self.results["attempts"] += 1
-                self.results["errors"] += 1
-                self._codes["error"] = self._codes.get("error", 0) + 1
+                self.metrics.record_error()
                 snapshot = self._snapshot()
             self.update_stats(snapshot)
             err = {
@@ -598,8 +257,8 @@ class APITester:
                 if self.delay > 0:
                     time.sleep(self.delay)
 
-        self.log(f"Finished. {self.results}")
-        return self.results
+        self.log(f"Finished. {self.metrics.results}")
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # RAMP mode: gradually double workers every ramp_step_duration seconds
@@ -660,8 +319,8 @@ class APITester:
                 if delay > 0:
                     time.sleep(delay)
 
-        self.log(f"[ramp] Finished. workers reached={current_workers}. {self.results}")
-        return self.results
+        self.log(f"[ramp] Finished. workers reached={current_workers}. {self.metrics.results}")
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # SPIKE mode: baseline -> peak -> recovery (3 phases)
@@ -696,10 +355,10 @@ class APITester:
                 for f in as_completed(futures):
                     if self.stop_flag.get("stop"):
                         break
-            self.log(f"[spike] Phase {phase_name} complete. Running stats: {self.results}")
+            self.log(f"[spike] Phase {phase_name} complete. Running stats: {self.metrics.results}")
 
-        self.log(f"[spike] Finished. {self.results}")
-        return self.results
+        self.log(f"[spike] Finished. {self.metrics.results}")
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # SOAK mode: time-based run at a fixed RPS
@@ -730,7 +389,7 @@ class APITester:
                     now = time.time()
                     if now >= next_log:
                         snap = self._snapshot()
-                        self.log(f"[soak] t={round(now - self._t_start)}s "
+                        self.log(f"[soak] t={round(now - self.metrics.started_at)}s "
                                  f"attempts={snap['attempts']} rps={snap['rps']} "
                                  f"success={snap['success']} rl={snap['rate_limited']}")
                         next_log = now + 10.0
@@ -750,7 +409,7 @@ class APITester:
                 now = time.time()
                 if now >= next_log:
                     snap = self._snapshot()
-                    self.log(f"[soak] t={round(now - self._t_start)}s "
+                    self.log(f"[soak] t={round(now - self.metrics.started_at)}s "
                              f"attempts={snap['attempts']} rps={snap['rps']} "
                              f"success={snap['success']} rl={snap['rate_limited']}")
                     next_log = now + 10.0
@@ -763,7 +422,7 @@ class APITester:
         snap = self._snapshot()
         self.log(f"[soak] Finished. duration={round(snap['elapsed_s'])}s "
                  f"attempts={snap['attempts']} avg_rps={snap['rps']}")
-        return self.results
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # RATE PROBE mode: auto-escalate RPS until 429
@@ -774,7 +433,7 @@ class APITester:
         RPS. Stops when a 429 is encountered and stores the threshold."""
         self._reset_metrics()
         self.update_stats(self._snapshot())
-        self._probe_threshold_rps = None
+        self.metrics.probe_threshold_rps = None
 
         current_rps = start_rps
         i = 0
@@ -783,7 +442,7 @@ class APITester:
 
         while current_rps <= max_rps and not self.stop_flag.get("stop"):
             interval = 1.0 / max(current_rps, 0.001)
-            step_rl_before = self.results["rate_limited"]
+            step_rl_before = self.metrics.results["rate_limited"]
             self.log(f"[probe] Testing at {current_rps:.1f} rps ...")
 
             for _ in range(step_requests):
@@ -793,10 +452,10 @@ class APITester:
                 self._send_one(i)
                 time.sleep(interval)
 
-            step_rl_after = self.results["rate_limited"]
+            step_rl_after = self.metrics.results["rate_limited"]
             if step_rl_after > step_rl_before:
                 # Rate limit hit
-                self._probe_threshold_rps = current_rps
+                self.metrics.probe_threshold_rps = current_rps
                 self.log(f"[probe] Rate limit threshold found at {current_rps:.1f} rps")
                 self.update_stats(self._snapshot())
                 break
@@ -805,11 +464,11 @@ class APITester:
                 current_rps = round(current_rps + step_rps, 3)
                 self.update_stats(self._snapshot())
 
-        if self._probe_threshold_rps is None and not self.stop_flag.get("stop"):
+        if self.metrics.probe_threshold_rps is None and not self.stop_flag.get("stop"):
             self.log(f"[probe] No rate limit detected up to {max_rps:.1f} rps")
 
-        self.log(f"[probe] Finished. threshold={self._probe_threshold_rps} rps. {self.results}")
-        return self.results
+        self.log(f"[probe] Finished. threshold={self.metrics.probe_threshold_rps} rps. {self.metrics.results}")
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # CAPACITY mode: find the highest RPS that still satisfies the SLO
@@ -836,8 +495,8 @@ class APITester:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             while current_rps <= max_rps and not self.stop_flag.get("stop"):
-                before = dict(self.results)
-                latency_offset = len(self._all_lat)
+                before = dict(self.metrics.results)
+                latency_offset = len(self.metrics.all_latencies)
                 futures = []
                 interval = 1.0 / current_rps
                 next_submit = time.monotonic()
@@ -856,11 +515,11 @@ class APITester:
                 for future in as_completed(futures):
                     future.result()
 
-                attempts = self.results["attempts"] - before["attempts"]
-                successes = self.results["success"] - before["success"]
-                failures = ((self.results["errors"] - before["errors"])
-                            + (self.results["rate_limited"] - before["rate_limited"]))
-                step_latencies = sorted(self._all_lat[latency_offset:])
+                attempts = self.metrics.results["attempts"] - before["attempts"]
+                successes = self.metrics.results["success"] - before["success"]
+                failures = ((self.metrics.results["errors"] - before["errors"])
+                            + (self.metrics.results["rate_limited"] - before["rate_limited"]))
+                step_latencies = sorted(self.metrics.all_latencies[latency_offset:])
                 p95 = self._percentile(step_latencies, 95)
                 error_pct = (failures / attempts * 100.0) if attempts else 100.0
                 success_pct = (successes / attempts * 100.0) if attempts else 0.0
@@ -878,24 +537,24 @@ class APITester:
                     f"errors={error_pct:.1f}% success={success_pct:.1f}%"
                 )
                 if reasons:
-                    self._capacity_breaking_rps = current_rps
-                    self._capacity_breach_reason = "; ".join(reasons)
-                    self.log(f"[capacity] Breaking point: {current_rps:.1f} rps — {self._capacity_breach_reason}")
+                    self.metrics.capacity_breaking_rps = current_rps
+                    self.metrics.capacity_breach_reason = "; ".join(reasons)
+                    self.log(f"[capacity] Breaking point: {current_rps:.1f} rps — {self.metrics.capacity_breach_reason}")
                     self.update_stats(self._snapshot())
                     break
 
-                self._capacity_safe_rps = current_rps
+                self.metrics.capacity_safe_rps = current_rps
                 self.update_stats(self._snapshot())
                 current_rps = round(current_rps + step_rps, 3)
 
-        if self._capacity_breaking_rps is None and not self.stop_flag.get("stop"):
-            self.log(f"[capacity] SLO remained healthy through {self._capacity_safe_rps or 0:.1f} rps")
+        if self.metrics.capacity_breaking_rps is None and not self.stop_flag.get("stop"):
+            self.log(f"[capacity] SLO remained healthy through {self.metrics.capacity_safe_rps or 0:.1f} rps")
         self.update_stats(self._snapshot())
         self.log(
-            f"[capacity] Finished. safe={self._capacity_safe_rps} rps, "
-            f"breaking={self._capacity_breaking_rps} rps"
+            f"[capacity] Finished. safe={self.metrics.capacity_safe_rps} rps, "
+            f"breaking={self.metrics.capacity_breaking_rps} rps"
         )
-        return self.results
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # FUZZ mode: mutate payload fields with various fuzz values
@@ -1004,8 +663,8 @@ class APITester:
                 if delay > 0:
                     time.sleep(delay)
 
-        self.log(f"[fuzz] Finished. {self.results}")
-        return self.results
+        self.log(f"[fuzz] Finished. {self.metrics.results}")
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # BENCHMARK mode: warmup + percentile report
@@ -1032,7 +691,7 @@ class APITester:
             self._send_one(i)
 
         # Compute final percentiles
-        srt = sorted(self._all_lat)
+        srt = sorted(self.metrics.all_latencies)
         p = self._percentile
         self.log(
             f"[benchmark] Results ({len(srt)} samples): "
@@ -1044,8 +703,8 @@ class APITester:
             f"p999={round(p(srt,99.9))}ms"
         )
         self.update_stats(self._snapshot())
-        self.log(f"[benchmark] Finished. {self.results}")
-        return self.results
+        self.log(f"[benchmark] Finished. {self.metrics.results}")
+        return self.metrics.results
 
     # -------------------------------------------------------------------------
     # run_mode: single dispatcher for all modes

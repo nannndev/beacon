@@ -970,7 +970,7 @@ function App() {
       {/* Dialogs */}
       <ProjectDialog open={showProjectDialog} onOpenChange={setShowProjectDialog} onCreate={createProject} />
       <JoinLocalProjectDialog open={showJoinProjectDialog} onOpenChange={setShowJoinProjectDialog} onJoined={fetchAll} />
-      <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} onImport={doImport} fetchTemplate={api.projectTemplate} />
+      <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} onImport={doImport} onPreview={api.previewProjectImport} fetchTemplate={api.projectTemplate} />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />

@@ -8,9 +8,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from ..core.tester import APITester, TestConfig
 from ..history.models import RunStart, RunStepStart
-from ..history.sanitize import sanitize_run_config
 from ..state import store
 from ..services import runner
+from ..services.run_coordinator import EndpointRunCoordinator
 
 router = APIRouter(tags=["runs"])
 
@@ -73,110 +73,24 @@ async def start_run(data: dict):
         "warmup": int(data.get("warmup", 10)),
     }
 
-    run_id = str(os.urandom(8).hex())
-    history_id = str(data.get("history_id") or run_id)
     try:
         history_step_index = int(data.get("history_step_index", 0))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="history_step_index must be a number")
-    is_history_group = bool(data.get("history_id"))
-    notif_settings: dict = {}
-    notif_project_name = None
-    if not is_history_group:
-        active_project = next(
-            (p for p in store.projects if p.get("id") == store.current_project_id),
-            {"id": store.current_project_id or "unknown", "name": "Unknown project"},
-        )
-        notif_settings = active_project.get("notifications") or {}
-        notif_project_name = active_project.get("name")
-        history_persisted = store.history.start(
-            RunStart(
-                id=history_id,
-                workspace_id=store.history.workspace_id or "local",
-                project_id=active_project.get("id") or "unknown",
-                project_name=active_project.get("name") or "Unknown project",
-                origin_device_id=store.history.origin_device_id or "local",
-                source_type="endpoint",
-                target_id=test.id,
-                target_name=test.name,
-                mode=mode,
-                config_snapshot=sanitize_run_config(data, test),
-            ),
-            [RunStepStart(history_step_index, test.id, test.name, test.method, test.url)],
-        )
-    else:
-        history_persisted = True
-    store.current_runs[run_id] = {
-        "status": "running",
-        "mode": mode,
-        "logs": [],
-        "responses": [],
-        "stats": {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0},
-        "stop_flag": {"stop": False},
-    }
-
-    def run_in_thread():
-        outcome = "completed"
-        try:
-            def on_stats(stats):
-                store.history.record_stats(history_id, history_step_index, stats)
-                runner.dispatch(runner.broadcast_stats(run_id, stats))
-
-            def on_response(response):
-                store.history.record_response(history_id, history_step_index, response)
-                runner.dispatch(runner.broadcast_response(run_id, response))
-
-            tester = APITester(
-                test, store.current_config,
-                concurrency=concurrency,
-                delay=delay if not use_min_delay else 0.001,
-                max_requests=max_requests,
-                log_callback=lambda m: runner.dispatch(runner.broadcast_log(run_id, m)),
-                stats_callback=on_stats,
-                response_callback=on_response,
-                stop_flag=store.current_runs[run_id]["stop_flag"],
-            )
-            results = tester.run_mode(mode, params)
-            # NOTE: extractor-refreshed variables live in current_config in
-            # memory (used by chained runs this session). We deliberately do
-            # NOT store.save() here — a background thread writing the whole
-            # config races with concurrent request handlers and can clobber
-            # edits made during a run.
-            runner.dispatch(runner.broadcast_log(run_id, f"Finished: {results}"))
-        except Exception as e:
-            outcome = "failed"
-            runner.dispatch(runner.broadcast_log(run_id, f"Error: {e}"))
-        finally:
-            if store.current_runs[run_id]["stop_flag"].get("stop"):
-                outcome = "stopped"
-            store.history.finish_step(history_id, history_step_index, outcome)
-            if not is_history_group:
-                store.history.finish_run(history_id, outcome)
-            if outcome == "stopped":
-                store.current_runs[run_id]["status"] = "stopped"
-            elif store.current_runs[run_id]["status"] == "running":
-                store.current_runs[run_id]["status"] = "finished"
-            runner.dispatch(runner.broadcast_log(run_id, "run_finished"))
-            runner.dispatch(runner.broadcast_stats(run_id, store.current_runs[run_id]["stats"]))
-            # Best-effort Discord notification for a finished standalone run.
-            # Scenario/folder groups notify at their own coordination layer.
-            if not is_history_group and notif_settings:
-                try:
-                    from ..services.notify_discord import maybe_notify
-                    maybe_notify(
-                        notif_settings,
-                        target_name=test.name,
-                        mode=mode,
-                        stats=store.current_runs[run_id]["stats"],
-                        outcome=outcome,
-                        project_name=notif_project_name,
-                    )
-                except Exception:
-                    pass
-
-    threading.Thread(target=run_in_thread, daemon=True).start()
-    return {"run_id": run_id, "mode": mode,
-            "history_id": history_id if history_persisted else None}
+    coordinator = EndpointRunCoordinator(
+        store,
+        tester_factory=APITester,
+        thread_factory=threading.Thread,
+        events=runner,
+    )
+    return coordinator.start(
+        test,
+        mode=mode,
+        params=params,
+        request_config=data,
+        history_id=data.get("history_id"),
+        history_step_index=history_step_index,
+    )
 
 
 @router.post("/send")

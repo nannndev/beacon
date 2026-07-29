@@ -3,6 +3,32 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.6] - 2026-07-29
+
+### Added
+
+- Multi-format project import for Beacon exports, Postman, OpenAPI 3, Swagger 2, Insomnia, HAR, JSON, and YAML, with the same preview and validation pipeline across Desktop and MCP.
+- MCP endpoint search with pagination and endpoint preflight diagnostics for resolved URLs, missing variables, and redacted sensitive headers.
+- Focused chart inspection with expandable operations charts and clearer time-range presentation.
+- Characterization coverage for the execution core, project importer, and MCP tool contracts.
+
+### Improved
+
+- Split the request engine into focused model, templating, transport, assertion, extraction, and metrics modules while preserving the existing REST and MCP contracts.
+- Moved asynchronous endpoint-run lifecycle, history recording, terminal states, and notifications out of the HTTP router into a dedicated coordinator service.
+- MCP responses now use context-safe body limits, structured error codes, strict run-parameter validation, and production import normalization.
+- Updated the Beacon agent skill with paginated discovery, endpoint preflight, extractor-aware scenarios, safe traffic escalation, and actionable MCP error recovery.
+
+### Fixed
+
+- Imported MCP requests now receive collision-free endpoint and folder IDs instead of creating incomplete tree nodes.
+- Creating an endpoint with an unknown MCP folder no longer silently places it at the project root.
+- Plain-text cURL request bodies imported through MCP now use the raw payload type instead of being wrapped as JSON.
+- Frozen MCP binaries now shut down cleanly after a normal stdio client disconnect without emitting a misleading closed-file traceback.
+- Removed the unused duplicate legacy request engine that could drift from the maintained backend implementation.
+
+[Compare 0.4.5 → 0.4.6](https://github.com/nannndev/beacon/compare/v0.4.5...v0.4.6)
+
 ## [0.4.5] - 2026-07-28
 
 ### Added

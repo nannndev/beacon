@@ -5,3 +5,4 @@ requests
 cryptography
 python-multipart
 mcp
+PyYAML
