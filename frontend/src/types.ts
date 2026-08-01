@@ -5,6 +5,20 @@ export interface RunConfig {
   use_min_delay: boolean
 }
 
+export interface EndpointAuth {
+  type: 'none' | 'inherit' | 'bearer' | 'basic' | 'apikey' | 'custom'
+  /** bearer / apikey / custom */
+  token?: string
+  value?: string
+  /** apikey / custom header name */
+  key?: string
+  header?: string
+  in?: 'header' | 'query'
+  /** basic */
+  username?: string
+  password?: string
+}
+
 export interface Endpoint {
   id: string
   name: string
@@ -16,6 +30,10 @@ export interface Endpoint {
   /** `web` measures an HTML document request; `api` is the default request target. */
   target_type?: 'api' | 'web'
   extractors?: Record<string, string>
+  /** Structured auth. `inherit` defers to the enclosing folder, then the
+   *  project; Basic credentials are base64-encoded by the backend at request
+   *  time so they can come from `{{variables}}`. */
+  auth?: EndpointAuth | null
   run_config?: RunConfig | null
   assertions?: Array<{
     type: string

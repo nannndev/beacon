@@ -350,12 +350,15 @@ class ProjectFileSyncService:
                 if not isinstance(node, dict):
                     raise ProjectFileSyncError("Project item must be a mapping")
                 if node.get("type") == "folder":
-                    result.append({
+                    folder = {
                         "type": "folder",
                         "id": str(node.get("id") or ""),
                         "name": str(node.get("name") or "Folder"),
                         "items": load_items(node.get("items") or []),
-                    })
+                    }
+                    if node.get("auth"):
+                        folder["auth"] = node["auth"]
+                    result.append(folder)
                     continue
                 if node.get("type") != "request" or not node.get("file"):
                     raise ProjectFileSyncError("Request item is missing its endpoint file")
@@ -427,12 +430,17 @@ class ProjectFileSyncService:
                 if not isinstance(node, dict):
                     continue
                 if node.get("type") == "folder":
-                    result.append({
+                    folder = {
                         "type": "folder",
                         "id": str(node.get("id") or ""),
                         "name": str(node.get("name") or "Folder"),
                         "items": serialize_items(node.get("items") or []),
-                    })
+                    }
+                    # Folder-level auth is inherited by the requests inside it.
+                    # Only written when set, so existing files are unchanged.
+                    if node.get("auth"):
+                        folder["auth"] = node["auth"]
+                    result.append(folder)
                     continue
                 endpoint = {key: value for key, value in node.items() if key not in {"type", "file"}}
                 endpoint_id = str(endpoint.get("id") or "")

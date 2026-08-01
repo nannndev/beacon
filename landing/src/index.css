@@ -78,6 +78,12 @@ body {
     overflow-x: hidden;
     scroll-behavior: smooth;
   }
+  /* The header is sticky at 4rem, so an anchor jump would otherwise land the
+     section heading underneath it. Setting this on the scroll container covers
+     every `#section` link at once instead of per-section scroll-mt. */
+  html {
+    scroll-padding-top: 5rem;
+  }
 }
 
 /* Beacon's page atmosphere stays intentionally soft. The moving request trace

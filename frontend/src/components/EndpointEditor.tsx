@@ -119,6 +119,9 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
   const [form, setForm] = useState<any>(getDefaultForm())
   const [authType, setAuthType] = useState<AuthType>('inherit')
   const [authVar, setAuthVar] = useState('access_token')
+  const [basicUser, setBasicUser] = useState('')
+  const [basicPassword, setBasicPassword] = useState('')
+  const [apiKeyHeader, setApiKeyHeader] = useState('X-API-Key')
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [response, setResponse] = useState<SendResponse | null>(null)
@@ -143,25 +146,39 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
         }
         setForm(loaded)
 
-        const auth = (existing.headers?.Authorization || '').trim()
-        if (!auth) {
-          setAuthType('none')
-        } else if (auth.startsWith('Bearer {{')) {
-          setAuthType('bearer')
-          const match = auth.match(/\{\{([^}]+)\}\}/)
-          if (match) setAuthVar(match[1])
-        } else if (auth.includes('{{')) {
-          setAuthType('apikey')
-          const match = auth.match(/\{\{([^}]+)\}\}/)
-          if (match) setAuthVar(match[1])
+        // A structured spec is authoritative. Endpoints saved before auth
+        // existed are inferred from their Authorization header instead.
+        const spec = existing.auth
+        if (spec?.type) {
+          setAuthType(spec.type as AuthType)
+          setAuthVar(spec.token || spec.value || 'access_token')
+          setBasicUser(spec.username || '')
+          setBasicPassword(spec.password || '')
+          setApiKeyHeader(spec.key || 'X-API-Key')
         } else {
-          setAuthType('custom')
+          const auth = (existing.headers?.Authorization || '').trim()
+          if (!auth) {
+            setAuthType('none')
+          } else if (auth.startsWith('Bearer {{')) {
+            setAuthType('bearer')
+            const match = auth.match(/\{\{([^}]+)\}\}/)
+            if (match) setAuthVar(match[1])
+          } else if (auth.includes('{{')) {
+            setAuthType('apikey')
+            const match = auth.match(/\{\{([^}]+)\}\}/)
+            if (match) setAuthVar(match[1])
+          } else {
+            setAuthType('custom')
+          }
         }
       }
     } else {
       setForm(getDefaultForm())
       setAuthType('inherit')
       setAuthVar('access_token')
+      setBasicUser('')
+      setBasicPassword('')
+      setApiKeyHeader('X-API-Key')
     }
   }, [testId, config])
 
@@ -218,28 +235,46 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
     })
   }
 
-  const updateAuth = (type: string, variable?: string) => {
-    const nextType = type as AuthType
-    setAuthType(nextType)
-    if (variable) setAuthVar(variable)
-
-    if (nextType === 'none' || nextType === 'inherit') {
-      const { Authorization, ...rest } = form.headers || {}
-      handleChange('headers', rest)
-      return
+  // Auth is stored as a structured spec, not a pre-built header string. The
+  // backend encodes Basic credentials at request time (after templating) and
+  // resolves `inherit` against the enclosing folder and project.
+  const buildAuthSpec = (
+    type: AuthType,
+    parts: { token?: string; username?: string; password?: string; header?: string },
+  ) => {
+    const token = parts.token ?? authVar
+    switch (type) {
+      case 'bearer':
+        return { type, token: `{{${token}}}` }
+      case 'basic':
+        return {
+          type,
+          username: parts.username ?? basicUser,
+          password: parts.password ?? basicPassword,
+        }
+      case 'apikey':
+        return { type, in: 'header', key: parts.header ?? apiKeyHeader, value: `{{${token}}}` }
+      case 'custom':
+        return { type, header: 'Authorization', value: `{{${token}}}` }
+      default:
+        return { type }
     }
+  }
 
-    const token = variable || authVar
-    const authValue =
-      nextType === 'bearer' ? `Bearer {{${token}}}` :
-      nextType === 'apikey' ? `{{${token}}}` :
-      nextType === 'basic' ? `Basic {{${token || 'username:password'}}}` :
-      `{{${token}}}`
+  const applyAuth = (
+    type: AuthType,
+    parts: { token?: string; username?: string; password?: string; header?: string } = {},
+  ) => {
+    setAuthType(type)
+    if (parts.token !== undefined) setAuthVar(parts.token)
+    if (parts.username !== undefined) setBasicUser(parts.username)
+    if (parts.password !== undefined) setBasicPassword(parts.password)
+    if (parts.header !== undefined) setApiKeyHeader(parts.header)
 
-    handleChange('headers', {
-      ...(form.headers || {}),
-      Authorization: authValue,
-    })
+    // Drop any legacy hand-written Authorization so the spec is the only
+    // source of truth and a stale header can't outlive an auth-type change.
+    const { Authorization, ...rest } = form.headers || {}
+    setForm((prev: any) => ({ ...prev, headers: rest, auth: buildAuthSpec(type, parts) }))
   }
 
   // Build the endpoint payload from the form (folds cookies into a Cookie
@@ -492,11 +527,12 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
             <div className="space-y-3">
               <Field label="Auth type">
                 <select
+                  aria-label="Auth type"
                   value={authType}
-                  onChange={(e) => updateAuth(e.target.value)}
+                  onChange={(e) => applyAuth(e.target.value as AuthType)}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="inherit">Inherit from environment</option>
+                  <option value="inherit">Inherit from folder / project</option>
                   <option value="none">None</option>
                   <option value="bearer">Bearer token</option>
                   <option value="apikey">API key</option>
@@ -505,30 +541,76 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
                 </select>
               </Field>
 
-              {authType !== 'none' && authType !== 'inherit' && (
+              {(authType === 'bearer' || authType === 'apikey' || authType === 'custom') && (
                 <Field label="Variable / value">
                   <div className="flex gap-2">
                     <Input
                       list="beacon-environment-variables"
                       value={authVar}
-                      onChange={(e) => updateAuth(authType, e.target.value)}
+                      onChange={(e) => applyAuth(authType, { token: e.target.value })}
                       className="h-9 flex-1 font-mono text-sm"
                       placeholder="access_token"
                     />
                     <datalist id="beacon-environment-variables">
                       {Object.keys(config.variables || {}).sort().map((name) => <option key={name} value={name} />)}
                     </datalist>
-                    <Button variant="outline" size="sm" className="h-9" onClick={() => updateAuth(authType, 'access_token')}>token</Button>
-                    <Button variant="outline" size="sm" className="h-9" onClick={() => updateAuth(authType, 'api_key')}>key</Button>
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => applyAuth(authType, { token: 'access_token' })}>token</Button>
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => applyAuth(authType, { token: 'api_key' })}>key</Button>
                   </div>
                 </Field>
               )}
 
+              {authType === 'apikey' && (
+                <Field label="Header name">
+                  <Input
+                    value={apiKeyHeader}
+                    onChange={(e) => applyAuth('apikey', { header: e.target.value })}
+                    className="h-9 font-mono text-sm"
+                    placeholder="X-API-Key"
+                  />
+                </Field>
+              )}
+
+              {authType === 'basic' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Username">
+                    <Input
+                      value={basicUser}
+                      onChange={(e) => applyAuth('basic', { username: e.target.value })}
+                      className="h-9 font-mono text-sm"
+                      placeholder="{{username}}"
+                    />
+                  </Field>
+                  <Field label="Password">
+                    <Input
+                      value={basicPassword}
+                      onChange={(e) => applyAuth('basic', { password: e.target.value })}
+                      className="h-9 font-mono text-sm"
+                      placeholder="{{password}}"
+                    />
+                  </Field>
+                </div>
+              )}
+
               <div className="rounded-lg border border-border bg-muted/35 p-3 text-xs">
-                {form.headers?.Authorization ? (
+                {authType === 'basic' ? (
+                  <span className="text-muted-foreground">
+                    Sent as <code className="font-mono">Authorization: Basic &lt;base64&gt;</code>, encoded at
+                    request time. Use <code className="font-mono">{'{{variables}}'}</code> to keep credentials
+                    out of the project file.
+                  </span>
+                ) : form.auth?.type === 'apikey' ? (
+                  <code className="break-all font-mono">{apiKeyHeader}: {`{{${authVar}}}`}</code>
+                ) : form.auth?.type === 'bearer' ? (
+                  <code className="break-all font-mono">Authorization: Bearer {`{{${authVar}}}`}</code>
+                ) : form.auth?.type === 'custom' ? (
+                  <code className="break-all font-mono">Authorization: {`{{${authVar}}}`}</code>
+                ) : form.headers?.Authorization ? (
                   <code className="break-all font-mono">{form.headers.Authorization}</code>
                 ) : authType === 'inherit' ? (
-                  <span className="text-emerald-600 dark:text-emerald-400">Using auth from the active environment.</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">
+                    Using auth from the enclosing folder, or the project when the folder sets none.
+                  </span>
                 ) : (
                   <span className="text-muted-foreground">No Authorization header will be sent.</span>
                 )}

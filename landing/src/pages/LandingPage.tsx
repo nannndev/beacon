@@ -62,7 +62,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.4.8'
+const RELEASE_VERSION = '0.4.9'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -185,18 +185,20 @@ export default function LandingPage() {
             </a>
             <a
               href="#desktop"
-              className="hidden items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-4 py-1.5 text-sm font-semibold transition-all hover:border-border hover:bg-muted active:scale-[0.985] sm:inline-flex"
+              className="hidden items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground lg:inline-flex"
             >
-              <Download className="h-4 w-4" />
-              Download
+              All platforms
             </a>
 
+            {/* One primary action in the header. The neighbouring link used to
+                also read "Download" while only scrolling to the platform
+                cards, so the two were indistinguishable. */}
             <button
               onClick={download}
               className="inline-flex h-10 items-center gap-2 rounded-2xl bg-foreground px-5 text-sm font-bold text-background shadow-sm transition-all hover:-translate-y-px active:scale-[0.985]"
             >
+              <Download className="h-4 w-4" />
               Download
-              <ArrowRight className="h-4 w-4" />
             </button>
 
             <button
@@ -267,12 +269,12 @@ export default function LandingPage() {
 
         <RevealGroup className="max-w-2xl" stagger={0.08} delayChildren={0.05}>
           <RevealItem className="mb-4 inline-flex items-center rounded-full border border-border/60 bg-card/60 px-3 py-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
-            YOUR LOCAL-FIRST API WORKSPACE
+            FREE AND OPEN SOURCE
           </RevealItem>
 
           <RevealItem as="div">
             <h1 className="text-balance text-5xl font-semibold leading-[0.98] tracking-[-3px] md:text-[62px] md:tracking-[-3.6px]">
-              Build, test, and ship APIs.<br />Locally.
+              Your API workspace,<br />on your machine.
             </h1>
           </RevealItem>
 
@@ -280,7 +282,9 @@ export default function LandingPage() {
             as="div"
             className="mt-5 max-w-xl text-pretty text-base leading-7 text-muted-foreground"
           >
-            Keep requests, tokens, tests, team projects, and load runs together. Your private data stays on your machine.
+            Send requests, chain logins, assert responses, and push real load at your
+            endpoints. No account and no cloud sync — your tokens, responses, and run
+            history stay local.
           </RevealItem>
 
           <RevealItem className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -288,16 +292,15 @@ export default function LandingPage() {
               onClick={download}
               className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-semibold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
             >
-              Get Beacon
+              Download for free
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </button>
 
             <a
-              href="#desktop"
+              href="#product-preview"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-6 text-[15px] font-semibold transition-all hover:bg-muted hover:border-border active:scale-[0.985]"
             >
-              <Download className="h-4 w-4" />
-              See desktop app
+              See it in action
             </a>
           </RevealItem>
 
@@ -312,10 +315,10 @@ export default function LandingPage() {
       <section id="workspace" className="border-y border-border/60 bg-muted/15">
         <RevealGroup className="mx-auto grid max-w-7xl gap-px bg-border/70 px-5 py-px sm:grid-cols-2 lg:grid-cols-4 lg:px-8" stagger={0.05}>
           {[
-            { icon: FolderKanban, title: 'Keep it organized', body: 'Group endpoints the way your product is actually built.' },
-            { icon: Globe2, title: 'Switch context fast', body: 'Move between local, staging, and production without rewriting requests.' },
-            { icon: Braces, title: 'Stop pasting values', body: 'Generate data and reuse tokens with variables that update themselves.' },
-            { icon: History, title: 'Know what changed', body: 'Come back to any run and inspect its response, timing, status, and logs.' },
+            { icon: FolderKanban, title: 'Nested folders', body: 'Group endpoints by service or feature, the way your codebase already is.' },
+            { icon: Globe2, title: 'Environments', body: 'Point the same requests at local, staging, or production in one click.' },
+            { icon: Braces, title: 'Live variables', body: 'Generate fake data per request and reuse tokens captured from real responses.' },
+            { icon: History, title: 'Run history', body: 'Reopen any past run with its responses, timings, and logs intact.' },
           ].map(({ icon: Icon, title, body }) => (
             <RevealItem key={title} as="article" className="group bg-background/90 px-4 py-4 sm:px-5">
               <div className="flex items-center gap-3">
@@ -337,25 +340,27 @@ export default function LandingPage() {
           <Reveal>
             <p className="text-sm font-bold text-cyan-500">Everything around the request</p>
             <h2 className="mt-2 text-balance text-3xl font-extrabold tracking-tight md:text-4xl">
-              Less tab switching. More answers.
+              One app instead of four.
             </h2>
             <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
-              Write the request, inspect the response, save what matters, then test it harder. It all happens in the same project.
+              The request client, the assertion suite, the load generator, and the CI
+              runner all read the same project file. Nothing to export, nothing to keep
+              in sync.
             </p>
           </Reveal>
 
           <RevealGroup className="grid gap-3 sm:grid-cols-2" stagger={0.05}>
             {[
-              { icon: Send, title: 'Send and inspect', body: 'Run one request and get the status, timing, headers, and formatted body right away.' },
-              { icon: ShieldCheck, title: 'Prove the behavior', body: 'Turn status, timing, headers, text, and JSON fields into clear pass or fail checks.' },
-              { icon: GitBranch, title: 'Run the whole flow', body: 'Chain login, data setup, and protected requests while carrying fresh values forward.' },
-              { icon: FileCode2, title: 'Use the body you need', body: 'JSON, forms, multipart, raw text, XML, and GraphQL are all first-class requests.' },
-              { icon: Activity, title: 'Watch traffic live', body: 'See throughput, latency, failures, rate limits, and individual activity while the run is still moving.' },
-              { icon: Repeat, title: 'Control the pressure', body: 'Tune concurrency, pacing, retries, request limits, and failure thresholds per endpoint.' },
-              { icon: GitBranch, title: 'Keep the project in Git', body: 'Review readable project files, commit changes, sync remotes, and move between branches from Beacon.' },
-              { icon: Users, title: 'Share on your network', body: 'Sync project source with nearby teammates. Everyone still runs requests and keeps secrets on their own device.' },
-              { icon: SquareTerminal, title: 'Run it from the terminal', body: 'Validate, list, and run Beacon projects headlessly with the same local engine.' },
-              { icon: Github, title: 'Bring it into CI', body: 'Generate a GitHub Actions workflow with step summaries and useful failure annotations.' },
+              { icon: Send, title: 'Send & inspect', body: 'Fire one request and read the status, timing, headers, and formatted body immediately.' },
+              { icon: ShieldCheck, title: 'Assertions', body: 'Turn status, latency, headers, body text, and JSON paths into pass/fail checks.' },
+              { icon: GitBranch, title: 'Scenarios', body: 'Chain login → setup → protected call, carrying tokens forward as each step returns them.' },
+              { icon: FileCode2, title: 'Any body type', body: 'JSON, form data, multipart uploads, raw text, XML, and GraphQL are all first class.' },
+              { icon: Activity, title: 'Live monitoring', body: 'Throughput, latency percentiles, errors, and rate limits update while the run is still going.' },
+              { icon: Repeat, title: 'Eight traffic modes', body: 'Load, ramp, spike, soak, rate probe, capacity search, fuzz, and benchmark — per endpoint.' },
+              { icon: GitBranch, title: 'Git-backed projects', body: 'Readable YAML you can diff, commit, branch, and review without leaving Beacon.' },
+              { icon: Users, title: 'LAN sharing', body: 'Teammates sync the project over your network. Secrets and responses stay on each device.' },
+              { icon: SquareTerminal, title: 'Headless CLI', body: 'Validate and run the same project from a terminal, using the identical local engine.' },
+              { icon: Github, title: 'GitHub Actions', body: 'Generate a workflow that fails the PR when an assertion breaks, with step summaries.' },
             ].map(({ icon: Icon, title, body }) => (
               <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-xl p-4">
                 <div className="flex items-center gap-3">
@@ -378,9 +383,11 @@ export default function LandingPage() {
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-4 py-1 text-xs font-semibold tracking-widest text-cyan-600 dark:text-cyan-400">
               <Wifi className="h-3.5 w-3.5" /> LOCAL-FIRST TEAMWORK
             </div>
-            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">Work on the same project, from your own machine.</h2>
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">Share the project, not your credentials.</h2>
             <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
-              Share endpoint definitions over your local network. Requests, responses, run history, and private environment values stay on each teammate's device.
+              Endpoint definitions sync to teammates over your local network — no server in
+              between. Everyone's requests, responses, run history, and private environment
+              values stay on their own device.
             </p>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {[
@@ -441,7 +448,7 @@ export default function LandingPage() {
           <div className="flex flex-col justify-between gap-5 border-b border-border pb-6 md:flex-row md:items-end">
             <div>
               <div className="text-sm font-semibold tracking-widest text-cyan-400">WORKFLOW</div>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Start simple. Add pressure when you need it.</h2>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">One request today. A thousand tomorrow.</h2>
             </div>
             <button
               onClick={download}
@@ -453,10 +460,10 @@ export default function LandingPage() {
 
           <RevealGroup className="grid gap-3 pt-6 md:grid-cols-4" stagger={0.07}>
             {[
-              ['Build the request', 'Choose the method, URL, auth, body, and variables.'],
-              ['See the response', 'Send once, inspect the result, and capture any value you need next.'],
-              ['Define success', 'Add checks for status, timing, headers, body, or JSON.'],
-              ['Run it harder', 'Repeat one endpoint or move virtual users through the full journey.'],
+              ['Build the request', 'Method, URL, auth, body, and variables — with live previews as you type.'],
+              ['Send it once', 'Inspect the response and capture any value you need for the next call.'],
+              ['Define success', 'Add checks on status, latency, headers, body text, or JSON paths.'],
+              ['Turn up the load', 'Repeat one endpoint, or send virtual users through the whole journey.'],
             ].map(([title, body], index) => (
               <RevealItem key={title} className="group relative rounded-xl border border-border/50 bg-background/60 p-4 transition-colors hover:border-cyan-500/30">
                 <div className="mb-2 font-mono text-[10px] font-bold text-cyan-500/70">0{index + 1}</div>
@@ -490,15 +497,16 @@ export default function LandingPage() {
               <Bot className="h-3.5 w-3.5 text-cyan-400" /> MCP INTEGRATION
             </div>
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
-              Let your AI use the same workspace.
+              Hand the workspace to your agent.
             </h2>
             <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
-              Beacon includes an MCP server, so an assistant can work with the projects you already have. It gets{' '}
+              Beacon ships a standard MCP server — not Claude-only — so any assistant can
+              drive the projects you already have. It exposes{' '}
               <span className="font-semibold text-foreground">
-                <CountUp value={17} durationMs={900} /> tools
+                <CountUp value={21} durationMs={900} /> tools
               </span>{' '}
-              to create, organize, import, send, inspect, assert, chain scenarios, and
-              load-test endpoints through the same local engine.
+              for creating, importing, sending, asserting, chaining, and load-testing
+              endpoints, all through the same local engine you use by hand.
             </p>
             <a
               href={DOCS_URL.replace(/\/$/, '') + '/mcp'}
@@ -534,7 +542,8 @@ claude mcp add beacon -- <path-to>/mcp_server
               Download it. Open it. Start sending.
             </h2>
             <p className="mt-3 text-base text-muted-foreground">
-              The desktop app already includes the backend and MCP server. No Python setup and no Beacon account required.
+              One installer with the engine, CLI, and MCP server already inside. No Python
+              to install, no account to create, nothing to configure first.
             </p>
           </Reveal>
 
@@ -642,7 +651,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              Run the same Beacon project from the desktop, terminal, or CI. The new CLI keeps assertions, extractors, reports, and secrets in one workflow.
+              Authorization became a real feature instead of a header string, and the run
+              engine got the test coverage its hottest paths were missing.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -651,10 +661,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Headless project runs', 'Run a full project, one folder, or selected endpoints without opening the desktop app.'],
-              ['CI-ready reports', 'Export JSON and JUnit, add GitHub summaries, and fail pull requests when requests or assertions break.'],
-              ['Secrets stay outside Git', 'Supply private values from local overlays, env files, BEACON_VAR_* variables, or explicit CLI flags.'],
-              ['CLI included with Beacon', 'Use the bundled executable on Windows, macOS, and Linux—no separate Python runtime required.'],
+              ['Auth that inherits', 'Set auth once on a project or folder and let the endpoints inside it inherit — or opt a public route out with None.'],
+              ['Basic auth, encoded properly', 'Username and password are base64-encoded at request time, so credentials can live in variables instead of the project file.'],
+              ['No more lost requests', 'Refreshing a token mid-run could silently drop requests under concurrency. Fixed, with a regression test that reproduces it.'],
+              ['A much larger test suite', 'Route coverage for the run, send, and scenario lifecycle, plus every traffic mode that previously had none.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>
@@ -672,10 +682,11 @@ claude mcp add beacon -- <path-to>/mcp_server
               <Users className="h-5 w-5" />
             </div>
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
-              Beacon gets better when people use it out loud.
+              Built in the open, by people who use it.
             </h2>
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Fix a bug, test a release, improve the docs, or just tell us what feels off. It all helps.
+              Fix a bug, try a pre-release, sharpen the docs, or just open an issue about
+              the thing that annoyed you. All of it counts.
             </p>
           </Reveal>
           <Reveal className="mt-7" delay={0.08}>
@@ -699,7 +710,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             Keep Beacon independent and open.
           </h2>
           <p className="mt-3 text-base text-muted-foreground">
-            Sponsor the work, contribute code, test a build, or help us decide what Beacon should become next.
+            No investors and no paid tier. Sponsor the work, send a patch, or help decide
+            what gets built next.
           </p>
           <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
             <a

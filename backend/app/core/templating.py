@@ -1,29 +1,44 @@
 """Recursive Beacon variable and dynamic-value resolution."""
 from __future__ import annotations
 
+import contextlib
 import random
 import re
 import string
+import threading
 import time
 import uuid
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 
 class TemplateResolver:
-    def __init__(self, variables: Mapping[str, Any]):
+    def __init__(self, variables: Mapping[str, Any], lock: Optional[Any] = None):
         self.variables = variables
+        # `variables` is the live config dict that extractors mutate from other
+        # threads. Callers that share it across a run pass the config's lock so
+        # a concurrent write cannot resize the mapping mid-iteration.
+        self._lock = lock or contextlib.nullcontext()
+
+    def _variables_snapshot(self) -> dict:
+        with self._lock:
+            return dict(self.variables)
 
     def resolve(self, value: Any) -> Any:
+        """Resolve one request's templates against a single consistent view of
+        the variables, so every field of a payload sees the same token."""
+        return self._resolve(value, self._variables_snapshot())
+
+    def _resolve(self, value: Any, variables: dict) -> Any:
         if isinstance(value, str):
-            for key, replacement in self.variables.items():
+            for key, replacement in variables.items():
                 value = value.replace(f"{{{{{key}}}}}", str(replacement))
             return re.sub(r"\{\{([^}]+)\}\}", lambda match: self.generate(match.group(1).strip()), value)
         if isinstance(value, dict):
             if value.get("__file__"):
                 return value
-            return {key: self.resolve(item) for key, item in value.items()}
+            return {key: self._resolve(item, variables) for key, item in value.items()}
         if isinstance(value, list):
-            return [self.resolve(item) for item in value]
+            return [self._resolve(item, variables) for item in value]
         return value
 
     @staticmethod

@@ -60,6 +60,7 @@ export default defineConfig({
           { text: 'Live Monitoring & Load Testing', link: '/features/monitoring' },
           { text: 'Web Page Load Testing', link: '/features/web-load-testing' },
           { text: 'Rate Limit Testing', link: '/features/rate-limit' },
+          { text: 'Authorization', link: '/features/authorization' },
           { text: 'Chained Auth (Extractors)', link: '/features/chaining' },
         ]
       },

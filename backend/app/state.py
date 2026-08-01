@@ -58,19 +58,27 @@ class Store:
         return build_jsonplaceholder_project(project_id=pid)
 
     # ---- environment / config sync ------------------------------------
-    def _flatten_items(self, items: list) -> list:
-        """Recursively collect only request nodes from a Postman-like items tree."""
+    def _flatten_items(self, items: list, project_auth=None) -> list:
+        """Recursively collect only request nodes from a Postman-like items tree.
+
+        Each request carries the auth of every folder enclosing it (outermost
+        first) under `_inherited_auth`, so an endpoint set to "inherit" can
+        resolve against its folder and then the project at request time.
+        """
         result = []
-        def walk(nodes):
+        def walk(nodes, inherited):
             for node in nodes or []:
                 if isinstance(node, dict):
                     if node.get("type") == "request":
-                        result.append(node)
+                        result.append({**node, "_inherited_auth": list(inherited)})
                     elif node.get("type") == "folder" or "items" in node:
-                        walk(node.get("items", []))
+                        walk(node.get("items", []), [*inherited, node.get("auth")])
                     elif "tests" in node:  # legacy
-                        result.extend(node.get("tests", []))
-        walk(items)
+                        result.extend(
+                            {**test, "_inherited_auth": list(inherited)}
+                            for test in node.get("tests", [])
+                        )
+        walk(items, [project_auth] if project_auth else [])
         return result
 
     def get_active_env(self, project: dict) -> dict:
@@ -111,18 +119,33 @@ class Store:
         effective_vars = {**self.global_variables, **env.get("variables", {})}
 
         # Support new items tree (Postman-style folders) + legacy flat tests
+        project_auth = active_project.get("auth")
         items = active_project.get("items")
         tests_data = []
         if items:
-            tests_data = self._flatten_items(items)
+            tests_data = self._flatten_items(items, project_auth)
         else:
-            tests_data = active_project.get("tests", [])
+            tests_data = [
+                {**test, "_inherited_auth": [project_auth] if project_auth else []}
+                for test in active_project.get("tests", [])
+            ]
 
         self.current_config = TestConfig(
             base_url=env.get("base_url", ""),
             variables=effective_vars,
-            tests=[EndpointTest.from_dict(t) for t in tests_data],
+            tests=[self._endpoint_with_auth(t) for t in tests_data],
         )
+
+    @staticmethod
+    def _endpoint_with_auth(data: dict) -> EndpointTest:
+        """Build an endpoint, keeping its enclosing auth chain off the
+        persisted contract (`_inherited_auth` is runtime-only)."""
+        inherited = data.get("_inherited_auth") or []
+        endpoint = EndpointTest.from_dict({
+            key: value for key, value in data.items() if key != "_inherited_auth"
+        })
+        endpoint.inherited_auth = [level for level in inherited if level]
+        return endpoint
 
     def save_active_project(self):
         """Write current_config back into the active project."""

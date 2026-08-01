@@ -3,6 +3,45 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.9] - 2026-08-02
+
+### Added
+
+- Structured authorization on endpoints, folders, and projects, with real
+  inheritance: an endpoint set to inherit resolves against its enclosing
+  folder and then the project, and can opt out with an explicit "None".
+- Bearer, API key, Basic, and custom auth types, each accepting
+  `{{variables}}` so credentials stay out of project files.
+- Folder-level auth round-trips through Git-backed project YAML, and the CLI
+  resolves the same inheritance chain as the desktop app.
+
+### Fixed
+
+- Basic auth is now base64-encoded at request time. It previously sent the
+  literal, unencoded string `Basic {{username:password}}`, referencing a
+  variable name that could never resolve.
+- Endpoints set to inherit auth no longer send no credential at all. The
+  editor offered the option and reported that auth came from the active
+  environment, but no inheritance was implemented anywhere in the backend.
+- Concurrent runs no longer lose requests when extractors refresh a token
+  mid-run. Adding a variable while another worker resolved its templates
+  raised a dictionary-mutation error before the request was counted, so a run
+  could report complete success while several percent of its traffic was
+  never sent.
+- Duplicating an endpoint through the desktop app or MCP now copies its
+  authorization along with the rest of the definition.
+
+### Testing
+
+- Route coverage for the `/run`, `/send`, `/scenario`, `/scenario/start`,
+  `/stop`, and `/status` lifecycle, which previously had none.
+- Behavioral coverage for the ramp, spike, soak, rate-probe, fuzz, and
+  benchmark traffic modes; capacity was the only mode under test.
+- Regression tests for the extractor race and for every auth type and
+  inheritance path.
+
+[Compare 0.4.8 → 0.4.9](https://github.com/nannndev/beacon/compare/v0.4.8...v0.4.9)
+
 ## [0.4.8] - 2026-07-30
 
 ### Added

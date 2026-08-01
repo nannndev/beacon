@@ -918,7 +918,9 @@ def duplicate_endpoint(name_or_id: str) -> dict:
         dict(test.run_config) if getattr(test, "run_config", None) else None,
         list(getattr(test, "assertions", []) or []),
         getattr(test, "target_type", "api"),
+        dict(test.auth) if getattr(test, "auth", None) else None,
     )
+    copy.inherited_auth = list(getattr(test, "inherited_auth", []))
     store.current_config.tests.append(copy)
     store.save()
     return _endpoint_summary(copy)

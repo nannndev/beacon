@@ -244,3 +244,71 @@ def test_json_mode_keeps_load_errors_machine_readable(tmp_path, capsys):
 
     assert payload["valid"] is False
     assert payload["diagnostics"][0]["code"] == "cli_error"
+
+
+def test_cli_resolves_folder_auth_for_inheriting_endpoints(tmp_path, monkeypatch):
+    """A CLI run must authenticate the same way the desktop app does: selecting
+    endpoints out of the tree loses folder context, so the chain is resolved
+    explicitly before execution."""
+    project = {
+        "id": "project-auth",
+        "name": "Auth Project",
+        "auth": {"type": "bearer", "token": "{{project_token}}"},
+        "current_environment_id": "env-1",
+        "environments": [{
+            "id": "env-1",
+            "name": "CI",
+            "base_url": "https://api.example.test",
+            "variables": {"project_token": "P", "team_token": "T"},
+        }],
+        "items": [{
+            "type": "folder",
+            "id": "folder-secure",
+            "name": "Secure",
+            "auth": {"type": "bearer", "token": "{{team_token}}"},
+            "items": [{
+                "type": "request", "id": "endpoint-inherit", "name": "Inherits",
+                "url": "/secure", "method": "GET", "auth": {"type": "inherit"},
+            }],
+        }, {
+            "type": "request", "id": "endpoint-root", "name": "Root",
+            "url": "/root", "method": "GET", "auth": {"type": "inherit"},
+        }],
+    }
+
+    sent = []
+
+    def capture(self, **kwargs):
+        sent.append(self._build_request()[1].get("Authorization"))
+        return {"ok": True, "status": 200, "time_ms": 1, "target": "t", "assertions": []}
+
+    monkeypatch.setattr("app.cli_runner.APITester.send_once", capture)
+    endpoints, _ = select_endpoints(project)
+    run_project(project, endpoints, project["environments"][0],
+                resolve_variables(project["environments"][0]), scope="project")
+
+    # The folder endpoint takes the team token; the root one falls back to the
+    # project token. Neither may go out unauthenticated.
+    assert sent == ["Bearer T", "Bearer P"]
+
+
+def test_cli_round_trips_folder_auth_through_yaml(tmp_path):
+    project = {
+        "id": "project-yaml",
+        "name": "YAML Auth",
+        "current_environment_id": "env-1",
+        "environments": [{"id": "env-1", "name": "CI", "base_url": "https://api.example.test",
+                          "variables": {}}],
+        "items": [{
+            "type": "folder", "id": "folder-1", "name": "Secure",
+            "auth": {"type": "bearer", "token": "{{team_token}}"},
+            "items": [{"type": "request", "id": "endpoint-1", "name": "Inside",
+                       "url": "/x", "method": "GET", "auth": {"type": "inherit"}}],
+        }],
+    }
+    ProjectFileSyncService().link(project, str(tmp_path / "project"))
+    reloaded, _ = load_project(tmp_path / "project")
+
+    folder = reloaded["items"][0]
+    assert folder["auth"] == {"type": "bearer", "token": "{{team_token}}"}
+    assert folder["items"][0]["auth"] == {"type": "inherit"}

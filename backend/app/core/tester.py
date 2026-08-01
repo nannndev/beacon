@@ -1,3 +1,4 @@
+import contextlib
 import requests
 import time
 import random
@@ -7,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Callable, Optional, Any
 
 from .assertions import evaluate_assertions
+from .auth import effective_auth, resolve_auth_headers
 from .extractors import ResponseExtractor
 from .metrics import RunMetrics, percentile
 from .models import EndpointTest, TestConfig
@@ -35,7 +37,7 @@ class APITester:
         self._tls = threading.local()
         self._lock = threading.Lock()
         self.metrics = RunMetrics()
-        self.templates = TemplateResolver(config.variables)
+        self.templates = TemplateResolver(config.variables, getattr(config, "variables_lock", None))
         self.transport = HttpTransport()
         self.extractor = ResponseExtractor()
 
@@ -70,8 +72,24 @@ class APITester:
     def _generate_dynamic(self, spec: str) -> str:
         return self.templates.generate(spec)
 
+    def _variables_lock(self):
+        """The config's guard, or a no-op for configs built before it existed."""
+        return getattr(self.config, "variables_lock", None) or contextlib.nullcontext()
+
     def _extract_from_response(self, resp):
-        return self.extractor.apply(self.test, resp, self.config.variables, self.log)
+        # Hold the same guard templating reads under: concurrent workers must
+        # not add a variable while another is resolving its request.
+        with self._variables_lock():
+            return self.extractor.apply(self.test, resp, self.config.variables, self.log)
+
+    def _auth_headers(self) -> Dict:
+        """Headers from the resolved auth spec: project → folder(s) → endpoint.
+
+        Encoding happens here, after templating, so Basic credentials can live
+        in environment variables instead of a pre-encoded blob.
+        """
+        chain = [*getattr(self.test, "inherited_auth", []), getattr(self.test, "auth", None)]
+        return resolve_auth_headers(effective_auth(*chain), self._substitute)
 
     def _build_request(self):
         url = self._substitute(self.test.url)
@@ -79,6 +97,9 @@ class APITester:
             url = self.config.base_url.rstrip("/") + "/" + url.lstrip("/")
 
         headers = {k: self._substitute(v) for k, v in self.test.headers.items()}
+        # A configured auth spec is authoritative over a hand-written header,
+        # so switching auth types cannot leave a stale Authorization behind.
+        headers.update(self._auth_headers())
 
         # Substitute inside payload (supports nested if present)
         raw_payload = self.test.payload or {}
@@ -131,9 +152,12 @@ class APITester:
 
             extracted: List[str] = []
             if is_success and getattr(self.test, "extractors", None):
-                before = dict(self.config.variables)
-                self._extract_from_response(resp)
-                extracted = [k for k, v in self.config.variables.items() if before.get(k) != v]
+                # Compare under one guard so a concurrent extractor cannot
+                # resize the mapping between the before/after reads.
+                with self._variables_lock():
+                    before = dict(self.config.variables)
+                    self.extractor.apply(self.test, resp, self.config.variables, self.log)
+                    extracted = [k for k, v in self.config.variables.items() if before.get(k) != v]
 
             result = {
                 "ok": True,

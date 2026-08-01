@@ -148,6 +148,29 @@ def _flatten_requests(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def auth_chains(project: dict[str, Any]) -> dict[str, list]:
+    """Map each endpoint id to the auth of everything enclosing it.
+
+    The CLI selects endpoints out of the tree, which loses the folder context an
+    endpoint set to `inherit` depends on. Resolving the chain up front keeps CLI
+    runs authenticating exactly like the desktop app.
+    """
+    chains: dict[str, list] = {}
+    project_auth = project.get("auth")
+
+    def walk(nodes: Iterable[dict[str, Any]], inherited: list) -> None:
+        for item in nodes or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "folder":
+                walk(item.get("items") or [], [*inherited, item.get("auth")])
+            elif item.get("type") == "request":
+                chains[str(item.get("id") or "")] = [level for level in inherited if level]
+
+    walk(project.get("items") or [], [project_auth] if project_auth else [])
+    return chains
+
+
 def _find_unique(nodes: Iterable[dict[str, Any]], selector: str, kind: str) -> dict[str, Any]:
     selector_lower = selector.casefold()
     matches: list[dict[str, Any]] = []
@@ -595,9 +618,11 @@ def run_project(
     executions: list[ExecutionResult] = []
     stopped_early = False
 
+    inherited_auth = auth_chains(project)
     for iteration in range(1, iterations + 1):
         for endpoint_data in endpoints:
             endpoint = EndpointTest.from_dict(endpoint_data)
+            endpoint.inherited_auth = inherited_auth.get(str(endpoint.id), [])
             tester = APITester(endpoint, config)
             response = tester.send_once(
                 retries=retries,
