@@ -18,7 +18,7 @@ tags and installers published in [GitHub Releases](https://github.com/nannndev/b
 ### Fixed
 
 - Basic auth is now base64-encoded at request time. It previously sent the
-  literal, unencoded string `Basic {{username:password}}`, referencing a
+  literal, unencoded string <code v-pre>Basic {{username:password}}</code>, referencing a
   variable name that could never resolve.
 - Endpoints set to inherit auth no longer send no credential at all. The
   editor offered the option and reported that auth came from the active
