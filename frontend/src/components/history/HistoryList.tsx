@@ -74,9 +74,9 @@ export function HistoryList({ runs, selectedId, compareIds, filters, loading, ne
                   <span>{new Date(run.started_at).toLocaleString()}</span>
                 </div>
                 <div className="mt-2 flex gap-3 text-[11px] text-muted-foreground">
-                  <span><b className="text-foreground">{run.success ?? 0}</b> success</span>
-                  <span><b className="text-foreground">{run.p95_ms ?? '—'}</b> ms p95</span>
-                  <span><b className="text-foreground">{run.average_rps ?? '—'}</b> rps</span>
+                  <span><b className="text-foreground">{formatCompact(run.success ?? 0)}</b> success</span>
+                  <span><b className="text-foreground">{formatMetric(run.p95_ms)}</b> ms p95</span>
+                  <span><b className="text-foreground">{formatMetric(run.average_rps)}</b> rps</span>
                 </div>
               </button>
               <label className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-background" title="Select for comparison">
@@ -97,4 +97,14 @@ export function HistoryList({ runs, selectedId, compareIds, filters, loading, ne
       </div>
     </section>
   )
+}
+
+function formatMetric(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  if (Math.abs(value) >= 1000) return formatCompact(value)
+  return value.toLocaleString(undefined, { maximumFractionDigits: value < 10 ? 2 : 1 })
+}
+
+function formatCompact(value: number) {
+  return value.toLocaleString(undefined, { notation: Math.abs(value) >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 })
 }

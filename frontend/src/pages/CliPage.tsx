@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Beacon CLI
         run: |
-          curl -fsSL https://github.com/nannndev/beacon/releases/download/v0.4.9/beacon-linux-x64 -o beacon
+          curl -fsSL https://github.com/nannndev/beacon/releases/download/v0.4.10/beacon-linux-x64 -o beacon
           chmod +x beacon
           sudo mv beacon /usr/local/bin/beacon
       - name: Run Beacon

@@ -256,27 +256,55 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
         ) : null}
 
         {/* Primary operational metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
-          <Metric label="Attempts" value={`${stats.attempts}`} sub={`${displayElapsed}s elapsed`} />
+        <div className="grid grid-cols-2 gap-2 mb-3 md:grid-cols-3 xl:grid-cols-6">
+          <Metric
+            label="Attempts"
+            value={`${stats.attempts}`}
+            sub={`${displayElapsed}s elapsed`}
+            sparkValues={chartPoints.map((point) => point.attempt)}
+            accent="#60a5fa"
+          />
           <Metric
             label="Success rate"
             value={`${successRate}%`}
             sub={`${stats.success} successful`}
             tone="text-emerald-600 dark:text-emerald-400"
+            sparkValues={chartPoints.map((point) => Math.max(0, 100 - point.errorRate))}
+            accent="#34d399"
+            trendDirection="higher"
           />
-          <Metric label="Current RPS" value={currentRps.toFixed(1)} tone="text-cyan-600 dark:text-cyan-400" />
-          <Metric label="Avg latency" value={`${Math.round(lat?.avg ?? 0)}ms`} />
+          <Metric
+            label="Current RPS"
+            value={currentRps.toFixed(1)}
+            tone="text-cyan-600 dark:text-cyan-400"
+            sparkValues={chartPoints.map((point) => point.rps)}
+            accent="#22d3ee"
+            trendDirection="higher"
+          />
+          <Metric
+            label="Avg latency"
+            value={`${Math.round(lat?.avg ?? 0)}ms`}
+            sparkValues={chartPoints.map((point) => point.latency)}
+            accent="#a78bfa"
+            trendDirection="lower"
+          />
           <Metric
             label="P95 latency"
             value={p95 == null ? '—' : `${Math.round(p95)}ms`}
             sub={p95 == null ? 'needs 5 samples' : 'slow tail'}
             tone={p95 == null ? undefined : 'text-amber-600 dark:text-amber-400'}
+            sparkValues={chartPoints.map((point) => point.latency)}
+            accent="#f59e0b"
+            trendDirection="lower"
           />
           <Metric
             label="Errors"
             value={`${stats.errors}`}
             sub={stats.rate_limited > 0 ? `${stats.rate_limited} rate limited` : 'none rate limited'}
             tone={stats.errors > 0 ? 'text-red-600 dark:text-red-400' : undefined}
+            sparkValues={chartPoints.map((point) => point.errorCount)}
+            accent="#ef5b4f"
+            trendDirection="lower"
           />
         </div>
 
@@ -480,21 +508,76 @@ function ResponseStatusBadge({ response: r }: { response: RunResponse }) {
   return <Badge className="h-4 px-1 text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400">{r.status}</Badge>
 }
 
-function Metric({ label, value, tone, sub }: {
+function Metric({ label, value, tone, sub, sparkValues = [], accent = '#60a5fa', trendDirection }: {
   label: string
   value: string
   tone?: string
   sub?: string
+  sparkValues?: number[]
+  accent?: string
+  trendDirection?: 'higher' | 'lower'
 }) {
+  const trend = metricTrend(sparkValues)
+  const trendGood = trendDirection == null || trend.change === 0
+    ? null
+    : trendDirection === 'higher' ? trend.change > 0 : trend.change < 0
+
   return (
-    <div className="rounded-md border border-border bg-muted/50 px-2.5 py-2 transition-colors min-w-0">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`font-mono font-semibold text-base truncate ${tone || ''}`}>
-        {value}
+    <div className="group relative min-w-0 overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/25 px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.035)] transition-colors hover:border-border">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:radial-gradient(circle_at_center,currentColor_0.7px,transparent_0.8px)] [background-size:7px_7px]" />
+      <div className="relative flex items-center justify-between gap-2">
+        <div className="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+        {trend.hasSignal && (
+          <span className={`font-mono text-[9px] ${trendGood === true ? 'text-emerald-500' : trendGood === false ? 'text-red-500' : 'text-muted-foreground'}`}>
+            {trend.change > 0 ? '↗' : trend.change < 0 ? '↘' : '→'} {Math.abs(trend.change).toFixed(0)}%
+          </span>
+        )}
       </div>
-      {sub && <div className="text-[9px] text-muted-foreground truncate mt-0.5">{sub}</div>}
+      <div className="relative mt-1 flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          <div className={`truncate font-mono text-lg font-semibold tracking-tight ${tone || ''}`}>
+            {value}
+          </div>
+          <div className="mt-0.5 truncate text-[9px] text-muted-foreground">{sub || (sparkValues.length > 1 ? 'live run trend' : 'waiting for samples')}</div>
+        </div>
+        <Sparkline values={sparkValues} color={accent} />
+      </div>
     </div>
   )
+}
+
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  const recent = values.filter(Number.isFinite).slice(-32)
+  if (recent.length < 2) return <div className="h-8 w-16 shrink-0 rounded bg-muted/20" aria-hidden="true" />
+
+  const min = Math.min(...recent)
+  const max = Math.max(...recent)
+  const span = Math.max(1, max - min)
+  const coordinates = recent.map((value, index) => {
+    const x = (index / (recent.length - 1)) * 64
+    const y = 29 - ((value - min) / span) * 24
+    return { x, y }
+  })
+  const points = coordinates.map(({ x, y }) => `${x},${y}`).join(' ')
+  const latest = coordinates.at(-1)!
+
+  return (
+    <svg viewBox="0 0 64 32" className="h-8 w-16 shrink-0 overflow-visible" role="img" aria-label="Recent metric trend">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={latest.x} cy={latest.y} r="2" fill={color} />
+    </svg>
+  )
+}
+
+function metricTrend(values: number[]) {
+  const samples = values.filter(Number.isFinite).slice(-20)
+  if (samples.length < 6) return { change: 0, hasSignal: false }
+  const midpoint = Math.floor(samples.length / 2)
+  const before = samples.slice(0, midpoint).reduce((sum, value) => sum + value, 0) / midpoint
+  const afterSamples = samples.slice(midpoint)
+  const after = afterSamples.reduce((sum, value) => sum + value, 0) / afterSamples.length
+  if (Math.abs(before) < 0.001) return { change: after > 0 ? 100 : 0, hasSignal: after > 0 }
+  return { change: ((after - before) / Math.abs(before)) * 100, hasSignal: true }
 }
 
 function codeColor(code: string): string {

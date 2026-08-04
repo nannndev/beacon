@@ -48,9 +48,9 @@ import requestBuilderShot from '../assets/features/request-builder-v047.png'
 import responseAssertionsShot from '../assets/features/response-assertions-v047.png'
 import scenarioConfigShot from '../assets/features/scenario-config-v047.png'
 import scenarioResultsShot from '../assets/features/scenario-live-v047.png'
-import liveMonitorShot from '../assets/features/live-monitor-v047.png'
+import liveMonitorShot from '../assets/features/live-monitor-v0410.png'
 import environmentsShot from '../assets/features/environments-v047.png'
-import runHistoryShot from '../assets/features/run-history-v047.png'
+import runHistoryShot from '../assets/features/run-history-v0410.png'
 import gitProjectShot from '../assets/features/git-project-sync-v047.png'
 import mcpToolsShot from '../assets/features/mcp-tools-v047.png'
 import cliShot from '../assets/features/cli-v047.png'
@@ -62,7 +62,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.4.9'
+const RELEASE_VERSION = '0.4.10'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -651,8 +651,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              Authorization became a real feature instead of a header string, and the run
-              engine got the test coverage its hottest paths were missing.
+              Live monitoring and saved run history now expose the shape of a test at a
+              glance, with accurate shared-scale comparisons and richer telemetry.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -661,10 +661,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Auth that inherits', 'Set auth once on a project or folder and let the endpoints inside it inherit — or opt a public route out with None.'],
-              ['Basic auth, encoded properly', 'Username and password are base64-encoded at request time, so credentials can live in variables instead of the project file.'],
-              ['No more lost requests', 'Refreshing a token mid-run could silently drop requests under concurrency. Fixed, with a regression test that reproduces it.'],
-              ['A much larger test suite', 'Route coverage for the run, send, and scenario lifecycle, plus every traffic mode that previously had none.'],
+              ['Live KPI sparklines', 'Attempts, success rate, RPS, latency, P95, and errors now show their recent direction while a run is active.'],
+              ['Interactive history charts', 'Hover any saved-run chart for exact values, expand it for inspection, and compare runs on one honest shared scale.'],
+              ['Outcome and latency shape', 'Saved runs now include a response outcome donut, status-code mix, and latency distribution histogram.'],
+              ['Cleaner operational numbers', 'Large counts use compact formatting and floating-point noise no longer overwhelms the run list.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>
@@ -799,9 +799,9 @@ function FeatureGallery() {
     {
       label: 'Live monitor',
       title: 'Watch the run, not a spinner.',
-      body: 'Track throughput, latency, errors, outcomes, and individual responses while the test is still moving.',
+      body: 'Track KPI sparklines, throughput, latency, errors, outcomes, and individual responses while the test is still moving.',
       src: liveMonitorShot,
-      alt: 'Beacon Live Monitor showing request rate, response time, error rate, and live responses',
+      alt: 'Beacon Live Monitor showing KPI sparklines, request rate, response time, error rate, and live responses',
     },
     {
       label: 'Environments',
@@ -813,9 +813,9 @@ function FeatureGallery() {
     {
       label: 'Run history',
       title: 'Come back to every useful result.',
-      body: 'Review previous runs, their status, duration, request count, success rate, and the endpoint that was tested.',
+      body: 'Review interactive trends, response outcomes, latency distribution, and previous runs on one observability dashboard.',
       src: runHistoryShot,
-      alt: 'Beacon run history showing previous load tests and their results',
+      alt: 'Beacon run history dashboard showing KPI trends, charts, response outcomes, and latency distribution',
     },
     {
       label: 'Git & local sharing',

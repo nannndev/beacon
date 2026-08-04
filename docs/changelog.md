@@ -3,6 +3,33 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.4.10] - 2026-08-04
+
+### Added
+
+- Live KPI sparklines for attempts, success rate, throughput, average latency,
+  P95 latency, and errors, including semantic run-window trend indicators.
+- Interactive saved-run charts with crosshairs, exact multi-series tooltips,
+  elapsed-time labels, expandable inspection, and shared scales for honest
+  baseline-to-candidate comparisons.
+- Response outcome visualization with success, rate-limit, error, and retained
+  status-code breakdowns.
+- A latency distribution histogram for retained history samples.
+
+### Improved
+
+- Run History now uses telemetry cards and compact operational number formats
+  instead of exposing raw floating-point values in the run list.
+- Live Monitor and Run History screenshots on the landing page now show the
+  current observability dashboards using real local test data.
+
+### Fixed
+
+- History comparison lines no longer normalize each run independently. Both
+  runs now share the same Y-axis, preventing visually misleading comparisons.
+
+[Compare 0.4.9 → 0.4.10](https://github.com/nannndev/beacon/compare/v0.4.9...v0.4.10)
+
 ## [0.4.9] - 2026-08-02
 
 ### Added
