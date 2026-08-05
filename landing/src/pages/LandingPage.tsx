@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Coffee,
   Download,
+  FileDown,
   FileCode2,
   FolderKanban,
   Github,
@@ -21,10 +22,12 @@ import {
   PanelsTopLeft,
   Repeat,
   Send,
+  ServerCog,
   ShieldCheck,
   SquareTerminal,
   Users,
   UserCheck,
+  Webhook,
   Wifi,
   X,
 } from 'lucide-react'
@@ -62,7 +65,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.4.10'
+const RELEASE_VERSION = '0.5.0'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -361,6 +364,10 @@ export default function LandingPage() {
               { icon: Users, title: 'LAN sharing', body: 'Teammates sync the project over your network. Secrets and responses stay on each device.' },
               { icon: SquareTerminal, title: 'Headless CLI', body: 'Validate and run the same project from a terminal, using the identical local engine.' },
               { icon: Github, title: 'GitHub Actions', body: 'Generate a workflow that fails the PR when an assertion breaks, with step summaries.' },
+              { icon: ServerCog, title: 'API mocking', body: 'Stand up local catch-all mock routes with configurable status, headers, bodies, and dynamic variables.' },
+              { icon: FileCode2, title: 'Code snippets', body: 'Turn any request into cURL, JavaScript, Python, Go, or raw HTTP without rebuilding it by hand.' },
+              { icon: Webhook, title: 'Run alerts', body: 'Send color-coded test results to Slack or Discord as soon as a run finishes.' },
+              { icon: FileDown, title: 'Portable reports', body: 'Export a self-contained HTML performance report, then print it directly to PDF.' },
             ].map(({ icon: Icon, title, body }) => (
               <RevealItem key={title} as="article" className="liquid-glass liquid-glass-interactive group rounded-xl p-4">
                 <div className="flex items-center gap-3">
@@ -651,8 +658,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              Live monitoring and saved run history now expose the shape of a test at a
-              glance, with accurate shared-scale comparisons and richer telemetry.
+              Mock APIs locally, move requests in and out faster, notify the team when a
+              run finishes, and hand stakeholders a report they can open anywhere.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -661,10 +668,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Live KPI sparklines', 'Attempts, success rate, RPS, latency, P95, and errors now show their recent direction while a run is active.'],
-              ['Interactive history charts', 'Hover any saved-run chart for exact values, expand it for inspection, and compare runs on one honest shared scale.'],
-              ['Outcome and latency shape', 'Saved runs now include a response outcome donut, status-code mix, and latency distribution histogram.'],
-              ['Cleaner operational numbers', 'Large counts use compact formatting and floating-point noise no longer overwhelms the run list.'],
+              ['Mock without another server', 'Create catch-all local API routes with custom status, headers, bodies, and fresh dynamic template values.'],
+              ['Copy requests both ways', 'Paste cURL from browser DevTools, or generate cURL, Fetch, Python, Go, and raw HTTP from any endpoint.'],
+              ['Alert the team automatically', 'Send color-coded completion summaries to Slack or Discord through project-level webhooks.'],
+              ['Share an executive report', 'Export an offline HTML report with latency percentiles, outcome charts, and a print-ready PDF layout.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>
