@@ -106,6 +106,14 @@ def _assertions(method: str, json_path: str = "body.id") -> list[dict]:
     return rules
 
 
+def _mock_body(name: str, method: str, list_result: bool) -> str:
+    if list_result:
+        return '[\n  {\n    "id": 1,\n    "title": "Mocked sample item",\n    "uuid": "{{uuid}}"\n  }\n]'
+    if method == "POST":
+        return '{\n  "id": "{{random_int:100:999}}",\n  "status": "created",\n  "createdAt": "{{timestamp}}"\n}'
+    return '{\n  "id": 1,\n  "title": "Mocked ' + name + ' response",\n  "user": "{{random_email}}"\n}'
+
+
 def _request(path: str, name: str, url: str, method: str = "GET", payload=None, list_result=False) -> dict:
     method = method.upper()
     return {
@@ -121,6 +129,12 @@ def _request(path: str, name: str, url: str, method: str = "GET", payload=None, 
         "extractors": {},
         "run_config": dict(SAFE_RUN_CONFIG),
         "assertions": _assertions(method, "body.0.id" if list_result else "body.id"),
+        "mock_response": {
+            "enabled": True,
+            "status": 201 if method == "POST" else 200,
+            "headers": {"Content-Type": "application/json", "X-Mocked-By": "Beacon"},
+            "body": _mock_body(name, method, list_result),
+        },
     }
 
 

@@ -19,6 +19,13 @@ export interface EndpointAuth {
   password?: string
 }
 
+export interface MockResponse {
+  enabled: boolean
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
 export interface Endpoint {
   id: string
   name: string
@@ -43,6 +50,7 @@ export interface Endpoint {
     name?: string
     path?: string
   }>
+  mock_response?: MockResponse | null
 }
 
 export interface TestConfig {
@@ -73,6 +81,7 @@ export type NotifyMode = 'off' | 'on_failure' | 'always'
 
 export interface ProjectNotifications {
   discord_webhook?: string
+  slack_webhook?: string
   mode?: NotifyMode
 }
 

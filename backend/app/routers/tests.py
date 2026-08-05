@@ -67,6 +67,7 @@ def duplicate_test(test_id: str):
         list(orig.assertions),
         orig.target_type,
         dict(orig.auth) if orig.auth else None,
+        dict(orig.mock_response) if getattr(orig, "mock_response", None) else None,
     )
     new_test.inherited_auth = list(getattr(orig, "inherited_auth", []))
     store.current_config.tests.append(new_test)

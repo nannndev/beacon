@@ -10,7 +10,7 @@ interface Props {
   onPin: () => void
   onLabel: () => void
   onExport: () => void
-  onReport: (format?: 'html' | 'md') => void
+  onReport: (format?: 'html' | 'md' | 'pdf') => void
   onDelete: () => void
   exporting?: 'run' | 'report' | null
 }
@@ -52,8 +52,9 @@ export function HistoryDetail({ detail, onPin, onLabel, onExport, onReport, onDe
         <div className="flex flex-wrap gap-2">
           <button onClick={onPin} className="history-action">{detail.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}{detail.is_pinned ? 'Unpin' : 'Pin'}</button>
           <button onClick={onLabel} className="history-action"><Tag className="h-3.5 w-3.5" /> Label</button>
-          <button disabled={exporting != null} onClick={onExport} className="history-action disabled:cursor-wait disabled:opacity-60">{exporting === 'run' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} {exporting === 'run' ? 'Preparing…' : 'Export'}</button>
-          <button disabled={exporting != null} onClick={() => onReport('html')} className="history-action disabled:cursor-wait disabled:opacity-60" title="Download a shareable HTML report">{exporting === 'report' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} {exporting === 'report' ? 'Preparing…' : 'Report'}</button>
+          <button disabled={exporting != null} onClick={onExport} className="history-action disabled:cursor-wait disabled:opacity-60">{exporting === 'run' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} {exporting === 'run' ? 'Preparing…' : 'Export JSON'}</button>
+          <button disabled={exporting != null} onClick={() => onReport('html')} className="history-action disabled:cursor-wait disabled:opacity-60" title="Download a shareable executive HTML report">{exporting === 'report' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} HTML Report</button>
+          <button disabled={exporting != null} onClick={() => onReport('pdf')} className="history-action disabled:cursor-wait disabled:opacity-60" title="Print or save report as PDF">{exporting === 'report' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 text-cyan-500" />} PDF / Print</button>
           <button onClick={onDelete} className="history-action text-red-500"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
         </div>
       </div>

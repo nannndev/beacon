@@ -11,7 +11,7 @@ class EndpointTest:
                  headers: Optional[Dict] = None, payload: Any = None, payload_type: str = "json",
                  extractors: Optional[Dict] = None, run_config: Optional[Dict] = None,
                  assertions: Optional[List] = None, target_type: str = "api",
-                 auth: Optional[Dict] = None):
+                 auth: Optional[Dict] = None, mock_response: Optional[Dict] = None):
         self.id = test_id or str(uuid.uuid4())
         self.name = name
         self.url = url
@@ -27,6 +27,7 @@ class EndpointTest:
         # Structured auth spec. None means "not configured" — those endpoints
         # carry any Authorization in `headers`, exactly as before this existed.
         self.auth = auth or None
+        self.mock_response = mock_response or None
         # Auth inherited from the enclosing folders/project, outermost first.
         # Populated when the endpoint is flattened out of the project tree.
         self.inherited_auth: List[Dict] = []
@@ -42,6 +43,8 @@ class EndpointTest:
         # existing projects and their YAML files round-trip byte-identically.
         if self.auth:
             data["auth"] = self.auth
+        if self.mock_response:
+            data["mock_response"] = self.mock_response
         return data
 
     @staticmethod
@@ -50,7 +53,7 @@ class EndpointTest:
             data.get("id"), data["name"], data["url"], data.get("method", "POST"),
             data.get("headers", {}), data.get("payload", {}), data.get("payload_type", "json"),
             data.get("extractors", {}), data.get("run_config"), data.get("assertions", []),
-            data.get("target_type", "api"), data.get("auth"),
+            data.get("target_type", "api"), data.get("auth"), data.get("mock_response"),
         )
 
 

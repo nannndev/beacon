@@ -90,20 +90,33 @@ export function HistoryPage({ projectId, onBack, initialRunId, client = api }: P
       setExporting(null)
     }
   }
-  const exportReport = async (format: 'html' | 'md' = 'html') => {
+  const exportReport = async (format: 'html' | 'md' | 'pdf' = 'html') => {
     if (!detail) return
     setExporting('report')
-    const filename = `beacon-report-${detail.id}.${format}`
+    const reqFormat = format === 'pdf' ? 'html' : format
+    const filename = `beacon-report-${detail.id}.${format === 'pdf' ? 'html' : format}`
     try {
-      const text = await client.reportHistory(detail.id, format)
-      const type = format === 'md' ? 'text/markdown' : 'text/html'
-      const url = URL.createObjectURL(new Blob([text], { type }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      link.click()
-      URL.revokeObjectURL(url)
-      toast.success(`Downloaded ${filename}`)
+      const text = await client.reportHistory(detail.id, reqFormat)
+      if (format === 'pdf') {
+        const win = window.open('', '_blank')
+        if (win) {
+          win.document.write(text)
+          win.document.close()
+          setTimeout(() => win.print(), 400)
+          toast.success('Print / PDF window opened')
+        } else {
+          toast.error('Popup blocked by browser')
+        }
+      } else {
+        const type = format === 'md' ? 'text/markdown' : 'text/html'
+        const url = URL.createObjectURL(new Blob([text], { type }))
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+        toast.success(`Downloaded ${filename}`)
+      }
     } catch (error: any) {
       toast.error(error?.message || 'Could not download this report')
     } finally {

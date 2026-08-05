@@ -26,15 +26,17 @@ const MODES: { value: NotifyMode; label: string; hint: string; icon: typeof Bell
   { value: 'always', label: 'Always', hint: 'Every finished run', icon: CheckCircle2 },
 ]
 
-// Loosely matches https://discord.com/api/webhooks/<id>/<token> so we can
-// disable the test button before a paste is even plausibly complete.
-const WEBHOOK_RE = /^https:\/\/([\w-]+\.)?discord(app)?\.com\/api\/webhooks\/\d+\/[\w-]+/i
+// Loosely matches webhook URLs so we can disable the test button.
+const DISCORD_WEBHOOK_RE = /^https:\/\/([\w-]+\.)?discord(app)?\.com\/api\/webhooks\/\d+\/[\w-]+/i
+const SLACK_WEBHOOK_RE = /^https:\/\/hooks\.slack\.com\/services\/[\w-]+\/[\w-]+\/[\w-]+/i
 
 export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingStatusLoading = false, onSharingStatusChange, onSave, onDelete, onProjectListChange }: Props) {
   const [name, setName] = useState('')
-  const [webhook, setWebhook] = useState('')
+  const [discordWebhook, setDiscordWebhook] = useState('')
+  const [slackWebhook, setSlackWebhook] = useState('')
   const [mode, setMode] = useState<NotifyMode>('off')
-  const [testing, setTesting] = useState(false)
+  const [testingDiscord, setTestingDiscord] = useState(false)
+  const [testingSlack, setTestingSlack] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sharingBusy, setSharingBusy] = useState(false)
   const [sharingError, setSharingError] = useState('')
@@ -63,7 +65,8 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
 
   useEffect(() => {
     setName(project?.name || '')
-    setWebhook(project?.notifications?.discord_webhook || '')
+    setDiscordWebhook(project?.notifications?.discord_webhook || '')
+    setSlackWebhook(project?.notifications?.slack_webhook || '')
     setMode(project?.notifications?.mode || 'off')
     setGitDiff(null)
     setGitDiffOpen(false)
@@ -120,22 +123,37 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
     return () => { cancelled = true }
   }, [project?.id, sharingStatus?.sharing_enabled, sharingStatus?.revision, sharingStatus?.member])
 
-  const webhookValid = WEBHOOK_RE.test(webhook.trim())
+  const discordWebhookValid = DISCORD_WEBHOOK_RE.test(discordWebhook.trim())
+  const slackWebhookValid = SLACK_WEBHOOK_RE.test(slackWebhook.trim())
   const sshGithubPath = gitRemote.match(/^git@github\.com:(.+)$/)?.[1]
   const suggestedHttpsRemote = sshGithubPath ? `https://github.com/${sshGithubPath}` : null
   const selectedGitDiff = gitDiff?.files.find((file) => file.path === gitDiffPath) || null
 
-  const handleTest = async () => {
-    if (!project?.id || !webhookValid) return
-    setTesting(true)
+  const handleTestDiscord = async () => {
+    if (!project?.id || !discordWebhookValid) return
+    setTestingDiscord(true)
     try {
-      const r = await api.testNotification(project.id, webhook.trim())
+      const r = await api.testNotification(project.id, discordWebhook.trim())
       if (r.ok) toast.success('Test message sent — check your Discord channel')
       else toast.error(r.error || 'Could not reach that webhook')
     } catch (e: any) {
       toast.error(e?.message || 'Test failed')
     } finally {
-      setTesting(false)
+      setTestingDiscord(false)
+    }
+  }
+
+  const handleTestSlack = async () => {
+    if (!project?.id || !slackWebhookValid) return
+    setTestingSlack(true)
+    try {
+      const r = await api.testNotification(project.id, slackWebhook.trim())
+      if (r.ok) toast.success('Test message sent — check your Slack channel')
+      else toast.error(r.error || 'Could not reach that webhook')
+    } catch (e: any) {
+      toast.error(e?.message || 'Test failed')
+    } finally {
+      setTestingSlack(false)
     }
   }
 
@@ -143,7 +161,11 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
     if (!name.trim()) return
     setSaving(true)
     try {
-      await onSave(name.trim(), { discord_webhook: webhook.trim(), mode })
+      await onSave(name.trim(), { 
+        discord_webhook: discordWebhook.trim(), 
+        slack_webhook: slackWebhook.trim(), 
+        mode 
+      })
     } finally {
       setSaving(false)
     }
@@ -1147,9 +1169,9 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
         <aside className="contents">
           <section className="order-2 space-y-3 rounded-xl border border-border bg-card/30 p-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">Discord notifications</span>
+              <span className="text-sm font-semibold">Run notifications</span>
             </div>
-            <p className="text-[11px] text-muted-foreground">Post finished run results to a channel.</p>
+            <p className="text-[11px] text-muted-foreground">Post finished run results to Discord or Slack channels.</p>
 
             {/* Segmented mode selector */}
             <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">
@@ -1177,32 +1199,66 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
             </div>
 
             {mode !== 'off' && (
-              <div className="space-y-1.5">
-                <div className="flex gap-1.5">
-                  <Input
-                    value={webhook}
-                    onChange={(e) => setWebhook(e.target.value)}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    spellCheck={false}
-                    className="h-8 text-xs font-mono"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 shrink-0 gap-1.5 px-2.5"
-                    disabled={!webhookValid || testing}
-                    onClick={handleTest}
-                  >
-                    {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                    Test
-                  </Button>
+              <div className="space-y-4 pt-1">
+                {/* Discord webhook input */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Discord Webhook</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={discordWebhook}
+                      onChange={(e) => setDiscordWebhook(e.target.value)}
+                      placeholder="https://discord.com/api/webhooks/..."
+                      spellCheck={false}
+                      className="h-8 text-xs font-mono"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1.5 px-2.5"
+                      disabled={!discordWebhookValid || testingDiscord}
+                      onClick={handleTestDiscord}
+                    >
+                      {testingDiscord ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      Test
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Discord → Server Settings → Integrations → Webhooks → copy URL.
+                    {discordWebhook.trim() && !discordWebhookValid && (
+                      <span className="text-amber-500"> That doesn’t look like a Discord webhook URL.</span>
+                    )}
+                  </p>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Discord → Server Settings → Integrations → Webhooks → copy URL.
-                  {webhook.trim() && !webhookValid && (
-                    <span className="text-amber-500"> That doesn’t look like a webhook URL.</span>
-                  )}
-                </p>
+
+                {/* Slack webhook input */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Slack Webhook</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={slackWebhook}
+                      onChange={(e) => setSlackWebhook(e.target.value)}
+                      placeholder="https://hooks.slack.com/services/..."
+                      spellCheck={false}
+                      className="h-8 text-xs font-mono"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1.5 px-2.5"
+                      disabled={!slackWebhookValid || testingSlack}
+                      onClick={handleTestSlack}
+                    >
+                      {testingSlack ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      Test
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Slack → Server Settings → Integrations → Webhooks → copy URL.
+                    {slackWebhook.trim() && !slackWebhookValid && (
+                      <span className="text-amber-500"> That doesn’t look like a Slack webhook URL.</span>
+                    )}
+                  </p>
+                </div>
               </div>
             )}
           </section>

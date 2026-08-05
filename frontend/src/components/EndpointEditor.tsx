@@ -24,8 +24,10 @@ import { PayloadEditor } from './PayloadEditor'
 import { toast } from './ui/toast'
 import { TestConfig, Endpoint } from '../types'
 import { api, type SendResponse } from '../lib/api'
-import { toCurl } from '../lib/curl'
-import { Terminal } from 'lucide-react'
+import { CodeSnippetDialog } from './dialogs/CodeSnippetDialog'
+import { CurlImportDialog } from './dialogs/CurlImportDialog'
+import type { ParsedCurl } from '../lib/curlParser'
+import { Terminal, ClipboardPaste } from 'lucide-react'
 import ResponseInspector from './ResponseInspector'
 import { AssertionsEditor } from './AssertionsEditor'
 import { QueryParamsEditor } from './QueryParamsEditor'
@@ -34,6 +36,7 @@ import { parseQueryParams } from '../lib/queryParams'
 interface Props {
   testId: string | null
   config: TestConfig
+  projectId?: string
   currentProjectName?: string
   currentEnvName?: string
   onCaptureVariable?: (name: string, value: unknown) => Promise<void>
@@ -115,9 +118,32 @@ function getDefaultForm() {
   }
 }
 
-export default function EndpointEditor({ testId, config, currentProjectName, currentEnvName, onCaptureVariable, onClose, onSave }: Props) {
+export default function EndpointEditor({ testId, config, projectId, currentProjectName, currentEnvName, onCaptureVariable, onClose, onSave }: Props) {
   const [form, setForm] = useState<any>(getDefaultForm())
   const [authType, setAuthType] = useState<AuthType>('inherit')
+  const [isSnippetDialogOpen, setIsSnippetDialogOpen] = useState(false)
+  const [isCurlImportOpen, setIsCurlImportOpen] = useState(false)
+  const [backendBaseUrl, setBackendBaseUrl] = useState('')
+
+  const handleCurlImport = (parsed: ParsedCurl) => {
+    setForm((prev: any) => ({
+      ...prev,
+      url: parsed.url || prev.url,
+      method: parsed.method || prev.method,
+      headers: { ...prev.headers, ...parsed.headers },
+      payload: parsed.payload !== undefined ? parsed.payload : prev.payload,
+      payload_type: parsed.payload_type || prev.payload_type,
+    }))
+    toast.success('Imported cURL parameters successfully!')
+  }
+
+  useEffect(() => {
+    api.getBaseUrl().then((url) => {
+      setBackendBaseUrl(url || window.location.origin)
+    }).catch(() => {
+      setBackendBaseUrl(window.location.origin)
+    })
+  }, [])
   const [authVar, setAuthVar] = useState('access_token')
   const [basicUser, setBasicUser] = useState('')
   const [basicPassword, setBasicPassword] = useState('')
@@ -402,10 +428,19 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
               variant="ghost"
               size="sm"
               className="gap-1.5"
-              onClick={() => navigator.clipboard?.writeText(toCurl(form, absoluteUrl)).then(() => toast.success('Copied as cURL')).catch(() => toast.error('Copy failed'))}
-              title="Copy this request as a curl command"
+              onClick={() => setIsSnippetDialogOpen(true)}
+              title="Generate code snippets for this request"
             >
-              <Terminal className="h-3.5 w-3.5" /> cURL
+              <Terminal className="h-3.5 w-3.5 text-cyan-500" /> Code
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setIsCurlImportOpen(true)}
+              title="Import endpoint parameters from a cURL command"
+            >
+              <ClipboardPaste className="h-3.5 w-3.5 text-cyan-500" /> Import cURL
             </Button>
             <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
             {testId && (
@@ -722,6 +757,79 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
             <AssertionsEditor value={form.assertions || []} onChange={(a) => handleChange('assertions', a)} />
           </Panel>
 
+          <Panel title="API Mocking" icon={<Shuffle className="h-4 w-4" />}>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="mock_enabled"
+                  checked={form.mock_response?.enabled || false}
+                  onChange={(e) => {
+                    const mock = form.mock_response || { status: 200, headers: { 'Content-Type': 'application/json' }, body: '' }
+                    handleChange('mock_response', { ...mock, enabled: e.target.checked })
+                  }}
+                  className="h-4 w-4 rounded border-border text-cyan-600 focus:ring-cyan-500 bg-background"
+                />
+                <label htmlFor="mock_enabled" className="text-xs font-bold select-none cursor-pointer">
+                  Enable Mock Response for this endpoint
+                </label>
+              </div>
+
+              {form.mock_response?.enabled && (
+                <div className="space-y-4 border-t border-border pt-3">
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-1">
+                      <Label className="text-[10px] font-bold uppercase text-muted-foreground">Status Code</Label>
+                      <Input
+                        type="number"
+                        value={form.mock_response?.status ?? 200}
+                        onChange={(e) => {
+                          const mock = form.mock_response || { enabled: true, headers: {}, body: '' }
+                          handleChange('mock_response', { ...mock, status: Number(e.target.value) || 200 })
+                        }}
+                        className="h-8 text-xs font-mono mt-1"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-[10px] font-bold uppercase text-muted-foreground">Mock Server Endpoint URL</Label>
+                      <div className="h-8 mt-1 flex items-center px-3 border border-border rounded-md bg-muted/30 font-mono text-[11px] text-muted-foreground truncate select-all" title="Call this URL to receive the mocked response">
+                        {`${backendBaseUrl}/mock/projects/${projectId || 'project_id'}/${(form.url || '').replace(/^\//, '')}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Response Headers</Label>
+                    <div className="mt-1.5 rounded-lg border border-border bg-card/20 p-2">
+                      <KVEditor
+                        data={form.mock_response?.headers || {}}
+                        onChange={(headers) => {
+                          const mock = form.mock_response || { enabled: true, status: 200, body: '' }
+                          handleChange('mock_response', { ...mock, headers })
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Response Body</Label>
+                    <textarea
+                      value={form.mock_response?.body || ''}
+                      onChange={(e) => {
+                        const mock = form.mock_response || { enabled: true, status: 200, headers: {} }
+                        handleChange('mock_response', { ...mock, body: e.target.value })
+                      }}
+                      placeholder='{\n  "message": "Mocked API Response",\n  "id": "{{uuid}}"\n}'
+                      rows={5}
+                      spellCheck={false}
+                      className="w-full font-mono text-xs p-3 mt-1.5 border border-border rounded-lg bg-[#07090d] text-slate-100 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </Panel>
+
           {(sending || response) && (
             <ResponseInspector
               response={response}
@@ -733,6 +841,17 @@ export default function EndpointEditor({ testId, config, currentProjectName, cur
           )}
         </main>
       </div>
+      <CodeSnippetDialog
+        open={isSnippetDialogOpen}
+        onOpenChange={setIsSnippetDialogOpen}
+        form={form}
+        absoluteUrl={absoluteUrl}
+      />
+      <CurlImportDialog
+        open={isCurlImportOpen}
+        onOpenChange={setIsCurlImportOpen}
+        onImport={handleCurlImport}
+      />
     </div>
   )
 }

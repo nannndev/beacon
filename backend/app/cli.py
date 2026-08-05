@@ -27,7 +27,7 @@ from .cli_runner import (
 )
 
 
-VERSION = os.getenv("BEACON_APP_VERSION", "0.4.10")
+VERSION = os.getenv("BEACON_APP_VERSION", "0.5.0")
 
 
 class Console:

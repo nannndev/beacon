@@ -922,6 +922,7 @@ function App() {
             <EndpointEditor
               testId={editingId}
               config={config}
+              projectId={currentProject?.id}
               currentProjectName={currentProject?.name}
               currentEnvName={currentEnv?.name}
               onCaptureVariable={captureEnvironmentVariable}

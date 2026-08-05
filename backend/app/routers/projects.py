@@ -7,7 +7,6 @@ from fastapi import APIRouter, Body, HTTPException
 from ..state import store
 from ..core.tester import EndpointTest
 from ..catalogs import JSONPLACEHOLDER_TEMPLATE_ID, build_jsonplaceholder_project
-from ..services.notify_discord import send_test_message
 from ..services.project_importer import ProjectImportError, materialize_items, normalize_project
 from ..services.project_file_sync import ProjectFileSyncError
 from ..services.project_git import ProjectGitError
@@ -152,6 +151,7 @@ def update_project(project_id: str, data: dict):
         n = data["notifications"]
         proj["notifications"] = {
             "discord_webhook": str(n.get("discord_webhook", "") or "").strip(),
+            "slack_webhook": str(n.get("slack_webhook", "") or "").strip(),
             "mode": n.get("mode") if n.get("mode") in ("off", "on_failure", "always") else "off",
         }
     # Sync FIRST so current_config reflects the new env data, THEN persist —
@@ -438,14 +438,24 @@ def project_git_diff(project_id: str, scope: str = "working", path: str | None =
 
 @router.post("/projects/{project_id}/notifications/test")
 def test_notification(project_id: str, data: dict):
-    """Send a one-off 'Beacon connected' message to a Discord webhook so the
+    """Send a one-off 'Beacon connected' message to a Discord or Slack webhook so the
     user can confirm the URL works before saving. Always returns 200 with an
     {ok, error} body — the UI shows the message rather than treating it as a
     request failure. Tests the URL from the body so it works before saving."""
     if not any(p.get("id") == project_id for p in store.projects):
         raise HTTPException(status_code=404, detail="Project not found")
     webhook = (data or {}).get("webhook_url", "")
-    ok, error = send_test_message(webhook)
+    
+    from ..services.notify_discord import is_valid_webhook as is_discord, send_test_message as test_discord
+    from ..services.notify_slack import is_valid_webhook as is_slack, send_test_message as test_slack
+    
+    if is_discord(webhook):
+        ok, error = test_discord(webhook)
+    elif is_slack(webhook):
+        ok, error = test_slack(webhook)
+    else:
+        ok, error = False, "That doesn't look like a valid Discord or Slack webhook URL."
+        
     return {"ok": ok, "error": error}
 
 

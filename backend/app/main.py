@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config as app_config
 from .state import store
-from .routers import config, projects, environments, tests, runs, history, sharing
+from .routers import config, projects, environments, tests, runs, history, sharing, mock
 
 
 @asynccontextmanager
@@ -43,7 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (config, projects, environments, tests, runs, history, sharing):
+for module in (config, projects, environments, tests, runs, history, sharing, mock):
     app.include_router(module.router)
 
 

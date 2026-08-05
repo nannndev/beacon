@@ -191,9 +191,18 @@ class EndpointRunCoordinator:
         if grouped_history or not notification_settings:
             return
         try:
-            from .notify_discord import maybe_notify
+            from .notify_discord import maybe_notify as maybe_notify_discord
+            from .notify_slack import maybe_notify as maybe_notify_slack
 
-            maybe_notify(
+            maybe_notify_discord(
+                notification_settings,
+                target_name=test.name,
+                mode=mode,
+                stats=stats,
+                outcome=outcome,
+                project_name=project_name,
+            )
+            maybe_notify_slack(
                 notification_settings,
                 target_name=test.name,
                 mode=mode,

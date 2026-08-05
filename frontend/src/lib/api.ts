@@ -281,6 +281,7 @@ export type CloneRepositoryResult =
     }
 
 export const api = {
+  getBaseUrl: getBase,
   systemInfo: () => req<{ app_version: string; api_protocol: number; capabilities: string[] }>('/system/info'),
   // Config
   getConfig: () => req<TestConfig>('/config'),

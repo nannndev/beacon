@@ -3,6 +3,19 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.5.0] - 2026-08-05
+
+### Added
+
+- **API Mocking & Catch-All Mock Server**: Fast local API mock server in FastAPI (`/mock/projects/{project_id}/{path}`) supporting status code configuration, custom headers, body payloads, and real-time dynamic template resolution (`{{uuid}}`, `{{random_email}}`, environment variables).
+- **Code Snippet Generator**: Multi-language snippet generator for cURL, JS Fetch, Python Requests, Go HTTP, and Raw HTTP with custom syntax highlighting in the Endpoint Editor.
+- **Slack & Discord Webhook Alerting**: Automated test run notification alerts with color-coded status badges and Slack Block Kit integration.
+- **Executive HTML & PDF Report Export**: Standalone offline HTML performance reports with embedded SVG sparkline charts, latency percentile cards (`p50`–`max`), outcome distribution bars, and `@media print` layout for one-click PDF generation.
+- **Quick cURL Import & Converter Modal**: Live interactive cURL tokenizer dialog to copy/paste requests from browser DevTools directly into Beacon endpoints.
+- **Pre-configured Sample Mocks**: Sample projects now come pre-loaded with working mock endpoints out-of-the-box.
+
+[Compare 0.4.10 → 0.5.0](https://github.com/nannndev/beacon/compare/v0.4.10...v0.5.0)
+
 ## [0.4.10] - 2026-08-04
 
 ### Added
