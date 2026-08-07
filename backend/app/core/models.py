@@ -11,7 +11,8 @@ class EndpointTest:
                  headers: Optional[Dict] = None, payload: Any = None, payload_type: str = "json",
                  extractors: Optional[Dict] = None, run_config: Optional[Dict] = None,
                  assertions: Optional[List] = None, target_type: str = "api",
-                 auth: Optional[Dict] = None, mock_response: Optional[Dict] = None):
+                 auth: Optional[Dict] = None, mock_response: Optional[Dict] = None,
+                 ws_message: str = "", ws_message_type: str = "text"):
         self.id = test_id or str(uuid.uuid4())
         self.name = name
         self.url = url
@@ -23,11 +24,13 @@ class EndpointTest:
         self.run_config = run_config or None
         self.assertions = assertions or []
         normalized_target = str(target_type or "api").lower()
-        self.target_type = normalized_target if normalized_target in {"api", "web"} else "api"
+        self.target_type = normalized_target if normalized_target in {"api", "web", "websocket"} else "api"
         # Structured auth spec. None means "not configured" — those endpoints
         # carry any Authorization in `headers`, exactly as before this existed.
         self.auth = auth or None
         self.mock_response = mock_response or None
+        self.ws_message = ws_message or ""
+        self.ws_message_type = ws_message_type if ws_message_type in {"text", "binary"} else "text"
         # Auth inherited from the enclosing folders/project, outermost first.
         # Populated when the endpoint is flattened out of the project tree.
         self.inherited_auth: List[Dict] = []
@@ -45,6 +48,9 @@ class EndpointTest:
             data["auth"] = self.auth
         if self.mock_response:
             data["mock_response"] = self.mock_response
+        if self.ws_message:
+            data["ws_message"] = self.ws_message
+            data["ws_message_type"] = self.ws_message_type
         return data
 
     @staticmethod
@@ -54,6 +60,7 @@ class EndpointTest:
             data.get("headers", {}), data.get("payload", {}), data.get("payload_type", "json"),
             data.get("extractors", {}), data.get("run_config"), data.get("assertions", []),
             data.get("target_type", "api"), data.get("auth"), data.get("mock_response"),
+            ws_message=data.get("ws_message", ""), ws_message_type=data.get("ws_message_type", "text"),
         )
 
 

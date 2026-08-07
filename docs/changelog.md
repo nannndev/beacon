@@ -3,6 +3,17 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.6.0] - 2026-08-07
+
+### Added
+
+- **WebSocket Testing**: Third target type (`websocket`) alongside API and Web. Connect to `ws://` and `wss://` endpoints, send text or base64-encoded binary frames, and inspect the response with timing breakdowns. The WebSocketInspector shows connection state, sent/received side-by-side, and parsed JSON or hex output.
+- **WebSocket Load Testing**: New `websocket` traffic mode in the run selector. Each worker opens one persistent WebSocket connection and fires N messages, recording per-message latency, throughput, and disconnect counts through the same Live Monitor observability dashboard.
+- **Local Project Sharing (Full Release)**: LAN-based project sharing is now complete with pairing codes, host approval flow, device roles (Viewer / Editor), TLS fingerprint verification, teammate presence broadcasting, conflict detection with field-level merge resolution, trusted device reconnect, and revision history.
+- **Real-time Teammate Presence**: Editors see what other editors are actively viewing or editing, with live activity badges in the sharing host panel.
+
+[Compare 0.5.0 → 0.6.0](https://github.com/nannndev/beacon/compare/v0.5.0...v0.6.0)
+
 ## [0.5.0] - 2026-08-05
 
 ### Added

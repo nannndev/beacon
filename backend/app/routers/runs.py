@@ -108,7 +108,11 @@ def send_single(data: dict):
         retry_delay = float(data.get("retry_delay", 0.0))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="retries/retry_delay must be numbers")
-    result = APITester(test, store.current_config).send_once(retries=retries, retry_delay=retry_delay)
+
+    if getattr(test, "target_type", "api") == "websocket":
+        result = APITester(test, store.current_config).send_ws_once()
+    else:
+        result = APITester(test, store.current_config).send_once(retries=retries, retry_delay=retry_delay)
     # Persist variables refreshed by extractors so the token survives for the
     # next Send / run and a reload. Only when something actually changed.
     if result.get("extracted"):

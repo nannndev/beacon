@@ -9,6 +9,7 @@ import type {
   SoakParams,
   SpikeParams,
   TestMode,
+  WebSocketParams,
 } from '../types/testModes'
 
 /** Translate UI-oriented mode fields into the REST contract consumed by /run. */
@@ -77,5 +78,9 @@ export function buildRunPayload(
     }
     case 'scenario':
       return common
+    case 'websocket': {
+      const p = params as WebSocketParams
+      return { ...common, concurrency: p.concurrency, max_requests: p.max_requests, delay: p.delay_ms / 1000 }
+    }
   }
 }

@@ -20,7 +20,8 @@ class RunMetrics:
         self.reset()
 
     def reset(self):
-        self.results = {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0}
+        self.results = {"attempts": 0, "success": 0, "rate_limited": 0, "errors": 0,
+                        "ws_messages_sent": 0, "ws_messages_received": 0, "ws_disconnects": 0}
         self.status_codes: Dict[str, int] = {}
         self.recent_ms: List[int] = []
         self.all_latencies: List[float] = []
@@ -65,6 +66,15 @@ class RunMetrics:
         self.results["attempts"] += 1
         self.results["errors"] += 1
         self.status_codes["error"] = self.status_codes.get("error", 0) + 1
+
+    def record_ws_message_sent(self):
+        self.results["ws_messages_sent"] += 1
+
+    def record_ws_message_received(self):
+        self.results["ws_messages_received"] += 1
+
+    def record_ws_disconnect(self):
+        self.results["ws_disconnects"] += 1
 
     def snapshot(self) -> Dict:
         latency = self.latency

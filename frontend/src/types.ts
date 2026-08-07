@@ -34,8 +34,11 @@ export interface Endpoint {
   headers: Record<string, string>
   payload: Record<string, any>
   payload_type: string
-  /** `web` measures an HTML document request; `api` is the default request target. */
-  target_type?: 'api' | 'web'
+  /** `web` measures an HTML document request; `api` is the default request target;
+   *  `websocket` connects to a ws:// / wss:// endpoint for bidirectional testing. */
+  target_type?: 'api' | 'web' | 'websocket'
+  ws_message?: string
+  ws_message_type?: 'text' | 'binary'
   extractors?: Record<string, string>
   /** Structured auth. `inherit` defers to the enclosing folder, then the
    *  project; Basic credentials are base64-encoded by the backend at request
@@ -310,6 +313,8 @@ export interface RunResponse {
   size_bytes?: number
   final_url?: string
   redirects?: number
-  target_type?: 'api' | 'web'
+  target_type?: 'api' | 'web' | 'websocket'
+  ws_message_type?: string
+  ws_received_type?: string
   error?: string
 }

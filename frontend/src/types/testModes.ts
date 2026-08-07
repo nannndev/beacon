@@ -12,6 +12,7 @@ export type TestMode =
   | 'fuzz'
   | 'benchmark'
   | 'scenario'
+  | 'websocket'
 
 // ---- Per-mode parameter shapes --------------------------------------------
 
@@ -88,6 +89,12 @@ export interface ScenarioParams {
   stop_failure_pct: number
 }
 
+export interface WebSocketParams {
+  concurrency: number
+  max_requests: number
+  delay_ms: number
+}
+
 export type ModeParams =
   | { mode: 'load';       params: LoadParams }
   | { mode: 'ramp';       params: RampParams }
@@ -98,6 +105,7 @@ export type ModeParams =
   | { mode: 'fuzz';       params: FuzzParams }
   | { mode: 'benchmark';  params: BenchmarkParams }
   | { mode: 'scenario';   params: ScenarioParams }
+  | { mode: 'websocket';  params: WebSocketParams }
 
 // ---- Defaults -------------------------------------------------------------
 
@@ -164,6 +172,11 @@ export const MODE_DEFAULTS: Record<TestMode, ModeParams['params']> = {
     retry_delay_ms: 500,
     stop_failure_pct: 100,
   } as ScenarioParams,
+  websocket: {
+    concurrency: 4,
+    max_requests: 200,
+    delay_ms: 200,
+  } as WebSocketParams,
 }
 
 // ---- Metadata for UI rendering -------------------------------------------
@@ -252,5 +265,13 @@ export const MODE_INFO: ModeInfo[] = [
     tagline: 'Virtual user journeys',
     description: 'Run chained endpoints with isolated users, iterations, ramp-up, think time, retries, and per-step performance.',
     color: 'indigo',
+  },
+  {
+    id: 'websocket',
+    label: 'WebSocket',
+    emoji: '🔌',
+    tagline: 'Message throughput',
+    description: 'Open concurrent WebSocket connections and measure message exchange latency and throughput.',
+    color: 'blue',
   },
 ]

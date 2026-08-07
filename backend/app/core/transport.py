@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import base64
 import json
+import traceback
+
+import websocket
 
 from .models import EndpointTest
 
@@ -30,3 +33,36 @@ class HttpTransport:
             body = payload if isinstance(payload, str) else json.dumps(payload)
             return session.request(endpoint.method, url, headers=headers, data=body.encode("utf-8"), timeout=timeout)
         return session.request(endpoint.method, url, headers=headers, json=payload, timeout=timeout)
+
+
+class WebSocketTransport:
+    def connect(self, url: str, headers: dict, timeout: int = 10):
+        ws_url = url if url.startswith(("ws://", "wss://")) else f"ws://{url}"
+        ws_headers = [f"{k}: {v}" for k, v in (headers or {}).items()]
+        return websocket.create_connection(ws_url, header=ws_headers, timeout=timeout)
+
+    def send_message(self, ws, data: str, msg_type: str = "text"):
+        if msg_type == "binary":
+            try:
+                raw = base64.b64decode(data)
+            except Exception:
+                raw = data.encode("utf-8") if isinstance(data, str) else data
+            ws.send_binary(raw)
+        else:
+            ws.send(data if isinstance(data, str) else str(data))
+
+    def receive_message(self, ws, timeout: int = 10):
+        ws.settimeout(timeout)
+        try:
+            frame = ws.recv()
+            if isinstance(frame, bytes):
+                return {"type": "binary", "data": base64.b64encode(frame).decode(), "raw_bytes": len(frame)}
+            return {"type": "text", "data": frame}
+        except websocket.WebSocketTimeoutException:
+            return {"type": "timeout", "data": None}
+
+    def close(self, ws):
+        try:
+            ws.close()
+        except Exception:
+            pass

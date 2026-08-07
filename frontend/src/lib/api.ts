@@ -99,7 +99,13 @@ export interface SendResponse {
   final_url?: string
   redirects?: number
   ttfb_ms?: number
-  target_type?: 'api' | 'web'
+  target_type?: 'api' | 'web' | 'websocket'
+  ws_message_type?: string
+  ws_sent?: string
+  ws_received_type?: string
+  ws_raw_bytes?: number
+  recv_ms?: number
+  phase?: string
   extracted?: string[]
   attempts?: number
   assertions?: AssertionResult[]

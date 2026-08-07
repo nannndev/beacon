@@ -1,4 +1,5 @@
 import contextlib
+import json
 import requests
 import time
 import random
@@ -13,7 +14,7 @@ from .extractors import ResponseExtractor
 from .metrics import RunMetrics, percentile
 from .models import EndpointTest, TestConfig
 from .templating import TemplateResolver
-from .transport import HttpTransport
+from .transport import HttpTransport, WebSocketTransport
 
 class APITester:
     def __init__(self, test: EndpointTest, config: TestConfig,
@@ -39,6 +40,7 @@ class APITester:
         self.metrics = RunMetrics()
         self.templates = TemplateResolver(config.variables, getattr(config, "variables_lock", None))
         self.transport = HttpTransport()
+        self.ws_transport = WebSocketTransport()
         self.extractor = ResponseExtractor()
 
     @property
@@ -731,8 +733,170 @@ class APITester:
         return self.metrics.results
 
     # -------------------------------------------------------------------------
-    # run_mode: single dispatcher for all modes
+    # WEBSOCKET mode: connect + send messages on shared connections
     # -------------------------------------------------------------------------
+    def send_ws_once(self, max_body: int = 262144) -> Dict:
+        """Interactive WS: connect, send one message, receive response, close."""
+        url, headers, _ = self._build_request()
+        start = time.time()
+        try:
+            ws = self.ws_transport.connect(url, headers, timeout=10)
+        except Exception as e:
+            return {"ok": False, "error": str(e), "target": url,
+                    "time_ms": round((time.time() - start) * 1000)}
+
+        msg = self._substitute(self.test.ws_message)
+        msg_type = getattr(self.test, "ws_message_type", "text")
+        try:
+            self.ws_transport.send_message(ws, msg, msg_type)
+            self.metrics.record_ws_message_sent()
+        except Exception as e:
+            self.ws_transport.close(ws)
+            return {"ok": False, "error": str(e), "target": url,
+                    "time_ms": round((time.time() - start) * 1000), "phase": "send"}
+
+        recv_start = time.time()
+        try:
+            result = self.ws_transport.receive_message(ws, timeout=10)
+            recv_elapsed = round((time.time() - recv_start) * 1000)
+        except Exception as e:
+            self.ws_transport.close(ws)
+            return {"ok": False, "error": str(e), "target": url,
+                    "time_ms": round((time.time() - start) * 1000), "phase": "receive"}
+
+        self.ws_transport.close(ws)
+        if result.get("data") is not None:
+            self.metrics.record_ws_message_received()
+
+        elapsed_ms = round((time.time() - start) * 1000)
+        body = result.get("data") or ""
+        parsed = None
+        if result.get("type") == "text" and body:
+            try:
+                parsed = json.loads(body) if isinstance(body, str) else json.loads(body.decode())
+            except Exception:
+                parsed = None
+        elif result.get("type") == "binary":
+            body = result.get("data", "")
+
+        response = {
+            "ok": True,
+            "status": "connected" if result.get("data") is not None else "timeout",
+            "time_ms": elapsed_ms,
+            "recv_ms": recv_elapsed,
+            "content_type": "application/json" if parsed else ("application/octet-stream" if result.get("type") == "binary" else "text/plain"),
+            "body": body,
+            "json": parsed,
+            "target": url,
+            "target_type": "websocket",
+            "ws_message_type": msg_type,
+            "ws_sent": msg[:max_body] if msg else "",
+            "ws_received_type": result.get("type"),
+            "ws_raw_bytes": result.get("raw_bytes"),
+        }
+        response["assertions"] = evaluate_assertions(getattr(self.test, "assertions", None), response)
+        response["passed"] = all(a["ok"] for a in response["assertions"]) if response["assertions"] else None
+        return response
+
+    def _send_ws_message(self, i: int, ws, timeout: int = 10) -> Dict:
+        """Send one message on an open WS connection and record the response."""
+        url, _, _ = self._build_request()
+        msg = self._substitute(self.test.ws_message)
+        msg_type = getattr(self.test, "ws_message_type", "text")
+
+        start = time.time()
+        try:
+            self.ws_transport.send_message(ws, msg, msg_type)
+            with self._lock:
+                self.metrics.record_ws_message_sent()
+        except Exception as e:
+            with self._lock:
+                self.metrics.record_ws_disconnect()
+                self.metrics.record_error()
+                snapshot = self._snapshot()
+            self.update_stats(snapshot)
+            return {"attempt": i, "url": url, "error": str(e), "phase": "send", "success": False}
+
+        recv_start = time.time()
+        try:
+            result = self.ws_transport.receive_message(ws, timeout=timeout)
+            elapsed = time.time() - start
+            recv_elapsed = time.time() - recv_start
+        except Exception as e:
+            with self._lock:
+                self.metrics.record_ws_disconnect()
+                self.metrics.record_error()
+                snapshot = self._snapshot()
+            self.update_stats(snapshot)
+            return {"attempt": i, "url": url, "error": str(e), "phase": "receive", "success": False}
+
+        with self._lock:
+            self.metrics.record_response(200, elapsed * 1000.0, False)
+            if result.get("data") is not None:
+                self.metrics.record_ws_message_received()
+            snapshot = self._snapshot()
+
+        body = result.get("data") or ""
+        response = {
+            "attempt": i,
+            "url": url,
+            "time": round(elapsed, 3),
+            "success": result.get("data") is not None,
+            "body": body[:50000] if result.get("type") == "text" else "",
+            "ws_received_type": result.get("type"),
+            "target_type": "websocket",
+        }
+        self.update_stats(snapshot)
+        self.emit_response(response)
+        self.log(f"[{i}] WS {url} -> {result.get('type', 'error')} ({elapsed:.2f}s)")
+        return response
+
+    def run_websocket(self, concurrency: int = 1, delay: float = 0.1,
+                      max_requests: int = 100, timeout: int = 10):
+        """WebSocket load test: each worker opens a connection and sends N messages."""
+        self._reset_metrics()
+        self.update_stats(self._snapshot())
+        url, headers, _ = self._build_request()
+
+        def _ws_worker(worker_id: int, n_messages: int):
+            try:
+                ws = self.ws_transport.connect(url, headers, timeout=timeout)
+            except Exception as e:
+                with self._lock:
+                    self.metrics.record_ws_disconnect()
+                self.log(f"[ws-worker-{worker_id}] Connection failed: {e}")
+                return
+            try:
+                for i in range(n_messages):
+                    if self.stop_flag.get("stop"):
+                        break
+                    self._send_ws_message(i + 1, ws, timeout=timeout)
+                    if delay > 0:
+                        time.sleep(delay)
+            finally:
+                self.ws_transport.close(ws)
+                with self._lock:
+                    self.metrics.record_ws_disconnect()
+
+        messages_per_worker = max(1, max_requests // max(concurrency, 1))
+        self.log(f"[websocket] Starting: concurrency={concurrency} messages_per_worker={messages_per_worker}")
+
+        if concurrency > 1:
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = []
+                for w in range(concurrency):
+                    if self.stop_flag.get("stop"):
+                        break
+                    futures.append(executor.submit(_ws_worker, w + 1, messages_per_worker))
+                for f in as_completed(futures):
+                    if self.stop_flag.get("stop"):
+                        break
+        else:
+            _ws_worker(1, max_requests)
+
+        self.log(f"[websocket] Finished. {self.metrics.results}")
+        return self.metrics.results
+
     def run_mode(self, mode: str, params: Dict = None):
         """Dispatch to the correct run method based on mode string.
 
@@ -803,6 +967,14 @@ class APITester:
             return self.run_benchmark(
                 n_samples=int(p.get("n_samples", 100)),
                 warmup=int(p.get("warmup", 10)),
+            )
+
+        if mode == "websocket":
+            return self.run_websocket(
+                concurrency=int(p.get("concurrency", 1)),
+                delay=float(p.get("delay", 0.1)),
+                max_requests=int(p.get("max_requests", 100)),
+                timeout=int(p.get("timeout", 10)),
             )
 
         # Fallback: unknown mode -> standard load run

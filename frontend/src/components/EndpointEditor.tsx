@@ -9,6 +9,7 @@ import {
   Globe2,
   KeyRound,
   MonitorUp,
+  Radio,
   Save,
   Send,
   ShieldCheck,
@@ -29,6 +30,7 @@ import { CurlImportDialog } from './dialogs/CurlImportDialog'
 import type { ParsedCurl } from '../lib/curlParser'
 import { Terminal, ClipboardPaste } from 'lucide-react'
 import ResponseInspector from './ResponseInspector'
+import { WebSocketInspector } from './WebSocketInspector'
 import { AssertionsEditor } from './AssertionsEditor'
 import { QueryParamsEditor } from './QueryParamsEditor'
 import { parseQueryParams } from '../lib/queryParams'
@@ -214,6 +216,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const queryParamCount = parseQueryParams(form.url || '').length
   const methodClass = METHOD_STYLES[form.method] || 'text-foreground'
   const isWebTarget = form.target_type === 'web'
+  const isWsTarget = form.target_type === 'websocket'
   const absoluteUrl = useMemo(() => {
     const url = form.url || ''
     if (!url) return config.base_url || 'base url not set'
@@ -230,7 +233,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     setForm((prev: any) => ({ ...prev, [field]: value }))
   }
 
-  const changeTargetType = (targetType: 'api' | 'web') => {
+  const changeTargetType = (targetType: 'api' | 'web' | 'websocket') => {
     setForm((prev: any) => {
       if (targetType === 'web') {
         const untouchedName = !testId && (!prev.name || prev.name === 'New Endpoint')
@@ -247,6 +250,21 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
           payload_type: 'none',
           headers,
           assertions: (prev.assertions || []).length > 0 ? prev.assertions : WEB_ASSERTIONS,
+        }
+      }
+
+      if (targetType === 'websocket') {
+        const untouchedName = !testId && (!prev.name || prev.name === 'New Endpoint')
+        const untouchedUrl = !testId && (!prev.url || prev.url === '/your-endpoint')
+        return {
+          ...prev,
+          target_type: 'websocket',
+          name: untouchedName ? 'WebSocket connection' : prev.name,
+          url: untouchedUrl ? 'ws://localhost:8080/ws' : prev.url,
+          method: 'GET',
+          payload_type: 'none',
+          ws_message: prev.ws_message || '',
+          ws_message_type: prev.ws_message_type || 'text',
         }
       }
 
@@ -373,6 +391,10 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       toast.error('Web Page targets need a full URL starting with http:// or https://')
       return
     }
+    if (isWsTarget && !/^wss?:\/\//i.test(urlValue)) {
+      toast.error('WebSocket targets need a URL starting with ws:// or wss://')
+      return
+    }
 
     const payloadToSend = buildPayload()
 
@@ -480,60 +502,73 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
           <Panel title="Request" icon={<Globe2 className="h-4 w-4" />}>
             <div className="space-y-2.5">
               <Field label="Target type">
-                <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/35 p-1">
+                <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-muted/35 p-1">
                   <button
                     type="button"
-                    aria-pressed={!isWebTarget}
+                    aria-pressed={!isWebTarget && !isWsTarget}
                     onClick={() => changeTargetType('api')}
-                    className={`flex min-h-14 items-center gap-2 rounded-md px-3 text-left transition-colors ${
-                      !isWebTarget ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/60'
+                    className={`flex min-h-14 items-center gap-2 rounded-md px-2 text-left transition-colors ${
+                      !isWebTarget && !isWsTarget ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/60'
                     }`}
                   >
                     <Braces className="h-4 w-4 shrink-0 text-cyan-500" />
-                    <span><span className="block text-xs font-bold">API Request</span><span className="block text-[10px]">JSON, form, or raw</span></span>
+                    <span><span className="block text-[11px] font-bold">API</span><span className="block text-[9px]">JSON, form</span></span>
                   </button>
                   <button
                     type="button"
                     aria-pressed={isWebTarget}
                     onClick={() => changeTargetType('web')}
-                    className={`flex min-h-14 items-center gap-2 rounded-md px-3 text-left transition-colors ${
+                    className={`flex min-h-14 items-center gap-2 rounded-md px-2 text-left transition-colors ${
                       isWebTarget ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/60'
                     }`}
                   >
                     <Globe2 className="h-4 w-4 shrink-0 text-cyan-500" />
-                    <span><span className="block text-xs font-bold">Web Page</span><span className="block text-[10px]">HTML document load</span></span>
+                    <span><span className="block text-[11px] font-bold">Web</span><span className="block text-[9px]">HTML load</span></span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={isWsTarget}
+                    onClick={() => changeTargetType('websocket')}
+                    className={`flex min-h-14 items-center gap-2 rounded-md px-2 text-left transition-colors ${
+                      isWsTarget ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/60'
+                    }`}
+                  >
+                    <Radio className="h-4 w-4 shrink-0 text-blue-500" />
+                    <span><span className="block text-[11px] font-bold">WS</span><span className="block text-[9px]">Streaming</span></span>
                   </button>
                 </div>
               </Field>
 
-              <div className="grid grid-cols-5 rounded-lg border border-border bg-muted/35 p-0.5">
-                {METHODS.map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    disabled={isWebTarget && method !== 'GET'}
-                    onClick={() => handleChange('method', method)}
-                    className={`h-7 min-w-0 rounded-md px-1 text-center font-mono text-[10px] font-extrabold transition-all ${
-                      form.method === method
-                        ? 'bg-background shadow-sm ring-1 ring-border ' + METHOD_STYLES[method]
-                        : 'text-muted-foreground hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-30'
-                    }`}
-                  >
-                    {method}
-                  </button>
-                ))}
-              </div>
+              {!isWsTarget && (
+                <div className="grid grid-cols-5 rounded-lg border border-border bg-muted/35 p-0.5">
+                  {METHODS.map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      disabled={isWebTarget && method !== 'GET'}
+                      onClick={() => handleChange('method', method)}
+                      className={`h-7 min-w-0 rounded-md px-1 text-center font-mono text-[10px] font-extrabold transition-all ${
+                        form.method === method
+                          ? 'bg-background shadow-sm ring-1 ring-border ' + METHOD_STYLES[method]
+                          : 'text-muted-foreground hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-30'
+                      }`}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-              <Field label={isWebTarget ? 'Website URL' : 'Request endpoint'}>
+              <Field label={isWebTarget ? 'Website URL' : isWsTarget ? 'WebSocket URL' : 'Request endpoint'}>
                 <Input
                   value={form.url || ''}
                   onChange={(e) => handleChange('url', e.target.value)}
                   className="h-9 font-mono text-sm"
-                  placeholder={isWebTarget ? 'https://example.com/' : '/api/endpoint'}
+                  placeholder={isWebTarget ? 'https://example.com/' : isWsTarget ? 'ws://localhost:8080/ws' : '/api/endpoint'}
                 />
               </Field>
 
-              {!isWebTarget && <Field label="Body type">
+              {!isWebTarget && !isWsTarget && <Field label="Body type">
                 <select
                   value={form.payload_type}
                   onChange={(e) => handleChange('payload_type', e.target.value)}
@@ -542,6 +577,39 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
                   {BODY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
               </Field>}
+
+              {isWsTarget && (
+                <div className="space-y-2">
+                  <Field label="Message type">
+                    <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/35 p-0.5">
+                      <button
+                        type="button"
+                        aria-pressed={form.ws_message_type !== 'binary'}
+                        onClick={() => handleChange('ws_message_type', 'text')}
+                        className={`h-7 rounded-md px-2 text-center text-[10px] font-bold transition-all ${
+                          form.ws_message_type !== 'binary' ? 'bg-background shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/70'
+                        }`}
+                      >Text</button>
+                      <button
+                        type="button"
+                        aria-pressed={form.ws_message_type === 'binary'}
+                        onClick={() => handleChange('ws_message_type', 'binary')}
+                        className={`h-7 rounded-md px-2 text-center text-[10px] font-bold transition-all ${
+                          form.ws_message_type === 'binary' ? 'bg-background shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/70'
+                        }`}
+                      >Binary (base64)</button>
+                    </div>
+                  </Field>
+                  <Field label="Message payload">
+                    <textarea
+                      value={form.ws_message || ''}
+                      onChange={(e) => handleChange('ws_message', e.target.value)}
+                      className="h-24 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs resize-y"
+                      placeholder={form.ws_message_type === 'binary' ? 'SGVsbG8gV29ybGQ=' : '{"type": "hello", "data": "world"}'}
+                    />
+                  </Field>
+                </div>
+              )}
 
               {isWebTarget && (
                 <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-[11px] leading-5 text-muted-foreground">
@@ -830,7 +898,9 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
             </div>
           </Panel>
 
-          {(sending || response) && (
+          {(sending || response) && isWsTarget ? (
+            <WebSocketInspector response={response} loading={sending} />
+          ) : (sending || response) && (
             <ResponseInspector
               response={response}
               loading={sending}
