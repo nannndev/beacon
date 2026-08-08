@@ -40,6 +40,8 @@ export interface Endpoint {
   ws_message?: string
   ws_message_type?: 'text' | 'binary'
   pre_request_script?: string
+  graphql_query?: string
+  graphql_variables?: string
   extractors?: Record<string, string>
   /** Structured auth. `inherit` defers to the enclosing folder, then the
    *  project; Basic credentials are base64-encoded by the backend at request

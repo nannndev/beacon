@@ -311,6 +311,11 @@ export const api = {
       `/projects/${id}/notifications/test`,
       jsonInit('POST', { webhook_url }),
     ),
+  introspectGraphQL: (targetUrl: string, headers?: Record<string, string>) =>
+    req<{ ok: boolean; schema?: any; hash?: string; error?: string; cached?: boolean }>(
+      '/graphql/introspect',
+      jsonInit('POST', { target_url: targetUrl, headers: headers || {} }),
+    ),
   updateProjectItems: (id: string, items: any[]) => req(`/projects/${id}`, jsonInit('PUT', { items })),
   updateEnvironments: (id: string, environments: any[]) =>
     req(`/projects/${id}`, jsonInit('PUT', { environments })),

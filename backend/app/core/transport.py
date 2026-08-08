@@ -32,6 +32,8 @@ class HttpTransport:
         if payload_type == "raw":
             body = payload if isinstance(payload, str) else json.dumps(payload)
             return session.request(endpoint.method, url, headers=headers, data=body.encode("utf-8"), timeout=timeout)
+        if payload_type == "graphql":
+            return session.request(endpoint.method, url, headers=headers, json=payload, timeout=timeout)
         return session.request(endpoint.method, url, headers=headers, json=payload, timeout=timeout)
 
 

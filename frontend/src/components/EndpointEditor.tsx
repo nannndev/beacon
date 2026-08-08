@@ -31,6 +31,8 @@ import type { ParsedCurl } from '../lib/curlParser'
 import { Terminal, ClipboardPaste } from 'lucide-react'
 import ResponseInspector from './ResponseInspector'
 import { WebSocketInspector } from './WebSocketInspector'
+import { GraphqlEditor } from './graphql/GraphqlEditor'
+import { SchemaExplorer } from './graphql/SchemaExplorer'
 import { AssertionsEditor } from './AssertionsEditor'
 import { QueryParamsEditor } from './QueryParamsEditor'
 import { parseQueryParams } from '../lib/queryParams'
@@ -56,6 +58,7 @@ const BODY_TYPES = [
   { value: 'form', label: 'Form' },
   { value: 'multipart', label: 'Multipart' },
   { value: 'raw', label: 'Raw (text/XML/GraphQL)' },
+  { value: 'graphql', label: 'GraphQL' },
 ] as const
 
 const METHOD_STYLES: Record<string, string> = {
@@ -155,6 +158,10 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const [response, setResponse] = useState<SendResponse | null>(null)
   const [retries, setRetries] = useState(0)
   const [helperSamples, setHelperSamples] = useState<string[]>(() => DYNAMIC_HELPERS.map((h) => h.sample()))
+  const [graphqlSchema, setGraphqlSchema] = useState<any>(null)
+  const [graphqlSchemaHash, setGraphqlSchemaHash] = useState<string | undefined>(undefined)
+  const [graphqlSchemaFetchedAt, setGraphqlSchemaFetchedAt] = useState<number | undefined>(undefined)
+  const [graphqlSchemaLoading, setGraphqlSchemaLoading] = useState(false)
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -217,6 +224,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const methodClass = METHOD_STYLES[form.method] || 'text-foreground'
   const isWebTarget = form.target_type === 'web'
   const isWsTarget = form.target_type === 'websocket'
+  const isGraphqlTarget = form.payload_type === 'graphql'
   const absoluteUrl = useMemo(() => {
     const url = form.url || ''
     if (!url) return config.base_url || 'base url not set'
@@ -329,7 +337,16 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     if (Object.keys(cookies).length > 0) {
       headers.Cookie = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ')
     }
-    return { ...form, name: String(form.name || '').trim(), url: String(form.url || '').trim(), headers, cookies: undefined }
+    const base = { ...form, name: String(form.name || '').trim(), url: String(form.url || '').trim(), headers, cookies: undefined }
+    if (form.payload_type === 'graphql') {
+      const query = (base.graphql_query as string || '').trim()
+      let vars: Record<string, unknown> = {}
+      try {
+        vars = JSON.parse((base.graphql_variables as string || '{}').trim() || '{}')
+      } catch { vars = {} }
+      return { ...base, payload: { query, variables: vars }, graphql_query: undefined, graphql_variables: undefined }
+    }
+    return base
   }
 
   // Fire one request and show the response. Only for saved endpoints (needs an id).
@@ -344,6 +361,25 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     } finally {
       setSending(false)
     }
+  }
+
+  const handleFetchGraphqlSchema = async (url: string, headers: Record<string, string>) => {
+    setGraphqlSchemaLoading(true)
+    try {
+      const result = await api.introspectGraphQL(url, headers)
+      if (result.ok && result.schema) {
+        setGraphqlSchema(result.schema)
+        setGraphqlSchemaHash(result.hash)
+        setGraphqlSchemaFetchedAt(Date.now() / 1000)
+      } else {
+        toast.error(result.error || 'Schema introspection failed')
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not reach the GraphQL endpoint')
+    } finally {
+      setGraphqlSchemaLoading(false)
+    }
+    return { ok: true }
   }
 
   // Cmd/Ctrl+Enter sends the request from anywhere in the editor.
@@ -786,6 +822,44 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
                     <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{body}</p>
                   </div>
                 ))}
+              </div>
+            ) : isGraphqlTarget ? (
+              <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="min-w-0 p-4">
+                  <GraphqlEditor
+                    query={(form.graphql_query as string) || ''}
+                    variables={(form.graphql_variables as string) || ''}
+                    schemaUrl={absoluteUrl}
+                    schemaHash={graphqlSchemaHash}
+                    schemaFetchedAt={graphqlSchemaFetchedAt}
+                    endpointHeaders={form.headers || {}}
+                    onQueryChange={(q) => handleChange('graphql_query', q)}
+                    onVariablesChange={(v) => handleChange('graphql_variables', v)}
+                    onFetchSchema={handleFetchGraphqlSchema}
+                    loading={graphqlSchemaLoading}
+                    response={response}
+                  />
+                </div>
+                {graphqlSchema ? (
+                  <div className="min-w-0 border-t border-border bg-muted/10 2xl:border-l 2xl:border-t-0">
+                    <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+                      <Database className="h-3.5 w-3.5 text-violet-500" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Schema Explorer</span>
+                    </div>
+                    <SchemaExplorer
+                      schema={graphqlSchema}
+                      onInsertField={(field) => handleChange('graphql_query', ((form.graphql_query as string) || '') + '\n  ' + field)}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center border-t border-border bg-muted/5 p-6 2xl:border-l 2xl:border-t-0">
+                    <div className="text-center">
+                      <Database className="mx-auto h-5 w-5 text-muted-foreground/40" />
+                      <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">Schema Explorer</div>
+                      <p className="mt-1 text-[10px] text-muted-foreground/50">Fetch a schema to browse types and fields</p>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_420px]">
               <div className="min-w-0 space-y-4 p-4">
