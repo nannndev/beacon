@@ -3,6 +3,17 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.7.0] - 2026-08-07
+
+### Added
+
+- **GraphQL Support**: First-class GraphQL request type with a dedicated query + variables editor, one-click schema introspection with backend proxy caching (5 min TTL), and a Schema Explorer sidebar with collapsible tree view (Queries, Mutations, Types). Click any field to insert it into the query editor.
+- **Pre-request Scripting**: Python sandbox (`beacon.request` and `beacon.environment` API) runs after templating and before dispatch. Supports headers mutation, body injection, variable persistence, HMAC signatures, and 5-second timeout enforcement. Snippet buttons for Timestamp, HMAC-SHA256, and Random ID.
+- **Richer Onboarding**: Stats bar (47 endpoints, 36 generators, 9 modes, 3 target types), educational step cards (Build & Send, Add Assertions, Run Load Tests, Chain Scenarios), compact highlight bullets, radial gradient atmosphere, and rotating tips during loading screen.
+- **Improved Loading Screen**: Cycling tips (⌘K shortcut, template variables, WebSocket, scenario chaining), animated orbit rings, live connection status indicator with ping animation.
+
+[Compare 0.6.0 → 0.7.0](https://github.com/nannndev/beacon/compare/v0.6.0...v0.7.0)
+
 ## [0.6.0] - 2026-08-07
 
 ### Added

@@ -68,7 +68,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.6.0'
+const RELEASE_VERSION = '0.7.0'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -662,8 +662,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              WebSocket streaming, local project sharing, and the full LAN collaboration
-              toolkit — now with real-time teammate presence and conflict-aware sync.
+              First-class GraphQL support with schema introspection, sandboxed
+              pre-request scripting, and a richer onboarding experience.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -672,10 +672,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['WebSocket testing built in', 'Connect to ws:// and wss:// endpoints with text or binary frames. Fire messages interactively or run concurrent load tests.'],
-              ['Full LAN collaboration', 'Share a project\'s source on the local network with pairing codes, device roles, host approval, and TLS fingerprint verification.'],
-              ['Automatic teammate presence', 'Editors see what other editors are viewing and can coordinate without leaving Beacon.'],
-              ['Conflict-aware source sync', 'When two devices edit the same project, Beacon surfaces conflicting fields and lets you pick the winner — or merge safely.'],
+              ['GraphQL built right in', 'Dedicated query and variables editor with one-click schema introspection. Browse Queries, Mutations, and Types in the sidebar.'],
+              ['Pre-request scripting', 'Run Python before every request — compute headers from the body, inject timestamps, generate HMAC signatures.'],
+              ['Richer first-run experience', 'Stats bar, step cards, and rotating tips so new users know everything Beacon can do in seconds.'],
+              ['Sandboxed engine', 'Scripts get only safe builtins, a 5-second timeout, and fall through gracefully on error.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>
