@@ -23,6 +23,23 @@ function assetMatcher(platform: Platform): RegExp | null {
   return null
 }
 
+function pickAsset(assets: any[], platform: Platform): any | null {
+  const matcher = assetMatcher(platform)
+  if (!matcher) return null
+  const candidates = assets.filter((a: any) => matcher.test(a.name || ''))
+  if (candidates.length === 0) return null
+  if (platform === 'windows') {
+    // Prefer the NSIS installer over the raw portable EXE.
+    const installer = candidates.find((a: any) => /-setup\.exe$/i.test(a.name || ''))
+    if (installer) return installer
+  }
+  if (platform === 'linux') {
+    const appimage = candidates.find((a: any) => /\.appimage$/i.test(a.name || ''))
+    if (appimage) return appimage
+  }
+  return candidates[0]
+}
+
 /** Resolve the latest installer URL for a platform, or null if unavailable. */
 export async function latestInstallerUrl(platform: Platform, signal?: AbortSignal): Promise<string | null> {
   const matcher = assetMatcher(platform)
@@ -31,10 +48,7 @@ export async function latestInstallerUrl(platform: Platform, signal?: AbortSigna
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { signal })
     if (!res.ok) return null
     const release = await res.json()
-    const assets = (release.assets || []).filter((a: any) => matcher.test(a.name || ''))
-    const asset = platform === 'linux'
-      ? assets.find((a: any) => /\.appimage$/i.test(a.name || '')) ?? assets[0]
-      : assets[0]
+    const asset = pickAsset(release.assets || [], platform)
     return asset?.browser_download_url ?? null
   } catch {
     return null
