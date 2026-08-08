@@ -1,7 +1,7 @@
 """Sandboxed pre-request script execution engine.
 
 Scripts run in a restricted Python environment with only safe builtins
-and standard-library modules. They receive a `pm` proxy object that
+and standard-library modules. They receive a `beacon` proxy object that
 lets them mutate the outgoing request and read/write environment variables.
 
 No new dependencies — uses only the stdlib + signal.
@@ -27,8 +27,8 @@ class PreRequestTimeout(PreRequestError):
 class _EnvProxy:
     """Read/write access to the active environment variables.
 
-    pm.environment.get("token") → str | None
-    pm.environment.set("token", value)
+    beacon.environment.get("token") → str | None
+    beacon.environment.set("token", value)
 
     Writes are *accumulated* in a scratch dict. The caller is
     responsible for merging them back into config.variables under
@@ -50,10 +50,10 @@ class _EnvProxy:
 class _RequestProxy:
     """Mutable wrapper around the outgoing request.
 
-    pm.request.url       → str (fully resolved)
-    pm.request.method    → str
-    pm.request.headers   → dict-like
-    pm.request.body      → parsed payload (dict / any)
+    beacon.request.url       → str (fully resolved)
+    beacon.request.method    → str
+    beacon.request.headers   → dict-like
+    beacon.request.body      → parsed payload (dict / any)
 
     Headers support .add(dict) and .remove(key).
     """
@@ -107,7 +107,7 @@ class _HeadersProxy:
         return self._headers.get(key, default)
 
     def add(self, mapping: dict):
-        """Add or overwrite multiple headers at once (Postman-style)."""
+        """Add or overwrite multiple headers at once."""
         for k, v in mapping.items():
             self._headers[k] = str(v)
 
@@ -126,11 +126,11 @@ class _HeadersProxy:
 
 
 class PreRequestProxy:
-    """The `pm` object exposed to pre-request scripts.
+    """The `beacon` object exposed to pre-request scripts.
 
-    pm.request     → _RequestProxy (mutable)
-    pm.environment → _EnvProxy (read/write variables)
-    pm.variables   → _EnvProxy (alias for environment)
+    beacon.request     → _RequestProxy (mutable)
+    beacon.environment → _EnvProxy (read/write variables)
+    beacon.variables   → _EnvProxy (alias for environment)
     """
     def __init__(self, request_data: dict, variables: dict):
         self.request = _RequestProxy(request_data)
@@ -168,7 +168,7 @@ class PreRequestEngine:
         if variables is None:
             variables = {}
             context["variables"] = variables
-        g["pm"] = PreRequestProxy(context, variables)
+        g["beacon"] = PreRequestProxy(context, variables)
         return g
 
     def execute(self, script: str, context: dict, timeout: int = 5) -> dict:

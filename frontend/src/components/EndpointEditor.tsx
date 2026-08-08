@@ -816,9 +816,9 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
             <Panel title="Pre-request Script" icon={<Terminal className="h-4 w-4" />}>
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {[
-                  { label: 'Timestamp', snippet: 'pm.environment.set("timestamp", str(time.time()))' },
-                  { label: 'HMAC-SHA256', snippet: 'import hashlib, hmac, json\nbody = json.dumps(pm.request.body, separators=(",", ":")) if isinstance(pm.request.body, dict) else str(pm.request.body)\nsig = hmac.new(b"secret", body.encode(), hashlib.sha256).hexdigest()\npm.request.headers["X-Signature"] = sig' },
-                  { label: 'Random ID', snippet: 'import uuid\npm.environment.set("request_id", str(uuid.uuid4()))' },
+                  { label: 'Timestamp', snippet: 'beacon.environment.set("timestamp", str(time.time()))' },
+                  { label: 'HMAC-SHA256', snippet: 'import hashlib, hmac, json\nbody = json.dumps(beacon.request.body, separators=(",", ":")) if isinstance(beacon.request.body, dict) else str(beacon.request.body)\nsig = hmac.new(b"secret", body.encode(), hashlib.sha256).hexdigest()\nbeacon.request.headers["X-Signature"] = sig' },
+                  { label: 'Random ID', snippet: 'import uuid\nbeacon.environment.set("request_id", str(uuid.uuid4()))' },
                 ].map(({ label, snippet }) => (
                   <button
                     key={label}
@@ -834,8 +834,8 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
                 value={form.pre_request_script || ''}
                 onChange={(e) => handleChange('pre_request_script', e.target.value)}
                 placeholder={`# Python pre-request script
-# Use pm.request.url, pm.request.headers, pm.request.body to mutate the request
-# Use pm.environment.set("key", value) to save values for later
+# beacon.request.headers["X-Custom"] = "hello"
+# beacon.environment.set("ts", str(time.time()))
 
 `}
                 rows={8}
