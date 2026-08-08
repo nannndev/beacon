@@ -812,6 +812,39 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
             </Panel>
           )}
 
+          {!isWsTarget && (
+            <Panel title="Pre-request Script" icon={<Terminal className="h-4 w-4" />}>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {[
+                  { label: 'Timestamp', snippet: 'pm.environment.set("timestamp", str(time.time()))' },
+                  { label: 'HMAC-SHA256', snippet: 'import hashlib, hmac, json\nbody = json.dumps(pm.request.body, separators=(",", ":")) if isinstance(pm.request.body, dict) else str(pm.request.body)\nsig = hmac.new(b"secret", body.encode(), hashlib.sha256).hexdigest()\npm.request.headers["X-Signature"] = sig' },
+                  { label: 'Random ID', snippet: 'import uuid\npm.environment.set("request_id", str(uuid.uuid4()))' },
+                ].map(({ label, snippet }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleChange('pre_request_script', (form.pre_request_script || '') + ('\n' + snippet + '\n').replace(/^\n+/, '\n'))}
+                    className="rounded-md border border-border bg-muted/40 px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-cyan-500/40 hover:bg-cyan-500/5 hover:text-cyan-500"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={form.pre_request_script || ''}
+                onChange={(e) => handleChange('pre_request_script', e.target.value)}
+                placeholder={`# Python pre-request script
+# Use pm.request.url, pm.request.headers, pm.request.body to mutate the request
+# Use pm.environment.set("key", value) to save values for later
+
+`}
+                rows={8}
+                spellCheck={false}
+                className="w-full font-mono text-xs p-3 border border-border rounded-lg bg-[#07090d] text-slate-300 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-y min-h-[180px]"
+              />
+            </Panel>
+          )}
+
           <div className="grid gap-4 2xl:grid-cols-2">
             <Panel title="Headers" icon={<Braces className="h-4 w-4" />}>
               <KVEditor data={form.headers || {}} onChange={(h) => handleChange('headers', h)} />

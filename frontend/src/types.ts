@@ -39,6 +39,7 @@ export interface Endpoint {
   target_type?: 'api' | 'web' | 'websocket'
   ws_message?: string
   ws_message_type?: 'text' | 'binary'
+  pre_request_script?: string
   extractors?: Record<string, string>
   /** Structured auth. `inherit` defers to the enclosing folder, then the
    *  project; Basic credentials are base64-encoded by the backend at request

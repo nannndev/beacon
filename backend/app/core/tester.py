@@ -107,6 +107,32 @@ class APITester:
         raw_payload = self.test.payload or {}
         payload = self._substitute(raw_payload)
 
+        # --- Pre-request script hook (after templating, before dispatch) ---
+        script = getattr(self.test, "pre_request_script", None)
+        if script and script.strip():
+            url, headers, payload = self._run_pre_request(url, headers, payload)
+
+        return url, headers, payload
+
+    def _run_pre_request(self, url, headers, payload):
+        """Execute a user-supplied Python script against the resolved request.
+        The script sees the fully-templated url/headers/body and can mutate
+        them in-place. Falls through gracefully on error."""
+        from .scripting import PreRequestEngine, PreRequestError
+        context = {
+            "url": url,
+            "method": self.test.method,
+            "headers": headers,
+            "body": payload,
+            "variables": self.config.variables,
+        }
+        try:
+            engine = PreRequestEngine()
+            engine.execute(self.test.pre_request_script, context, timeout=5)
+            return context["url"], context["headers"], context["body"]
+        except PreRequestError as e:
+            self.log(f"[pre-request script] {e}")
+
         return url, headers, payload
 
     def _do_request(self, session, url, headers, payload, timeout: int = 10):

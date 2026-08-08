@@ -12,7 +12,8 @@ class EndpointTest:
                  extractors: Optional[Dict] = None, run_config: Optional[Dict] = None,
                  assertions: Optional[List] = None, target_type: str = "api",
                  auth: Optional[Dict] = None, mock_response: Optional[Dict] = None,
-                 ws_message: str = "", ws_message_type: str = "text"):
+                 ws_message: str = "", ws_message_type: str = "text",
+                 pre_request_script: str = ""):
         self.id = test_id or str(uuid.uuid4())
         self.name = name
         self.url = url
@@ -31,6 +32,7 @@ class EndpointTest:
         self.mock_response = mock_response or None
         self.ws_message = ws_message or ""
         self.ws_message_type = ws_message_type if ws_message_type in {"text", "binary"} else "text"
+        self.pre_request_script = pre_request_script or ""
         # Auth inherited from the enclosing folders/project, outermost first.
         # Populated when the endpoint is flattened out of the project tree.
         self.inherited_auth: List[Dict] = []
@@ -51,6 +53,8 @@ class EndpointTest:
         if self.ws_message:
             data["ws_message"] = self.ws_message
             data["ws_message_type"] = self.ws_message_type
+        if self.pre_request_script:
+            data["pre_request_script"] = self.pre_request_script
         return data
 
     @staticmethod
@@ -61,6 +65,7 @@ class EndpointTest:
             data.get("extractors", {}), data.get("run_config"), data.get("assertions", []),
             data.get("target_type", "api"), data.get("auth"), data.get("mock_response"),
             ws_message=data.get("ws_message", ""), ws_message_type=data.get("ws_message_type", "text"),
+            pre_request_script=data.get("pre_request_script", ""),
         )
 
 
