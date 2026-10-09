@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import ssl
 import traceback
 
 import websocket
@@ -24,13 +25,19 @@ def resolve_target(base_url: str, url: str) -> str:
 
 
 class HttpTransport:
-    def send(self, session, endpoint: EndpointTest, url, headers, payload, timeout: int = 10):
+    def send(self, session, endpoint: EndpointTest, url, headers, payload, timeout: float = 10, **options):
+        """Dispatch one request. `options` are extra requests keyword
+        arguments from the endpoint's request settings (allow_redirects,
+        verify, proxies)."""
+        def request(**kwargs):
+            return session.request(endpoint.method, url, timeout=timeout, **options, **kwargs)
+
         if endpoint.target_type == "web":
-            return session.request(endpoint.method, url, headers=headers, timeout=timeout)
+            return request(headers=headers)
 
         payload_type = (endpoint.payload_type or "json").lower()
         if payload_type == "form":
-            return session.request(endpoint.method, url, headers=headers, data=payload, timeout=timeout)
+            return request(headers=headers, data=payload)
         if payload_type == "multipart":
             files = {}
             for key, value in (payload or {}).items():
@@ -41,20 +48,19 @@ class HttpTransport:
                 else:
                     files[key] = (None, str(value))
             safe_headers = {key: value for key, value in headers.items() if key.lower() != "content-type"}
-            return session.request(endpoint.method, url, headers=safe_headers, files=files, timeout=timeout)
+            return request(headers=safe_headers, files=files)
         if payload_type == "raw":
             body = payload if isinstance(payload, str) else json.dumps(payload)
-            return session.request(endpoint.method, url, headers=headers, data=body.encode("utf-8"), timeout=timeout)
-        if payload_type == "graphql":
-            return session.request(endpoint.method, url, headers=headers, json=payload, timeout=timeout)
-        return session.request(endpoint.method, url, headers=headers, json=payload, timeout=timeout)
+            return request(headers=headers, data=body.encode("utf-8"))
+        return request(headers=headers, json=payload)
 
 
 class WebSocketTransport:
-    def connect(self, url: str, headers: dict, timeout: int = 10):
+    def connect(self, url: str, headers: dict, timeout: float = 10, verify_ssl: bool = True):
         ws_url = url if url.startswith(("ws://", "wss://")) else f"ws://{url}"
         ws_headers = [f"{k}: {v}" for k, v in (headers or {}).items()]
-        return websocket.create_connection(ws_url, header=ws_headers, timeout=timeout)
+        sslopt = None if verify_ssl else {"cert_reqs": ssl.CERT_NONE, "check_hostname": False}
+        return websocket.create_connection(ws_url, header=ws_headers, timeout=timeout, sslopt=sslopt)
 
     def send_message(self, ws, data: str, msg_type: str = "text"):
         if msg_type == "binary":

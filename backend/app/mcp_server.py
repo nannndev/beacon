@@ -64,6 +64,7 @@ def _pin_data_dir() -> None:
 _pin_data_dir()
 
 from .core.tester import APITester, EndpointTest
+from .core.models import normalize_request_options
 from .core.transport import resolve_target
 from .history.models import RunStart, RunStepStart
 from .history.sanitize import sanitize_run_config
@@ -382,12 +383,14 @@ def create_endpoint(
     payload_type: str = "json",
     target_type: str = "api",
     folder_id: Optional[str] = None,
+    request_options: Optional[dict] = None,
 ) -> dict:
     """Create an endpoint in the active project. `url` may be relative to the
     project base_url. Optionally place it inside a folder by `folder_id`.
     Values may use {{variable}} templating. Set `target_type="web"` for an
     HTML page load target; web targets should normally use GET and an absolute
-    http(s) URL."""
+    http(s) URL. `request_options` may set `timeout_s` (seconds),
+    `follow_redirects` (bool), `verify_ssl` (bool), and `proxy` (URL)."""
     _reload()
     if not str(name or "").strip():
         return _error("invalid_argument", "name must not be empty.", field="name")
@@ -413,7 +416,7 @@ def create_endpoint(
     test = EndpointTest(
         None, name.strip(), url.strip(), method, headers or {},
         {} if payload is None else payload, normalized_payload_type,
-        target_type=normalized_target,
+        target_type=normalized_target, request_options=request_options,
     )
     node = {**test.to_dict(), "type": "request"}
     if target_folder is not None:
@@ -857,10 +860,13 @@ def update_endpoint(
     payload_type: Optional[str] = None,
     extractors: Optional[dict] = None,
     target_type: Optional[str] = None,
+    request_options: Optional[dict] = None,
 ) -> dict:
     """Update fields of an existing endpoint. Only the arguments you pass are
     changed; the id and the endpoint's place in the folder tree are preserved.
-    Values may use {{variable}} templating."""
+    Values may use {{variable}} templating. `request_options` replaces the
+    endpoint's `timeout_s`, `follow_redirects`, `verify_ssl`, and `proxy`
+    settings; pass {} to restore the defaults."""
     _reload()
     test = _find_test(name_or_id)
     if not test:
@@ -892,6 +898,8 @@ def update_endpoint(
                 "invalid_argument", "target_type must be 'api' or 'web'.", field="target_type"
             )
         test.target_type = normalized
+    if request_options is not None:
+        test.request_options = normalize_request_options(request_options)
     store.save()  # reconcile updates the request node in place, by id
     return _endpoint_summary(test)
 

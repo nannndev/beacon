@@ -26,6 +26,18 @@ export interface MockResponse {
   body: string
 }
 
+/** Per-endpoint transport settings. Only non-default values are stored. */
+export interface RequestOptions {
+  /** Seconds before the request is abandoned (default 10 s for runs, 30 s for Send). */
+  timeout_s?: number
+  /** Stored only as `false`; redirects are followed by default. */
+  follow_redirects?: boolean
+  /** Stored only as `false`; certificates are verified by default. */
+  verify_ssl?: boolean
+  /** Proxy URL for HTTP(S); may contain `{{variables}}`. */
+  proxy?: string
+}
+
 export interface Endpoint {
   id: string
   name: string
@@ -57,6 +69,7 @@ export interface Endpoint {
     path?: string
   }>
   mock_response?: MockResponse | null
+  request_options?: RequestOptions
 }
 
 export interface TestConfig {

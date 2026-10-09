@@ -2,12 +2,15 @@
 // ({{var}}) are left literal so the user can substitute them. Best-effort — meant
 // as a starting point to paste into a terminal, not a byte-exact reproduction.
 
+import type { RequestOptions } from '../types'
+
 interface CurlSource {
   method?: string
   headers?: Record<string, string>
   cookies?: Record<string, string>
   payload?: unknown
   payload_type?: string
+  request_options?: RequestOptions
 }
 
 function shellQuote(value: string): string {
@@ -27,6 +30,13 @@ export function toCurl(source: CurlSource, absoluteUrl: string): string {
   const payload = source.payload
 
   const parts: string[] = [`curl -X ${method} ${shellQuote(absoluteUrl)}`]
+  // Mirror the endpoint's request settings. Beacon follows redirects by
+  // default, so -L keeps the snippet's behavior the same as Send.
+  const options = source.request_options || {}
+  if (options.follow_redirects !== false) parts.push('-L')
+  if (options.timeout_s) parts.push(`--max-time ${options.timeout_s}`)
+  if (options.verify_ssl === false) parts.push('-k')
+  if (options.proxy) parts.push(`--proxy ${shellQuote(options.proxy)}`)
 
   for (const [key, value] of Object.entries(headers)) {
     if (key && value != null) parts.push(`-H ${shellQuote(`${key}: ${value}`)}`)

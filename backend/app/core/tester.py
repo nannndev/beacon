@@ -16,6 +16,16 @@ from .models import EndpointTest, TestConfig
 from .templating import TemplateResolver
 from .transport import HttpTransport, WebSocketTransport, resolve_target
 
+def _silence_insecure_request_warning() -> None:
+    """The user turned certificate checks off for this endpoint on purpose;
+    don't print a warning for every request of a load run."""
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    except Exception:
+        pass
+
+
 class APITester:
     def __init__(self, test: EndpointTest, config: TestConfig,
                  concurrency: int = 1, delay: float = 0.1, max_requests: int = 100,
@@ -142,8 +152,31 @@ class APITester:
 
         return url, headers, payload
 
-    def _do_request(self, session, url, headers, payload, timeout: int = 10):
-        return self.transport.send(session, self.test, url, headers, payload, timeout)
+    def _timeout(self, default: float) -> float:
+        """The endpoint's own timeout when set, else the caller's default."""
+        return (getattr(self.test, "request_options", None) or {}).get("timeout_s") or default
+
+    def _transport_options(self) -> Dict:
+        """requests keyword arguments from the endpoint's request settings."""
+        options = getattr(self.test, "request_options", None) or {}
+        kwargs: Dict[str, Any] = {}
+        if options.get("follow_redirects") is False:
+            kwargs["allow_redirects"] = False
+        if options.get("verify_ssl") is False:
+            kwargs["verify"] = False
+            _silence_insecure_request_warning()
+        if options.get("proxy"):
+            # Templated so proxy credentials can live in environment variables.
+            proxy = self._substitute(options["proxy"])
+            kwargs["proxies"] = {"http": proxy, "https": proxy}
+        return kwargs
+
+    def _verify_ssl(self) -> bool:
+        return (getattr(self.test, "request_options", None) or {}).get("verify_ssl") is not False
+
+    def _do_request(self, session, url, headers, payload, timeout: float = 10):
+        return self.transport.send(session, self.test, url, headers, payload,
+                                   self._timeout(timeout), **self._transport_options())
 
     def send_once(self, max_body: int = 262144, retries: int = 0, retry_delay: float = 0.0) -> Dict:
         """Fire a single request and return the full response for inspection
@@ -773,7 +806,7 @@ class APITester:
         url, headers, _ = self._build_request()
         start = time.time()
         try:
-            ws = self.ws_transport.connect(url, headers, timeout=10)
+            ws = self.ws_transport.connect(url, headers, timeout=self._timeout(10), verify_ssl=self._verify_ssl())
         except Exception as e:
             return {"ok": False, "error": str(e), "target": url,
                     "time_ms": round((time.time() - start) * 1000)}
@@ -790,7 +823,7 @@ class APITester:
 
         recv_start = time.time()
         try:
-            result = self.ws_transport.receive_message(ws, timeout=10)
+            result = self.ws_transport.receive_message(ws, timeout=self._timeout(10))
             recv_elapsed = round((time.time() - recv_start) * 1000)
         except Exception as e:
             self.ws_transport.close(ws)
@@ -893,7 +926,8 @@ class APITester:
 
         def _ws_worker(worker_id: int, n_messages: int):
             try:
-                ws = self.ws_transport.connect(url, headers, timeout=timeout)
+                ws = self.ws_transport.connect(url, headers, timeout=self._timeout(timeout),
+                                               verify_ssl=self._verify_ssl())
             except Exception as e:
                 with self._lock:
                     self.metrics.record_ws_disconnect()

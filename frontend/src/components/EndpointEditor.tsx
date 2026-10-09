@@ -14,6 +14,7 @@ import {
   Save,
   Send,
   ShieldCheck,
+  Timer,
   SlidersHorizontal,
   Sparkles,
   Shuffle,
@@ -24,7 +25,7 @@ import { Label } from './ui/label'
 import { KVEditor } from './KVEditor'
 import { PayloadEditor } from './PayloadEditor'
 import { toast } from './ui/toast'
-import { TestConfig, Endpoint } from '../types'
+import { TestConfig, Endpoint, type RequestOptions } from '../types'
 import { api, type SendResponse } from '../lib/api'
 import { CodeSnippetDialog } from './dialogs/CodeSnippetDialog'
 import { CurlImportDialog } from './dialogs/CurlImportDialog'
@@ -144,6 +145,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       headers: { ...prev.headers, ...parsed.headers },
       payload: parsed.payload !== undefined ? parsed.payload : prev.payload,
       payload_type: parsed.payload_type || prev.payload_type,
+      request_options: parsed.request_options ? { ...(prev.request_options || {}), ...parsed.request_options } : prev.request_options,
     }))
     toast.success('Imported cURL parameters successfully!')
   }
@@ -304,6 +306,19 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const handleChange = (field: string, value: any) => {
     setForm((prev: any) => ({ ...prev, [field]: value }))
   }
+
+  // Store only non-default request settings, and drop the object entirely
+  // when everything is default, so untouched endpoints keep their shape.
+  const setRequestOption = <K extends keyof RequestOptions>(key: K, value: RequestOptions[K] | undefined) => {
+    setForm((prev: any) => {
+      const next: RequestOptions = { ...(prev.request_options || {}) }
+      const isDefault = value === undefined || value === '' || value === true
+      if (isDefault) delete next[key]
+      else next[key] = value
+      return { ...prev, request_options: Object.keys(next).length ? next : undefined }
+    })
+  }
+  const requestOptions: RequestOptions = form.request_options || {}
 
   const changeTargetType = (targetType: 'api' | 'web' | 'websocket') => {
     setForm((prev: any) => {
@@ -849,6 +864,60 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
                   <span className="text-muted-foreground">No Authorization header will be sent.</span>
                 )}
               </div>
+            </div>
+          </Panel>
+
+          <Panel title="Request settings" icon={<Timer className="h-4 w-4" />}>
+            <div className="space-y-3">
+              <Field label="Timeout (seconds)">
+                <Input
+                  type="number"
+                  min={0.1}
+                  step={1}
+                  aria-label="Timeout in seconds"
+                  value={requestOptions.timeout_s ?? ''}
+                  onChange={(e) => setRequestOption('timeout_s', e.target.value === '' ? undefined : Number(e.target.value))}
+                  placeholder="Default: 10 s per run request, 30 s for Send"
+                  className="h-9 font-mono text-xs"
+                />
+              </Field>
+              <label className="flex items-center gap-2 text-xs font-medium">
+                <input
+                  type="checkbox"
+                  checked={requestOptions.follow_redirects !== false}
+                  onChange={(e) => setRequestOption('follow_redirects', e.target.checked)}
+                  className="h-4 w-4 rounded border-border bg-background text-cyan-600 focus:ring-cyan-500"
+                />
+                Follow redirects
+              </label>
+              <div>
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <input
+                    type="checkbox"
+                    checked={requestOptions.verify_ssl !== false}
+                    onChange={(e) => setRequestOption('verify_ssl', e.target.checked)}
+                    className="h-4 w-4 rounded border-border bg-background text-cyan-600 focus:ring-cyan-500"
+                  />
+                  Verify TLS certificates
+                </label>
+                {requestOptions.verify_ssl === false && (
+                  <p className="mt-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                    Certificate checks are off. Use this only for test servers you trust, such as a staging host with a self-signed certificate.
+                  </p>
+                )}
+              </div>
+              <Field label="Proxy">
+                <Input
+                  aria-label="Proxy URL"
+                  value={requestOptions.proxy ?? ''}
+                  onChange={(e) => setRequestOption('proxy', e.target.value)}
+                  placeholder="http://127.0.0.1:8888 or {{proxy_url}}"
+                  className="h-9 font-mono text-xs"
+                />
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  Routes HTTP and HTTPS through this proxy (e.g. Charles or Burp). Keep credentials in a variable so they stay out of shared project files.
+                </p>
+              </Field>
             </div>
           </Panel>
 

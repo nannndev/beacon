@@ -10,7 +10,11 @@ export interface ParsedCurl {
   headers: Record<string, string>
   payload: any
   payload_type: 'json' | 'raw' | 'form'
+  /** Only present when the command set a timeout, proxy, or --insecure. */
+  request_options?: RequestOptions
 }
+
+import type { RequestOptions } from '../types'
 
 export function parseCurlCommand(curlString: string): ParsedCurl {
   if (!curlString || !curlString.trim()) {
@@ -76,6 +80,7 @@ export function parseCurlCommand(curlString: string): ParsedCurl {
   let url = ''
   const headers: Record<string, string> = {}
   let bodyRaw = ''
+  const requestOptions: RequestOptions = {}
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
@@ -109,6 +114,29 @@ export function parseCurlCommand(curlString: string): ParsedCurl {
     if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary' || token === '--data-urlencode') {
       bodyRaw = tokens[i + 1] || ''
       if (!method) method = 'POST'
+      i++
+      continue
+    }
+
+    // Transport flags. Consuming their values also keeps e.g. a proxy URL
+    // from being mistaken for the request URL.
+    if (token === '-k' || token === '--insecure') {
+      requestOptions.verify_ssl = false
+      continue
+    }
+    if (token === '-m' || token === '--max-time' || token === '--connect-timeout') {
+      const seconds = Number(tokens[i + 1])
+      if (token !== '--connect-timeout' && Number.isFinite(seconds) && seconds > 0) requestOptions.timeout_s = seconds
+      i++
+      continue
+    }
+    if (token === '-x' || token === '--proxy') {
+      if (tokens[i + 1]) requestOptions.proxy = tokens[i + 1].replace(/^['"]|['"]$/g, '')
+      i++
+      continue
+    }
+    if (token === '--url') {
+      if (tokens[i + 1]) url = tokens[i + 1]
       i++
       continue
     }
@@ -154,5 +182,6 @@ export function parseCurlCommand(curlString: string): ParsedCurl {
     headers,
     payload,
     payload_type,
+    ...(Object.keys(requestOptions).length ? { request_options: requestOptions } : {}),
   }
 }

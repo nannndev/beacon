@@ -1,3 +1,5 @@
+import copy
+
 from fastapi import APIRouter, HTTPException
 
 from ..core.tester import EndpointTest
@@ -54,21 +56,11 @@ def duplicate_test(test_id: str):
     orig = next((t for t in store.current_config.tests if t.id == test_id), None)
     if not orig:
         raise HTTPException(status_code=404, detail="Endpoint not found")
-    new_test = EndpointTest(
-        None,
-        f"{orig.name} (copy)",
-        orig.url,
-        orig.method,
-        dict(orig.headers),
-        dict(orig.payload),
-        orig.payload_type,
-        dict(orig.extractors),
-        dict(orig.run_config) if orig.run_config else None,
-        list(orig.assertions),
-        orig.target_type,
-        dict(orig.auth) if orig.auth else None,
-        dict(orig.mock_response) if getattr(orig, "mock_response", None) else None,
-    )
+    # Copy through the persisted contract so every field (scripts, WebSocket
+    # message, request options, ...) is kept, not just the ones listed here.
+    data = copy.deepcopy(orig.to_dict())
+    data.update({"id": None, "name": f"{orig.name} (copy)"})
+    new_test = EndpointTest.from_dict(data)
     new_test.inherited_auth = list(getattr(orig, "inherited_auth", []))
     store.current_config.tests.append(new_test)
     store.save()
