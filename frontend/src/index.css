@@ -50,6 +50,16 @@
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
+
+    /* Chart roles (validated with the dataviz palette checks against the
+       light and dark app surfaces). Series = identity/magnitude; status
+       colors only where the color means good/bad and always with a label. */
+    --chart-series: #2a78d6;
+    --chart-series-2: #eb6834;
+    --chart-good: #0ca30c;
+    --chart-warning: #fab219;
+    --chart-serious: #ec835a;
+    --chart-critical: #d03b3b;
   }
 
   .dark {
@@ -72,6 +82,9 @@
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
+
+    --chart-series: #3987e5;
+    --chart-series-2: #d95926;
   }
 }
 

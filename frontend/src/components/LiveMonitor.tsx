@@ -6,6 +6,8 @@ import { Badge } from './ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { JsonCodeEditor } from './JsonCodeEditor'
 import { OperationsChart } from './OperationsChart'
+import { bucketBySecond } from '../lib/chartMath'
+import { Sparkline } from './charts/Sparkline'
 import {
   appendBounded,
   deriveInstantRps,
@@ -138,8 +140,20 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
   const badge = statusBadge[status]
   const lat = stats.latency_ms
   const showSummary = stats.attempts > 0
-  const p95 = percentile(chartPoints.map((point) => point.latency), 0.95, 5)
-  const currentRps = chartPoints[chartPoints.length - 1]?.rps ?? stats.rps ?? 0
+  // p95 from every retained response time; the chart samples only see the
+  // latest response per stats update.
+  const responseMs = responses.filter((r) => r.time != null).map((r) => (r.time as number) * 1000)
+  const p95 = responseMs.length >= 5
+    ? percentile(responseMs, 0.95, 5)
+    : percentile(chartPoints.map((point) => point.latency), 0.95, 5)
+  const buckets = bucketBySecond(
+    chartPoints.map((point) => ({ elapsed: point.elapsed, attempts: point.attempt, errors: point.errorCount, latency: point.latency })),
+    status === 'running',
+  )
+  const rpsTrend = buckets.map((bucket) => bucket.rps)
+  const latencyTrend = buckets.map((bucket) => bucket.latency).filter((value): value is number => value != null)
+  const successTrend = buckets.filter((bucket) => bucket.rps > 0).map((bucket) => 100 - bucket.errorRate)
+  const currentRps = buckets.length ? buckets[buckets.length - 1].rps : (stats.rps ?? 0)
   const latestResponse = responses[responses.length - 1] ?? null
   const slowestResponse = responses.reduce<RunResponse | null>((slowest, response) => {
     if (response.time == null) return slowest
@@ -248,63 +262,51 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
             </div>
             <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-blue-500 transition-all duration-300"
-                style={{ width: `${progress}%` }}
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${progress}%`, backgroundColor: 'var(--chart-series)' }}
               />
             </div>
           </div>
         ) : null}
 
-        {/* Primary operational metrics */}
+        {/* Primary operational metrics. Values stay in text colors; each tile's
+            trend is one neutral sparkline, and only metrics with a better
+            direction get a colored change badge. */}
         <div className="grid grid-cols-2 gap-2 mb-3 md:grid-cols-3 xl:grid-cols-6">
           <Metric
             label="Attempts"
-            value={`${stats.attempts}`}
+            value={stats.attempts.toLocaleString()}
             sub={`${displayElapsed}s elapsed`}
-            sparkValues={chartPoints.map((point) => point.attempt)}
-            accent="#60a5fa"
           />
           <Metric
             label="Success rate"
             value={`${successRate}%`}
-            sub={`${stats.success} successful`}
-            tone="text-emerald-600 dark:text-emerald-400"
-            sparkValues={chartPoints.map((point) => Math.max(0, 100 - point.errorRate))}
-            accent="#34d399"
+            sub={`${stats.success.toLocaleString()} successful`}
+            sparkValues={successTrend}
             trendDirection="higher"
           />
           <Metric
-            label="Current RPS"
-            value={currentRps.toFixed(1)}
-            tone="text-cyan-600 dark:text-cyan-400"
-            sparkValues={chartPoints.map((point) => point.rps)}
-            accent="#22d3ee"
-            trendDirection="higher"
+            label="Requests / s"
+            value={formatRate(status === 'running' || !stats.elapsed_s ? currentRps : stats.attempts / Math.max(1, stats.elapsed_s))}
+            sub={status === 'running' ? (buckets.length ? 'last full second' : 'waiting for samples') : stats.attempts > 0 ? 'average over the run' : 'waiting for samples'}
+            sparkValues={rpsTrend}
           />
           <Metric
             label="Avg latency"
-            value={`${Math.round(lat?.avg ?? 0)}ms`}
-            sparkValues={chartPoints.map((point) => point.latency)}
-            accent="#a78bfa"
+            value={`${Math.round(lat?.avg ?? 0)} ms`}
+            sparkValues={latencyTrend}
             trendDirection="lower"
           />
           <Metric
             label="P95 latency"
-            value={p95 == null ? '—' : `${Math.round(p95)}ms`}
-            sub={p95 == null ? 'needs 5 samples' : 'slow tail'}
-            tone={p95 == null ? undefined : 'text-amber-600 dark:text-amber-400'}
-            sparkValues={chartPoints.map((point) => point.latency)}
-            accent="#f59e0b"
-            trendDirection="lower"
+            value={p95 == null ? '—' : `${Math.round(p95)} ms`}
+            sub={p95 == null ? 'needs 5 responses' : '95% of requests were faster'}
           />
           <Metric
             label="Errors"
-            value={`${stats.errors}`}
-            sub={stats.rate_limited > 0 ? `${stats.rate_limited} rate limited` : 'none rate limited'}
-            tone={stats.errors > 0 ? 'text-red-600 dark:text-red-400' : undefined}
-            sparkValues={chartPoints.map((point) => point.errorCount)}
-            accent="#ef5b4f"
-            trendDirection="lower"
+            value={`${stats.errors.toLocaleString()}`}
+            sub={stats.rate_limited > 0 ? `${stats.rate_limited.toLocaleString()} rate limited` : 'none rate limited'}
+            status={stats.errors > 0 ? 'critical' : stats.rate_limited > 0 ? 'warning' : undefined}
           />
         </div>
 
@@ -328,6 +330,7 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
             )}
             <OperationsChart
               points={chartPoints}
+              live={status === 'running'}
               p95={p95}
               expanded={chartExpanded}
               onToggleExpanded={() => setChartExpanded((value) => !value)}
@@ -508,64 +511,57 @@ function ResponseStatusBadge({ response: r }: { response: RunResponse }) {
   return <Badge className="h-4 px-1 text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400">{r.status}</Badge>
 }
 
-function Metric({ label, value, tone, sub, sparkValues = [], accent = '#60a5fa', trendDirection }: {
+function formatRate(value: number) {
+  return value >= 100 ? Math.round(value).toLocaleString() : value >= 10 ? value.toFixed(0) : value.toFixed(1)
+}
+
+function Metric({ label, value, sub, sparkValues = [], trendDirection, status }: {
   label: string
   value: string
-  tone?: string
   sub?: string
   sparkValues?: number[]
-  accent?: string
+  /** Which way is better; only then is the change colored. */
   trendDirection?: 'higher' | 'lower'
+  /** A status dot + label for counts that mean trouble when non-zero. */
+  status?: 'warning' | 'critical'
 }) {
   const trend = metricTrend(sparkValues)
-  const trendGood = trendDirection == null || trend.change === 0
+  const trendGood = trendDirection == null || Math.abs(trend.change) < 1
     ? null
     : trendDirection === 'higher' ? trend.change > 0 : trend.change < 0
+  // A flat "→ 0%" is noise; only show a change worth reading.
+  const showTrend = trendDirection != null && trend.hasSignal && Math.abs(trend.change) >= 1
 
   return (
-    <div className="group relative min-w-0 overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/25 px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.035)] transition-colors hover:border-border">
-      <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:radial-gradient(circle_at_center,currentColor_0.7px,transparent_0.8px)] [background-size:7px_7px]" />
-      <div className="relative flex items-center justify-between gap-2">
-        <div className="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
-        {trend.hasSignal && (
-          <span className={`font-mono text-[9px] ${trendGood === true ? 'text-emerald-500' : trendGood === false ? 'text-red-500' : 'text-muted-foreground'}`}>
-            {trend.change > 0 ? '↗' : trend.change < 0 ? '↘' : '→'} {Math.abs(trend.change).toFixed(0)}%
+    <div className="min-w-0 rounded-lg border border-border/80 bg-card px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-[10px] font-medium text-muted-foreground">{label}</div>
+        {showTrend && (
+          <span
+            className={`text-[10px] tabular-nums ${trendGood === true ? 'text-emerald-600 dark:text-emerald-400' : trendGood === false ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
+            title="Change between the earlier and the later half of the last 20 seconds"
+          >
+            {trend.change > 0.5 ? '↑' : trend.change < -0.5 ? '↓' : '→'} {Math.abs(trend.change).toFixed(0)}%
           </span>
         )}
       </div>
-      <div className="relative mt-1 flex items-end justify-between gap-2">
+      <div className="mt-1 flex items-end justify-between gap-2">
         <div className="min-w-0">
-          <div className={`truncate font-mono text-lg font-semibold tracking-tight ${tone || ''}`}>
+          <div className="flex items-center gap-1.5 truncate text-lg font-semibold leading-tight text-foreground">
+            {status && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: status === 'critical' ? 'var(--chart-critical)' : 'var(--chart-warning)' }}
+                aria-label={status === 'critical' ? 'Errors occurred' : 'Requests were rate limited'}
+              />
+            )}
             {value}
           </div>
-          <div className="mt-0.5 truncate text-[9px] text-muted-foreground">{sub || (sparkValues.length > 1 ? 'live run trend' : 'waiting for samples')}</div>
+          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{sub}</div>
         </div>
-        <Sparkline values={sparkValues} color={accent} />
+        {sparkValues.length > 1 && <Sparkline values={sparkValues} />}
       </div>
     </div>
-  )
-}
-
-function Sparkline({ values, color }: { values: number[]; color: string }) {
-  const recent = values.filter(Number.isFinite).slice(-32)
-  if (recent.length < 2) return <div className="h-8 w-16 shrink-0 rounded bg-muted/20" aria-hidden="true" />
-
-  const min = Math.min(...recent)
-  const max = Math.max(...recent)
-  const span = Math.max(1, max - min)
-  const coordinates = recent.map((value, index) => {
-    const x = (index / (recent.length - 1)) * 64
-    const y = 29 - ((value - min) / span) * 24
-    return { x, y }
-  })
-  const points = coordinates.map(({ x, y }) => `${x},${y}`).join(' ')
-  const latest = coordinates.at(-1)!
-
-  return (
-    <svg viewBox="0 0 64 32" className="h-8 w-16 shrink-0 overflow-visible" role="img" aria-label="Recent metric trend">
-      <polyline points={points} fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      <circle cx={latest.x} cy={latest.y} r="2" fill={color} />
-    </svg>
   )
 }
 
@@ -576,38 +572,51 @@ function metricTrend(values: number[]) {
   const before = samples.slice(0, midpoint).reduce((sum, value) => sum + value, 0) / midpoint
   const afterSamples = samples.slice(midpoint)
   const after = afterSamples.reduce((sum, value) => sum + value, 0) / afterSamples.length
-  if (Math.abs(before) < 0.001) return { change: after > 0 ? 100 : 0, hasSignal: after > 0 }
+  if (Math.abs(before) < 0.001) return { change: 0, hasSignal: false }
   return { change: ((after - before) / Math.abs(before)) * 100, hasSignal: true }
 }
 
+/** Status codes are states, so they use the reserved status colors. */
 function codeColor(code: string): string {
-  if (code === 'error') return 'bg-red-500'
   const n = parseInt(code, 10)
-  if (n === 429)           return 'bg-yellow-500'
-  if (n >= 200 && n < 300) return 'bg-emerald-500'
-  if (n >= 300 && n < 400) return 'bg-blue-500'
-  if (n >= 400 && n < 500) return 'bg-amber-500'
-  if (n >= 500)            return 'bg-red-500'
-  return 'bg-muted-foreground'
+  if (code === 'error' || n >= 500) return 'var(--chart-critical)'
+  if (n === 429) return 'var(--chart-warning)'
+  if (n >= 400) return 'var(--chart-serious)'
+  if (n >= 200 && n < 300) return 'var(--chart-good)'
+  return 'hsl(var(--muted-foreground))'
+}
+
+function codeLabel(code: string): string {
+  const n = parseInt(code, 10)
+  if (code === 'error') return 'No response'
+  if (n === 429) return 'Rate limited'
+  if (n >= 500) return 'Server error'
+  if (n >= 400) return 'Client error'
+  if (n >= 300) return 'Redirect'
+  if (n >= 200) return 'Success'
+  return 'Other'
 }
 
 function StatusBar({ codes }: { codes: Record<string, number> }) {
-  const entries = Object.entries(codes)
+  const entries = Object.entries(codes).sort(([a], [b]) => a.localeCompare(b))
   const total = entries.reduce((s, [, n]) => s + n, 0)
   if (!total) return null
   return (
     <div>
-      <div className="flex h-2 w-full rounded-full overflow-hidden bg-muted">
+      {/* Segments are separated by a 2px surface gap, not borders. */}
+      <div className="flex h-2 w-full gap-[2px] overflow-hidden rounded-full" role="img" aria-label={entries.map(([code, n]) => `${code}: ${n}`).join(', ')}>
         {entries.map(([code, n]) => (
-          <div key={code} className={codeColor(code)} style={{ width: `${(n / total) * 100}%` }} title={`${code}: ${n}`} />
+          <div key={code} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${(n / total) * 100}%`, backgroundColor: codeColor(code) }} title={`${code} · ${codeLabel(code)}: ${n.toLocaleString()}`} />
         ))}
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11px]">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
         {entries.map(([code, n]) => (
-          <span key={code} className="flex items-center gap-1">
-            <span className={`h-2 w-2 rounded-full ${codeColor(code)}`} />
-            <span className="font-mono">{code}</span>
-            <span className="text-muted-foreground">{n}</span>
+          <span key={code} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: codeColor(code) }} aria-hidden="true" />
+            <span className="font-medium tabular-nums text-foreground">{code}</span>
+            <span className="text-muted-foreground">{codeLabel(code)}</span>
+            <span className="tabular-nums text-foreground">{n.toLocaleString()}</span>
+            <span className="tabular-nums text-muted-foreground">({((n / total) * 100).toFixed(n === total ? 0 : 1)}%)</span>
           </span>
         ))}
       </div>
@@ -624,44 +633,31 @@ function OutcomePanel({ codes, latest, slowest }: {
   const slowestStatus = slowest?.error ? 'ERR' : (slowest?.status ?? '—')
   const latestMs = latest?.time == null ? null : Math.round(latest.time * 1000)
   const slowestMs = slowest?.time == null ? null : Math.round(slowest.time * 1000)
+  const total = Object.values(codes).reduce((sum, count) => sum + count, 0)
 
   return (
-    <section className="rounded-lg border border-border bg-muted/20 p-3 min-w-0">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
-          <div className="text-[11px] font-medium">Response outcomes</div>
-          <div className="text-[10px] text-muted-foreground">Status distribution</div>
+    <section className="min-w-0 rounded-lg border border-border bg-card p-3">
+      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="text-[11px] font-medium text-muted-foreground">
+          Response outcomes <span className="ml-1 tabular-nums text-foreground">{total.toLocaleString()}</span>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground">
-          {Object.values(codes).reduce((sum, count) => sum + count, 0)} total
-        </span>
+        <div className="flex gap-4 text-[11px] text-muted-foreground">
+          <span>Latest <span className="ml-1 font-medium tabular-nums text-foreground">{latestStatus}</span>{latestMs != null && <span className="ml-1 tabular-nums">{latestMs} ms</span>}</span>
+          <span>
+            Slowest <span className="ml-1 font-medium tabular-nums text-foreground">{slowestStatus}</span>
+            {slowestMs != null && <span className="ml-1 tabular-nums">{slowestMs} ms</span>}
+            {slowest && <span className="ml-1 tabular-nums">· #{slowest.attempt}</span>}
+          </span>
+        </div>
       </div>
 
-      {Object.keys(codes).length > 0 ? (
+      {total > 0 ? (
         <StatusBar codes={codes} />
       ) : (
-        <div className="h-12 flex items-center justify-center rounded-md border border-dashed border-border text-[10px] text-muted-foreground">
+        <div className="flex h-10 items-center justify-center rounded-md border border-dashed border-border text-[10px] text-muted-foreground">
           Waiting for responses
         </div>
       )}
-
-      <div className="grid grid-cols-2 gap-2 mt-3">
-        <div className="rounded-md border border-border bg-background/50 p-2 min-w-0">
-          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Latest</div>
-          <div className="flex items-baseline gap-1.5 mt-1 font-mono">
-            <span className="text-sm font-semibold">{latestStatus}</span>
-            <span className="text-[10px] text-muted-foreground">{latestMs == null ? '—' : `${latestMs}ms`}</span>
-          </div>
-        </div>
-        <div className="rounded-md border border-border bg-background/50 p-2 min-w-0">
-          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Slowest</div>
-          <div className="flex items-baseline gap-1.5 mt-1 font-mono">
-            <span className="text-sm font-semibold">{slowestStatus}</span>
-            <span className="text-[10px] text-muted-foreground">{slowestMs == null ? '—' : `${slowestMs}ms`}</span>
-          </div>
-          {slowest && <div className="text-[9px] text-muted-foreground mt-0.5">attempt #{slowest.attempt}</div>}
-        </div>
-      </div>
     </section>
   )
 }

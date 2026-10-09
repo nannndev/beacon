@@ -47,9 +47,9 @@ describe('OperationsChart focus mode', () => {
     ]
     render(<OperationsChart points={longRun} p95={30} expanded={false} onToggleExpanded={vi.fn()} />)
 
-    expect(screen.getByText('Last 5 min · 2 samples')).toBeInTheDocument()
+    expect(screen.getByText('Last 5 min · per-second view')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '1m' }))
-    expect(screen.getByText('Last 1 min · 1 samples')).toBeInTheDocument()
+    expect(screen.getByText('Last 1 min · per-second view')).toBeInTheDocument()
     expect(screen.getAllByText('Waiting for live samples')).toHaveLength(3)
   })
 
@@ -65,5 +65,21 @@ describe('OperationsChart focus mode', () => {
 
     await user.click(screen.getByRole('button', { name: 'Resume live chart' }))
     expect(screen.getByText(/2s captured/)).toBeInTheDocument()
+  })
+
+  it('plots requests per second and says "No errors" instead of a flat red line', () => {
+    // 12 requests completed within second 0 and 8 within second 1; the
+    // 0.1 s sliver of second 2 is too short to plot.
+    const run: ChartPoint[] = [
+      { attempt: 6, elapsed: 0.3, latency: 40, rps: 400, errorRate: 0, errorCount: 0 },
+      { attempt: 12, elapsed: 0.9, latency: 60, rps: 900, errorRate: 0, errorCount: 0 },
+      { attempt: 20, elapsed: 1.8, latency: 50, rps: 700, errorRate: 0, errorCount: 0 },
+      { attempt: 21, elapsed: 2.1, latency: 50, rps: 3, errorRate: 0, errorCount: 0 },
+    ]
+    render(<OperationsChart points={run} p95={60} expanded={false} onToggleExpanded={vi.fn()} />)
+
+    expect(screen.getByRole('img', { name: 'Requests per second: latest 8/s' })).toBeInTheDocument()
+    expect(screen.getByText('Peak 12/s')).toBeInTheDocument()
+    expect(screen.getByText('No errors')).toBeInTheDocument()
   })
 })

@@ -179,3 +179,24 @@ class ResponseLatencyUnitTests(unittest.TestCase):
         self.assertEqual(sanitize_response_event({"status": 200, "time": 0.104}, 0).latency_ms, 104.0)
         self.assertEqual(sanitize_response_event({"status": 200, "time_ms": 25}, 0).latency_ms, 25.0)
         self.assertIsNone(sanitize_response_event({"error": "refused"}, 0).latency_ms)
+
+
+class ThroughputMetricTests(unittest.TestCase):
+    def test_average_and_peak_ignore_microsecond_sample_gaps(self):
+        from backend.app.history.models import RunSample
+        from backend.app.history.service import _throughput
+
+        def sample(sequence, elapsed_ms, attempts):
+            return RunSample(sequence=sequence, elapsed_ms=elapsed_ms, attempts=attempts,
+                             success=attempts, rate_limited=0, errors=0, instantaneous_rps=0.0)
+
+        # 240 requests over 20 s, reported by concurrent workers in bursts
+        # only fractions of a millisecond apart.
+        samples = []
+        for second in range(20):
+            for burst in range(12):
+                samples.append(sample(len(samples), second * 1000 + 500 + burst // 6, second * 12 + burst + 1))
+        average, peak = _throughput(samples)
+        self.assertAlmostEqual(average, 240 / 19.501, places=2)
+        self.assertEqual(peak, 12.0)
+        self.assertEqual(_throughput([]), (0.0, 0.0))

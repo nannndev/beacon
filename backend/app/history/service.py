@@ -81,6 +81,33 @@ def _append_downsampled(values: list, value, cap: int) -> None:
         values[:] = reduced
 
 
+def _throughput(samples: list[RunSample]) -> tuple[float, float]:
+    """Average and peak requests per second from cumulative-attempt samples.
+
+    Averaging the per-sample instantaneous rates was wrong: concurrent
+    workers report stats microseconds apart, so a single sample could claim
+    thousands of requests per second (scenario runs showed "12.5K rps" for
+    240 requests). The average is total attempts over the run's duration;
+    the peak is the busiest one-second window.
+    """
+    if not samples:
+        return 0.0, 0.0
+    last = samples[-1]
+    average = last.attempts / max(1.0, last.elapsed_ms / 1000.0)
+    attempts_by_second: dict[int, int] = {}
+    for sample in samples:
+        second = int(sample.elapsed_ms // 1000)
+        attempts_by_second[second] = max(attempts_by_second.get(second, 0), sample.attempts)
+    peak = 0.0
+    previous_second, previous_attempts = -1, 0
+    for second in sorted(attempts_by_second):
+        # Downsampled buffers can skip seconds; spread the delta over the gap.
+        rate = (attempts_by_second[second] - previous_attempts) / max(1, second - previous_second)
+        peak = max(peak, rate)
+        previous_second, previous_attempts = second, attempts_by_second[second]
+    return average, peak
+
+
 class HistoryService:
     def __init__(self, repository):
         self.repository = repository
@@ -255,11 +282,11 @@ class HistoryService:
             for key in ("attempts", "success", "rate_limited", "errors")
         }
         latencies = [latency for step in steps for latency in step.latencies]
-        rps_values = [sample.instantaneous_rps for sample in buffer.samples]
+        average_rps, peak_rps = _throughput(buffer.samples)
         return RunMetrics(
             **stats,
-            average_rps=(sum(rps_values) / len(rps_values)) if rps_values else 0.0,
-            peak_rps=max(rps_values, default=0.0),
+            average_rps=average_rps,
+            peak_rps=peak_rps,
             min_latency_ms=min(latencies) if latencies else None,
             average_latency_ms=(sum(latencies) / len(latencies)) if latencies else None,
             p50_ms=percentile(latencies, 0.50),
