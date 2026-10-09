@@ -161,6 +161,35 @@ class SendRouteTests(unittest.TestCase):
                 runs.send_single({"test_id": "nope"})
             self.assertEqual(unknown.exception.status_code, 404)
 
+    def test_send_uses_unsaved_draft_without_persisting_it(self):
+        saved = plain_endpoint()
+        saved.inherited_auth = [{"type": "bearer", "token": "{{access_token}}"}]
+        store = make_store([saved])
+        send = patch("backend.app.core.transport.HttpTransport.send",
+                     return_value=FakeResponse(body="{}"))
+        with patch("backend.app.routers.runs.store", store), send as transport:
+            result = runs.send_single({"test_id": "e1", "draft": {
+                "id": "other", "name": "Edited", "url": "/edited", "method": "POST",
+                "auth": {"type": "inherit"},
+            }})
+
+        self.assertTrue(result["ok"])
+        _, endpoint, url, headers = transport.call_args.args[:4]
+        self.assertEqual((endpoint.id, endpoint.method), ("e1", "POST"))
+        self.assertEqual(url, "https://example.test/edited")
+        # The folder/project auth chain still applies to the draft.
+        self.assertEqual(headers["Authorization"], "Bearer seed")
+        # The saved endpoint is untouched.
+        self.assertEqual((saved.url, saved.method), ("/thing", "GET"))
+
+    def test_send_rejects_malformed_draft(self):
+        store = make_store([plain_endpoint()])
+        with patch("backend.app.routers.runs.store", store):
+            for draft in ("nope", {"url": ""}):
+                with self.subTest(draft=draft), self.assertRaises(HTTPException) as error:
+                    runs.send_single({"test_id": "e1", "draft": draft})
+                self.assertEqual(error.exception.status_code, 400)
+
     def test_send_rejects_non_numeric_retry_settings(self):
         store = make_store([plain_endpoint()])
         with patch("backend.app.routers.runs.store", store):

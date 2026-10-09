@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
+from ..core.models import EndpointTest
 from ..core.tester import APITester, TestConfig
 from ..history.models import RunStart, RunStepStart
 from ..state import store
@@ -93,6 +94,23 @@ async def start_run(data: dict):
     )
 
 
+def _endpoint_from_draft(saved, draft):
+    """The editor's unsaved form, sent as-is so Send fires what the user sees.
+    Identity and the inherited folder/project auth chain stay the saved
+    endpoint's; nothing is persisted."""
+    if not isinstance(draft, dict):
+        raise HTTPException(status_code=400, detail="draft must be an object")
+    merged = {**saved.to_dict(), **{k: v for k, v in draft.items() if v is not None}, "id": saved.id}
+    if not merged.get("name") or not merged.get("url"):
+        raise HTTPException(status_code=400, detail="draft needs a name and url")
+    try:
+        endpoint = EndpointTest.from_dict(merged)
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid draft: {exc}")
+    endpoint.inherited_auth = list(getattr(saved, "inherited_auth", []))
+    return endpoint
+
+
 @router.post("/send")
 def send_single(data: dict):
     """Fire ONE request synchronously and return the full response (status,
@@ -108,6 +126,10 @@ def send_single(data: dict):
         retry_delay = float(data.get("retry_delay", 0.0))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="retries/retry_delay must be numbers")
+
+    draft = data.get("draft")
+    if draft is not None:
+        test = _endpoint_from_draft(test, draft)
 
     if getattr(test, "target_type", "api") == "websocket":
         result = APITester(test, store.current_config).send_ws_once()

@@ -4,12 +4,18 @@ Scripts run in a restricted Python environment with only safe builtins
 and standard-library modules. They receive a `beacon` proxy object that
 lets them mutate the outgoing request and read/write environment variables.
 
-No new dependencies — uses only the stdlib + signal.
+This is defense in depth for scripts shared through projects, not an
+OS-level isolation boundary. No new dependencies — stdlib only.
 """
 from __future__ import annotations
 
-import signal
+import ast
+import importlib
+import sys
+import time
 import traceback
+import types
+from types import SimpleNamespace
 from typing import Any, Dict
 
 
@@ -138,15 +144,41 @@ class PreRequestProxy:
         self.variables = self.environment  # alias
 
 
+class _ScriptTimeout(BaseException):
+    """Raised from the trace hook. A BaseException so a script's own
+    `except Exception:` cannot swallow the deadline."""
+
+
+def _safe_module(module, depth: int = 0) -> SimpleNamespace:
+    """Expose a module's public, non-module attributes only.
+
+    Handing scripts the real module objects leaks everything those modules
+    import (`uuid.os`, `json.codecs.sys`, ...), which is a direct path to
+    `os.system`. Submodules are re-wrapped so `urllib.parse` still works.
+    """
+    attrs = {}
+    for name in dir(module):
+        if name.startswith("_"):
+            continue
+        value = getattr(module, name)
+        if isinstance(value, types.ModuleType):
+            if depth == 0 and value.__name__ == f"{module.__name__}.{name}":
+                attrs[name] = _safe_module(value, depth + 1)
+            continue
+        attrs[name] = value
+    return SimpleNamespace(**attrs)
+
+
 class PreRequestEngine:
     ALLOWED_BUILTINS = frozenset({
         "abs", "all", "any", "bin", "bool", "chr", "dict",
-        "divmod", "enumerate", "filter", "float", "format",
-        "frozenset", "getattr", "hasattr", "hex", "int", "isinstance",
-        "issubclass", "iter", "len", "list", "map", "max", "min",
+        "divmod", "enumerate", "filter", "float",
+        "frozenset", "hasattr", "hex", "int", "isinstance",
+        "iter", "len", "list", "map", "max", "min",
         "next", "oct", "ord", "pow", "print", "range", "repr",
         "reversed", "round", "set", "slice", "sorted", "str",
-        "sum", "tuple", "type", "zip", "__import__",
+        "sum", "tuple", "zip",
+        "Exception", "ValueError", "KeyError", "TypeError",
     })
 
     ALLOWED_MODULES = {
@@ -154,15 +186,60 @@ class PreRequestEngine:
         "math", "random", "re", "time", "urllib.parse", "uuid",
     }
 
-    @staticmethod
-    def _build_globals(context: dict) -> dict:
-        """Construct a restricted global namespace for exec()."""
-        g: dict = {"__builtins__": {name: __builtins__[name] for name in PreRequestEngine.ALLOWED_BUILTINS if name in __builtins__}}
-        for mod_name in PreRequestEngine.ALLOWED_MODULES:
+    # `str.format` reads attributes from inside a string, out of reach of the
+    # AST check below ("{0.__class__}"), so the method names are blocked too.
+    _BLOCKED_ATTRIBUTES = {"format", "format_map", "mro"}
+
+    @classmethod
+    def _validate(cls, script: str) -> None:
+        """Reject the attribute and name access every known escape relies on
+        (`().__class__.__base__.__subclasses__()`, `fn.__globals__`, ...)."""
+        tree = ast.parse(script, mode="exec")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and (
+                node.attr.startswith("_") or node.attr in cls._BLOCKED_ATTRIBUTES
+            ):
+                raise PreRequestError(f"Access to '.{node.attr}' is not allowed (line {node.lineno})")
+            if isinstance(node, ast.Name) and node.id.startswith("__"):
+                raise PreRequestError(f"Name '{node.id}' is not allowed (line {node.lineno})")
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = [node.module or ""] if isinstance(node, ast.ImportFrom) else [a.name for a in node.names]
+                for name in names:
+                    if name not in cls.ALLOWED_MODULES and name != "urllib":
+                        raise PreRequestError(f"Module '{name}' is not available (line {node.lineno})")
+
+    @classmethod
+    def _modules(cls) -> Dict[str, SimpleNamespace]:
+        modules: Dict[str, SimpleNamespace] = {}
+        for mod_name in cls.ALLOWED_MODULES:
+            top = mod_name.split(".")[0]
             try:
-                g[mod_name] = __import__(mod_name)
+                modules[top] = _safe_module(importlib.import_module(top))
             except ImportError:
                 pass
+        if "urllib" in modules:
+            # Only urllib.parse is allowed; drop request/error/response.
+            modules["urllib"] = SimpleNamespace(parse=_safe_module(importlib.import_module("urllib.parse")))
+        return modules
+
+    @classmethod
+    def _build_globals(cls, context: dict) -> dict:
+        """Construct a restricted global namespace for exec()."""
+        import builtins
+
+        modules = cls._modules()
+
+        def _import(name, globals=None, locals=None, fromlist=(), level=0):
+            top = name.split(".")[0]
+            if level or top not in modules or (name not in cls.ALLOWED_MODULES and name != "urllib"):
+                raise ImportError(f"Module '{name}' is not available in pre-request scripts")
+            if fromlist and "." in name:
+                return getattr(modules[top], name.split(".", 1)[1])
+            return modules[top]
+
+        safe_builtins = {name: getattr(builtins, name) for name in cls.ALLOWED_BUILTINS}
+        safe_builtins["__import__"] = _import
+        g: dict = {"__builtins__": safe_builtins, **modules}
 
         variables = context.get("variables")
         if variables is None:
@@ -176,35 +253,36 @@ class PreRequestEngine:
 
         The context dict must contain: url, method, headers, body.
         Returns the same dict with any mutations applied.
+
+        The deadline is enforced with a per-thread trace hook rather than
+        SIGALRM: runs execute scripts on worker threads, where installing a
+        signal handler raises, and SIGALRM does not exist on Windows.
         """
-        globals_ = self._build_globals(context)
-        raised: Exception | None = None
-
-        # Timeout guard — signal.alarm is unavailable on Windows.
-        # Graceful fallback: skip timeout, log a warning later.
-        platform_has_alarm = hasattr(signal, "alarm") and hasattr(signal, "SIGALRM")
-        if platform_has_alarm:
-            def _timeout_handler(signum, frame):
-                raise PreRequestTimeout("Script timed out after %d seconds" % timeout)
-            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-            signal.alarm(timeout)
-
         try:
-            exec(script, globals_)
-        except PreRequestTimeout:
-            raised = PreRequestTimeout("Script timed out after %d seconds" % timeout)
+            self._validate(script)
         except SyntaxError as e:
-            raised = PreRequestError(f"Syntax error (line {e.lineno}): {e.msg}")
+            raise PreRequestError(f"Syntax error (line {e.lineno}): {e.msg}")
+        globals_ = self._build_globals(context)
+        deadline = time.monotonic() + timeout
+
+        def _tracer(frame, event, arg):
+            if time.monotonic() > deadline:
+                raise _ScriptTimeout()
+            return _tracer
+
+        previous = sys.gettrace()
+        sys.settrace(_tracer)
+        try:
+            exec(compile(script, "<pre-request>", "exec"), globals_)
+        except _ScriptTimeout:
+            raise PreRequestTimeout("Script timed out after %d seconds" % timeout)
+        except PreRequestError:
+            raise
         except Exception as e:
             lines = traceback.format_exception_only(type(e), e)
             msg = lines[-1].strip() if lines else str(e)
-            raised = PreRequestError(msg)
+            raise PreRequestError(msg)
         finally:
-            if platform_has_alarm:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-
-        if raised:
-            raise raised
+            sys.settrace(previous)
 
         return context

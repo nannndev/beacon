@@ -4,6 +4,6 @@ pydantic
 requests
 cryptography
 python-multipart
-mcp
+mcp>=1.2,<2
 PyYAML
 websocket-client
