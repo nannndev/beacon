@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { TestConfig, Project, Endpoint, RunConfig, CollectionItem, ProjectNotifications, SharingStatus } from './types'
 import { flattenItems, collectRequestsUnderFolder } from './lib/utils'
 import { insertIntoFolder, renameItem, duplicateFolder, removeItem } from './lib/tree'
@@ -779,17 +779,26 @@ function App() {
   // Anonymous "app opened" ping (gated on the opt-out preference).
   useEffect(() => { track('app_started') }, [])
 
-  // ⌘K / Ctrl+K toggles the command palette from anywhere.
+  const openNewEditorRef = useRef(openNewEditor)
+  openNewEditorRef.current = openNewEditor
+
+  // ⌘K / Ctrl+K toggles the command palette from anywhere; ⌘N / Ctrl+N creates an endpoint.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setShowPalette((p) => !p)
+      } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n'
+        && !showEditor && !showProjectSettings && appView.view === 'workspace') {
+        // The palette advertises ⌘N; honor it outside the editor so an
+        // in-progress edit is never replaced.
+        e.preventDefault()
+        openNewEditorRef.current()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [showEditor, showProjectSettings, appView.view])
 
   // Refetch when the window regains focus, so endpoints an AI agent created via
   // MCP (a separate process) show up when you switch back — without a manual

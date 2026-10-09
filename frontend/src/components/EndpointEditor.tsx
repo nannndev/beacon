@@ -4,6 +4,7 @@ import {
   BadgeCheck,
   Braces,
   Cookie,
+  Database,
   DatabaseZap,
   FileJson,
   Globe2,
@@ -27,6 +28,7 @@ import { TestConfig, Endpoint } from '../types'
 import { api, type SendResponse } from '../lib/api'
 import { CodeSnippetDialog } from './dialogs/CodeSnippetDialog'
 import { CurlImportDialog } from './dialogs/CurlImportDialog'
+import { useConfirmDialog } from './ui/confirm-dialog'
 import type { ParsedCurl } from '../lib/curlParser'
 import { Terminal, ClipboardPaste } from 'lucide-react'
 import ResponseInspector from './ResponseInspector'
@@ -162,6 +164,9 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const [graphqlSchemaHash, setGraphqlSchemaHash] = useState<string | undefined>(undefined)
   const [graphqlSchemaFetchedAt, setGraphqlSchemaFetchedAt] = useState<number | undefined>(undefined)
   const [graphqlSchemaLoading, setGraphqlSchemaLoading] = useState(false)
+  const [loadGen, setLoadGen] = useState(0)
+  const [baseline, setBaseline] = useState<{ gen: number; value: string }>({ gen: -1, value: '' })
+  const { confirm, confirmationDialog } = useConfirmDialog()
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -178,6 +183,15 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
           payload: existing.payload || {},
           extractors: existing.extractors || {},
           target_type: existing.target_type || 'api',
+        }
+        // GraphQL is persisted as payload {query, variables}; the editor works
+        // on the split fields, so reopening must hydrate them or a re-save
+        // would overwrite the stored query with an empty one.
+        if (existing.payload_type === 'graphql') {
+          const gql = existing.payload || {}
+          loaded.graphql_query = typeof gql.query === 'string' ? gql.query : ''
+          const vars = gql.variables
+          loaded.graphql_variables = vars && Object.keys(vars).length ? JSON.stringify(vars, null, 2) : ''
         }
         setForm(loaded)
 
@@ -215,7 +229,37 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       setBasicPassword('')
       setApiKeyHeader('X-API-Key')
     }
+    setLoadGen((g) => g + 1)
   }, [testId, config])
+
+  // Unsaved-change tracking: the baseline is captured on the render after the
+  // form is (re)loaded (a load bumps `loadGen`; the render that sees the new
+  // generation also sees the loaded form), then compared on every later render.
+  const snapshot = JSON.stringify([form, authType, authVar, basicUser, basicPassword, apiKeyHeader])
+  useEffect(() => {
+    if (baseline.gen !== loadGen) setBaseline({ gen: loadGen, value: snapshot })
+  }, [baseline.gen, loadGen, snapshot])
+  const isDirty = baseline.gen === loadGen && baseline.value !== snapshot
+
+  useEffect(() => {
+    if (!isDirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [isDirty])
+
+  const requestClose = async () => {
+    if (isDirty) {
+      const leave = await confirm({
+        title: 'Discard unsaved changes?',
+        description: 'This endpoint has edits that have not been saved. Leaving now will discard them.',
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
+      })
+      if (!leave) return
+    }
+    onClose()
+  }
 
   const headerCount = Object.keys(form.headers || {}).filter(Boolean).length
   const cookieCount = Object.keys(form.cookies || {}).filter(Boolean).length
@@ -355,7 +399,12 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     setSending(true)
     setResponse(null)
     try {
-      setResponse(await api.sendOnce(testId, retries > 0 ? { retries, retry_delay: 0.3 } : undefined))
+      // Send what is on screen: unsaved edits travel as a draft and are not
+      // persisted, so trying a change no longer requires saving it first.
+      setResponse(await api.sendOnce(testId, {
+        ...(retries > 0 ? { retries, retry_delay: 0.3 } : {}),
+        ...(isDirty ? { draft: buildPayload() } : {}),
+      }))
     } catch (e: any) {
       setResponse({ ok: false, error: e?.message || 'Request failed', time_ms: 0 })
     } finally {
@@ -382,7 +431,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     return { ok: true }
   }
 
-  // Cmd/Ctrl+Enter sends the request from anywhere in the editor.
+  // Cmd/Ctrl+Enter sends the request and Cmd/Ctrl+S saves, from anywhere in the editor.
   const handleSendRef = useRef(handleSend)
   handleSendRef.current = handleSend
   useEffect(() => {
@@ -390,6 +439,9 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && testId) {
         e.preventDefault()
         handleSendRef.current()
+      } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        saveRef.current()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -432,6 +484,15 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       return
     }
 
+    if (form.payload_type === 'graphql' && String(form.graphql_variables || '').trim()) {
+      try {
+        JSON.parse(String(form.graphql_variables))
+      } catch {
+        toast.error('GraphQL variables must be valid JSON')
+        return
+      }
+    }
+
     const payloadToSend = buildPayload()
 
     setSaving(true)
@@ -445,6 +506,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
         ? await api.updateTest(testId, payloadToSend as Partial<Endpoint>)
         : await api.createTest(payloadToSend as Partial<Endpoint>)
       toast.success(testId ? 'Endpoint updated' : 'Endpoint created')
+      setBaseline({ gen: loadGen, value: snapshot })
       onSave(testId ? undefined : saved)
       onClose()
     } catch (e: any) {
@@ -454,11 +516,15 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     }
   }
 
+  const saveRef = useRef(save)
+  saveRef.current = save
+
   return (
     <div className="w-full min-w-0 bg-background">
+      {confirmationDialog}
       <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-xl">
         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 gap-1.5 shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => void requestClose()} className="h-8 gap-1.5 shrink-0">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
 
@@ -500,7 +566,15 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
             >
               <ClipboardPaste className="h-3.5 w-3.5 text-cyan-500" /> Import cURL
             </Button>
-            <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+            {isDirty && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                title="Send uses these edits without saving them"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> Unsaved
+              </span>
+            )}
+            <Button variant="outline" size="sm" onClick={() => void requestClose()} disabled={saving}>Cancel</Button>
             {testId && (
               <div className="flex items-center gap-1.5">
                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground" title="Retry while the request errors or returns a non-2xx">
@@ -520,13 +594,13 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
                   onClick={handleSend}
                   disabled={sending || saving}
                   className="gap-1.5"
-                  title="Send this request once and inspect the response"
+                  title={isDirty ? 'Send the current edits once without saving (⌘/Ctrl+Enter)' : 'Send this request once and inspect the response (⌘/Ctrl+Enter)'}
                 >
                   <Send className="h-3.5 w-3.5" /> {sending ? 'Sending...' : 'Send'}
                 </Button>
               </div>
             )}
-            <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">
+            <Button size="sm" onClick={save} disabled={saving} className="gap-1.5" title="Save (⌘/Ctrl+S)">
               <Save className="h-3.5 w-3.5" /> {saving ? 'Saving...' : isWebTarget ? 'Save web page' : 'Save endpoint'}
             </Button>
           </div>

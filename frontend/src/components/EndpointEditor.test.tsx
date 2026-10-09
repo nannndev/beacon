@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import EndpointEditor from './EndpointEditor'
 import type { TestConfig } from '../types'
+import { api } from '../lib/api'
 
 
 const config: TestConfig = {
@@ -26,7 +27,7 @@ describe('EndpointEditor Web Page target', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /Web Page HTML document load/i }))
+    await user.click(screen.getByRole('button', { name: /Web HTML load/i }))
 
     expect(screen.getByPlaceholderText('Endpoint name')).toHaveValue('Website homepage')
     expect(screen.getByPlaceholderText('https://example.com/')).toHaveValue('https://example.com/')
@@ -34,7 +35,7 @@ describe('EndpointEditor Web Page target', () => {
     expect(screen.queryByDisplayValue('Content-Type')).not.toBeInTheDocument()
     expect(screen.getByDisplayValue('Accept')).toBeInTheDocument()
     expect(screen.getByText(/does not execute JavaScript or download page assets/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Web Page HTML document load/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Web HTML load/i })).toHaveAttribute('aria-pressed', 'true')
   })
 })
 
@@ -84,5 +85,70 @@ describe('EndpointEditor authorization', () => {
     await user.selectOptions(screen.getByLabelText('Auth type'), 'bearer')
 
     expect(screen.getByText('Authorization: Bearer {{access_token}}')).toBeInTheDocument()
+  })
+})
+
+
+describe('EndpointEditor unsaved changes', () => {
+  const saved = {
+    id: 'e1', name: 'Get user', url: '/users/1', method: 'GET',
+    headers: {}, payload: {}, payload_type: 'json', extractors: {}, target_type: 'api',
+  }
+  const savedConfig = { ...config, tests: [saved] } as unknown as TestConfig
+
+  it('flags edits and asks before discarding them', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<EndpointEditor testId="e1" config={savedConfig} onClose={onClose} onSave={vi.fn()} />)
+
+    expect(screen.queryByText('Unsaved')).not.toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('Endpoint name'), ' v2')
+    expect(screen.getByText('Unsaved')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(await screen.findByRole('button', { name: 'Keep editing' }))
+    expect(onClose).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(await screen.findByRole('button', { name: 'Discard changes' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes immediately when nothing changed', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<EndpointEditor testId="e1" config={savedConfig} onClose={onClose} onSave={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends the on-screen edits as a draft', async () => {
+    const user = userEvent.setup()
+    const sendOnce = vi.spyOn(api, 'sendOnce').mockResolvedValue({ ok: true, status: 200, time_ms: 1 } as any)
+    render(<EndpointEditor testId="e1" config={savedConfig} onClose={vi.fn()} onSave={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: /^Send$/ }))
+    expect(sendOnce).toHaveBeenLastCalledWith('e1', {})
+
+    await user.type(screen.getByPlaceholderText('Endpoint name'), ' v2')
+    await user.click(screen.getByRole('button', { name: /^Send$/ }))
+    expect(sendOnce).toHaveBeenLastCalledWith('e1', { draft: expect.objectContaining({ name: 'Get user v2', url: '/users/1' }) })
+    sendOnce.mockRestore()
+  })
+
+  it('reloads a saved GraphQL query instead of showing it empty', () => {
+    const gql = { ...saved, method: 'POST', payload_type: 'graphql', payload: { query: '{ viewer { id } }', variables: { first: 2 } } }
+    render(
+      <EndpointEditor
+        testId="e1"
+        config={{ ...config, tests: [gql] } as unknown as TestConfig}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByDisplayValue('{ viewer { id } }')).toBeInTheDocument()
+    expect(screen.queryByText('Unsaved')).not.toBeInTheDocument()
   })
 })

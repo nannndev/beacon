@@ -412,7 +412,7 @@ export const api = {
   // Endpoints
   createTest: (test: Partial<Endpoint>) => req<Endpoint>('/tests', jsonInit('POST', test)),
   // Single synchronous send — returns the full response for inspection.
-  sendOnce: (testId: string, opts?: { retries?: number; retry_delay?: number }) =>
+  sendOnce: (testId: string, opts?: { retries?: number; retry_delay?: number; draft?: Record<string, unknown> }) =>
     req<SendResponse>('/send', jsonInit('POST', { test_id: testId, ...opts })),
   // Run endpoints in order as one flow (chaining); variables carry between steps.
   runScenario: (testIds: string[], opts?: ScenarioOptions) =>
