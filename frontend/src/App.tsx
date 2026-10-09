@@ -33,6 +33,7 @@ import { useAppView } from './hooks/useAppView'
 import { HistoryPage } from './pages/HistoryPage'
 import { MODE_DEFAULTS, type ModeParams, type ScenarioParams, type TestMode } from './types/testModes'
 import { buildRunPayload } from './lib/modePayload'
+import { loadTestModePreferences } from './lib/testModePreferences'
 import { useConfirmDialog } from './components/ui/confirm-dialog'
 import { SendResponsePanel } from './components/SendResponsePanel'
 import { WorkspaceTraceBackground } from './components/WorkspaceTraceBackground'
@@ -411,12 +412,28 @@ function App() {
       tone: 'action',
     })) return
     try {
-      const params = MODE_DEFAULTS.scenario as ScenarioParams
+      // With Scenario mode selected, honor its traffic settings (users,
+      // iterations, ramp-up, ...) like "Run project journey" does; otherwise
+      // keep the single quick pass.
+      const preferences = loadTestModePreferences()
+      const configured = preferences.selectedMode === 'scenario'
+      const params = (configured ? preferences.paramsByMode.scenario : MODE_DEFAULTS.scenario) as ScenarioParams
       setScenarioResult(null)
       setScenarioPlan({ params, startedAt: Date.now() })
       setScenarioEndpoints(tests.map(({ id, name, method, target_type }) => ({ id, name, method, targetType: target_type })))
       setScenarioBusy(true)
-      const result = await executeScenario(tests.map((ep) => ep.id), { continue_on_error: false })
+      const result = await executeScenario(tests.map((ep) => ep.id), configured
+        ? {
+            continue_on_error: params.continue_on_error,
+            virtual_users: params.virtual_users,
+            iterations: params.iterations,
+            ramp_up_s: params.ramp_up_s,
+            think_time_ms: params.think_time_ms,
+            retries: params.retries,
+            retry_delay: params.retry_delay_ms / 1000,
+            stop_failure_pct: params.stop_failure_pct,
+          }
+        : { continue_on_error: false })
       setScenarioResult(result)
       await fetchAll() // pick up any tokens the chain refreshed
     } catch (e: any) {
