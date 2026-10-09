@@ -75,7 +75,10 @@ body {
   #root {
     width: 100%;
     max-width: 100%;
+    /* `clip` stops sideways scrolling without turning these into scroll
+       containers; `hidden` did, which silently broke the sticky header. */
     overflow-x: hidden;
+    overflow-x: clip;
     scroll-behavior: smooth;
   }
   /* The header is sticky at 4rem, so an anchor jump would otherwise land the

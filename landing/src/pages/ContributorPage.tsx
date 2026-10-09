@@ -99,7 +99,7 @@ const RULES = [
 
 export default function ContributorPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background text-foreground selection:bg-cyan-500/30">
+    <main className="min-h-screen overflow-x-clip bg-background text-foreground selection:bg-cyan-500/30">
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(#111_0.6px,transparent_1px)] bg-[length:3px_3px] dark:bg-[radial-gradient(#222_0.6px,transparent_1px)]"

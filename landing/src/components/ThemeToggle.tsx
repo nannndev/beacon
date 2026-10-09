@@ -11,8 +11,8 @@ function getInitialTheme(): Theme {
   } catch {
     /* ignore */
   }
-  // Match the pre-paint script default in index.html.
-  return document.documentElement.classList.contains('dark') ? 'dark' : 'dark'
+  // Match the pre-paint script in index.html: follow the system preference.
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
 }
 
 export function ThemeToggle() {
@@ -20,18 +20,25 @@ export function ThemeToggle() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
+  }, [theme])
+
+  // Persist only an explicit choice, so visitors who never toggle keep
+  // following their system theme.
+  const toggle = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
     try {
-      localStorage.setItem('theme', theme)
+      localStorage.setItem('theme', next)
     } catch {
       /* ignore */
     }
-  }, [theme])
+  }
 
   return (
     <Button
       variant="outline"
       size="icon"
-      onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+      onClick={toggle}
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >

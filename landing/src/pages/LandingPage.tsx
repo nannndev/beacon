@@ -47,19 +47,50 @@ import {
   motion,
   useReducedMotion,
 } from '../components/motion'
-import requestBuilderShot from '../assets/features/request-builder-v047.png'
-import responseAssertionsShot from '../assets/features/response-assertions-v047.png'
-import scenarioConfigShot from '../assets/features/scenario-config-v047.png'
-import scenarioResultsShot from '../assets/features/scenario-live-v047.png'
-import liveMonitorShot from '../assets/features/live-monitor-v0410.png'
-import environmentsShot from '../assets/features/environments-v047.png'
-import runHistoryShot from '../assets/features/run-history-v0410.png'
-import gitProjectShot from '../assets/features/git-project-sync-v047.png'
-import mcpToolsShot from '../assets/features/mcp-tools-v047.png'
-import cliShot from '../assets/features/cli-v047.png'
-// TODO: Add screenshot — take WebSocket endpoint editor + inspector, save as
-// landing/src/assets/features/websocket-testing-v060.png and uncomment below.
-// import wsTestingShot from '../assets/features/websocket-testing-v060.png'
+import { ThemedShot, type ShotPair } from '../components/ThemedShot'
+import requestBuilderLight from '../assets/screens/request-builder-light.webp'
+import requestBuilderDark from '../assets/screens/request-builder-dark.webp'
+import responseAssertionsLight from '../assets/screens/response-assertions-light.webp'
+import responseAssertionsDark from '../assets/screens/response-assertions-dark.webp'
+import preRequestScriptLight from '../assets/screens/pre-request-script-light.webp'
+import preRequestScriptDark from '../assets/screens/pre-request-script-dark.webp'
+import graphqlLight from '../assets/screens/graphql-light.webp'
+import graphqlDark from '../assets/screens/graphql-dark.webp'
+import websocketLight from '../assets/screens/websocket-light.webp'
+import websocketDark from '../assets/screens/websocket-dark.webp'
+import scenarioSetupLight from '../assets/screens/scenario-setup-light.webp'
+import scenarioSetupDark from '../assets/screens/scenario-setup-dark.webp'
+import scenarioLiveLight from '../assets/screens/scenario-live-light.webp'
+import scenarioLiveDark from '../assets/screens/scenario-live-dark.webp'
+import liveMonitorLight from '../assets/screens/live-monitor-light.webp'
+import liveMonitorDark from '../assets/screens/live-monitor-dark.webp'
+import environmentsLight from '../assets/screens/environments-light.webp'
+import environmentsDark from '../assets/screens/environments-dark.webp'
+import runHistoryLight from '../assets/screens/run-history-light.webp'
+import runHistoryDark from '../assets/screens/run-history-dark.webp'
+import projectSettingsLight from '../assets/screens/project-settings-light.webp'
+import projectSettingsDark from '../assets/screens/project-settings-dark.webp'
+import mcpLight from '../assets/screens/mcp-light.webp'
+import mcpDark from '../assets/screens/mcp-dark.webp'
+import cliLight from '../assets/screens/cli-light.webp'
+import cliDark from '../assets/screens/cli-dark.webp'
+
+// Every screenshot exists in a light and a dark capture of the real app.
+const SHOTS = {
+  requestBuilder: { light: requestBuilderLight, dark: requestBuilderDark },
+  responseAssertions: { light: responseAssertionsLight, dark: responseAssertionsDark },
+  preRequestScript: { light: preRequestScriptLight, dark: preRequestScriptDark },
+  graphql: { light: graphqlLight, dark: graphqlDark },
+  websocket: { light: websocketLight, dark: websocketDark },
+  scenarioSetup: { light: scenarioSetupLight, dark: scenarioSetupDark },
+  scenarioLive: { light: scenarioLiveLight, dark: scenarioLiveDark },
+  liveMonitor: { light: liveMonitorLight, dark: liveMonitorDark },
+  environments: { light: environmentsLight, dark: environmentsDark },
+  runHistory: { light: runHistoryLight, dark: runHistoryDark },
+  projectSettings: { light: projectSettingsLight, dark: projectSettingsDark },
+  mcp: { light: mcpLight, dark: mcpDark },
+  cli: { light: cliLight, dark: cliDark },
+} satisfies Record<string, ShotPair>
 
 // URLs injected from the root .env via vite.config.ts (define block).
 const DOCS_URL =
@@ -89,7 +120,7 @@ export default function LandingPage() {
   // releases page). See lib/download.ts.
   const download = () => { void startDownload() }
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [activeSection, setActiveSection] = useState<string>('product-preview')
+  const [activeSection, setActiveSection] = useState<string>('')
 
   useEffect(() => {
     const sections = NAV_LINKS
@@ -106,7 +137,27 @@ export default function LandingPage() {
       { rootMargin: '-45% 0px -45% 0px', threshold: [0, 0.25, 0.5, 1] },
     )
     sections.forEach((section) => observer.observe(section))
-    return () => observer.disconnect()
+    // Above the first section (the hero) no nav item should look current.
+    const clearAboveFirst = () => {
+      if (sections[0].getBoundingClientRect().top > window.innerHeight * 0.55) setActiveSection('')
+    }
+    clearAboveFirst()
+    window.addEventListener('scroll', clearAboveFirst, { passive: true })
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', clearAboveFirst)
+    }
+  }, [])
+
+  // The page renders client-side, so the browser's own jump to a #section in
+  // the URL happens before the section exists. Re-apply it once mounted.
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.slice(1))
+    if (!id) return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   // Lock body scroll while the mobile menu is open.
@@ -118,7 +169,7 @@ export default function LandingPage() {
   }, [mobileOpen])
 
   return (
-    <main className="landing-shell min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-background text-foreground selection:bg-cyan-500/30">
+    <main className="landing-shell min-h-[100dvh] w-full max-w-full overflow-x-clip bg-background text-foreground selection:bg-cyan-500/30">
       <div className="landing-atmosphere pointer-events-none fixed inset-0 -z-10" aria-hidden="true">
       </div>
       <NetworkBackground />
@@ -131,7 +182,7 @@ export default function LandingPage() {
             <span className="text-lg font-extrabold tracking-tight">Beacon</span>
           </a>
 
-          <nav className="hidden items-center gap-1 text-sm font-medium md:flex">
+          <nav className="hidden items-center gap-1 text-sm font-medium lg:flex">
             {NAV_LINKS.map((link) => (
               <a
                 key={link.id}
@@ -185,15 +236,9 @@ export default function LandingPage() {
               target="_blank"
               rel="noopener"
               title="Open full documentation (VitePress)"
-              className="hidden items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground lg:inline-flex"
+              className="hidden items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground xl:inline-flex"
             >
-              Documentation
-            </a>
-            <a
-              href="#desktop"
-              className="hidden items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground lg:inline-flex"
-            >
-              All platforms
+              Docs
             </a>
 
             {/* One primary action in the header. The neighbouring link used to
@@ -209,7 +254,7 @@ export default function LandingPage() {
 
             <button
               onClick={() => setMobileOpen((open) => !open)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-card/60 text-foreground transition-all hover:bg-muted active:scale-[0.97] md:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-card/60 text-foreground transition-all hover:bg-muted active:scale-[0.97] lg:hidden"
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileOpen}
             >
@@ -220,7 +265,7 @@ export default function LandingPage() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className="border-t border-border/60 bg-background/95 backdrop-blur-2xl md:hidden">
+          <div className="border-t border-border/60 bg-background/95 backdrop-blur-2xl lg:hidden">
             <nav className="mx-auto flex max-w-7xl flex-col gap-1 px-5 py-4">
               {NAV_LINKS.map((link) => (
                 <a
@@ -270,44 +315,58 @@ export default function LandingPage() {
         )}
       </header>
 
-      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-x-10 gap-y-7 px-5 pb-10 pt-9 lg:px-8 lg:pb-14 lg:pt-12 xl:grid-cols-[0.82fr_1.18fr]">
+      <section className="relative mx-auto w-full max-w-7xl px-5 pb-12 pt-12 lg:px-8 lg:pb-16 lg:pt-16">
         <div className="hero-atmosphere absolute inset-0 -z-10" aria-hidden="true" />
 
-        <RevealGroup className="max-w-2xl" stagger={0.08} delayChildren={0.05}>
-          <RevealItem className="mb-4 inline-flex items-center rounded-full border border-border/60 bg-card/60 px-3 py-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
-            FREE AND OPEN SOURCE
+        <RevealGroup className="mx-auto flex max-w-3xl flex-col items-center text-center" stagger={0.08} delayChildren={0.05}>
+          <RevealItem>
+            <a
+              href={RELEASE_URL}
+              target="_blank"
+              rel="noopener"
+              className="group mb-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 font-semibold text-cyan-600 dark:text-cyan-400">v{RELEASE_VERSION}</span>
+              GraphQL, pre-request scripts, and more
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </a>
           </RevealItem>
 
           <RevealItem as="div">
-            <h1 className="text-balance text-5xl font-semibold leading-[0.98] tracking-[-3px] md:text-[62px] md:tracking-[-3.6px]">
-              Your API workspace,<br />on your machine.
+            <h1 className="text-balance text-[2.75rem] font-semibold leading-[1.02] tracking-[-0.045em] sm:text-6xl md:text-[68px]">
+              Your API workspace, on&nbsp;your&nbsp;machine.
             </h1>
           </RevealItem>
 
           <RevealItem
             as="div"
-            className="mt-5 max-w-xl text-pretty text-base leading-7 text-muted-foreground"
+            className="mt-5 max-w-2xl text-pretty text-base leading-7 text-muted-foreground md:text-lg md:leading-8"
           >
             Send requests, chain logins, assert responses, and push real load at your
-            endpoints. No account and no cloud sync — your tokens, responses, and run
-            history stay local.
+            endpoints. No account and no cloud sync. Tokens, responses, and run
+            history stay on your device.
           </RevealItem>
 
-          <RevealItem className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <RevealItem className="mt-7 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <button
               onClick={download}
               className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-foreground px-7 text-[15px] font-semibold text-background shadow-xl transition-all hover:-translate-y-px active:scale-[0.985]"
             >
+              <Download className="h-4 w-4" />
               Download for free
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </button>
 
             <a
               href="#product-preview"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-6 text-[15px] font-semibold transition-all hover:bg-muted hover:border-border active:scale-[0.985]"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-6 text-[15px] font-semibold transition-all hover:border-border hover:bg-muted active:scale-[0.985]"
             >
-              See it in action
+              Take the tour
+              <ArrowRight className="h-4 w-4" />
             </a>
+          </RevealItem>
+
+          <RevealItem className="mt-4 text-xs text-muted-foreground">
+            Windows, macOS, and Linux · Open source · No sign-up
           </RevealItem>
 
           <RevealItem>
@@ -318,15 +377,15 @@ export default function LandingPage() {
         <HeroProductCapture />
       </section>
 
-      <section id="workspace" className="border-y border-border/60 bg-muted/15">
-        <RevealGroup className="mx-auto grid max-w-7xl gap-px bg-border/70 px-5 py-px sm:grid-cols-2 lg:grid-cols-4 lg:px-8" stagger={0.05}>
+      <section id="workspace" className="mt-6 border-y border-border/60 bg-muted/15">
+        <RevealGroup className="mx-auto grid max-w-7xl sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-border/70" stagger={0.05}>
           {[
             { icon: FolderKanban, title: 'Nested folders', body: 'Group endpoints by service or feature, the way your codebase already is.' },
             { icon: Globe2, title: 'Environments', body: 'Point the same requests at local, staging, or production in one click.' },
             { icon: Braces, title: 'Live variables', body: 'Generate fake data per request and reuse tokens captured from real responses.' },
             { icon: History, title: 'Run history', body: 'Reopen any past run with its responses, timings, and logs intact.' },
           ].map(({ icon: Icon, title, body }) => (
-            <RevealItem key={title} as="article" className="group bg-background/90 px-4 py-4 sm:px-5">
+            <RevealItem key={title} as="article" className="group px-5 py-5 lg:px-8">
               <div className="flex items-center gap-3">
                 <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 transition-transform duration-300 group-hover:scale-105">
                   <Icon className="h-4 w-4" />
@@ -342,8 +401,8 @@ export default function LandingPage() {
       <FeatureGallery />
 
       <section id="features" className="mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-16">
-        <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr] lg:items-start">
-          <Reveal>
+        <div className="grid gap-8 lg:grid-cols-[0.55fr_1.45fr] lg:items-start">
+          <Reveal className="lg:sticky lg:top-24">
             <p className="text-sm font-bold text-cyan-500">Everything around the request</p>
             <h2 className="mt-2 text-balance text-3xl font-extrabold tracking-tight md:text-4xl">
               One app instead of four.
@@ -355,7 +414,7 @@ export default function LandingPage() {
             </p>
           </Reveal>
 
-          <RevealGroup className="grid gap-3 sm:grid-cols-2" stagger={0.05}>
+          <RevealGroup className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" stagger={0.05}>
             {[
               { icon: Send, title: 'Send & inspect', body: 'Fire one request and read the status, timing, headers, and formatted body immediately.' },
               { icon: ShieldCheck, title: 'Assertions', body: 'Turn status, latency, headers, body text, and JSON paths into pass/fail checks.' },
@@ -778,86 +837,98 @@ claude mcp add beacon -- <path-to>/mcp_server
 
 function FeatureGallery() {
   const AUTO_SLIDE_MS = 6500
-  const slides = [
+  const slides: Array<{ label: string; title: string; body: string; shot: ShotPair; alt: string }> = [
     {
-      label: 'Request builder',
-      title: 'Build the request without losing context.',
-      body: 'Set auth, payloads, query parameters, dynamic values, extractors, and assertions from one real endpoint screen.',
-      src: requestBuilderShot,
-      alt: 'Beacon request builder showing payload fields, response extractors, query parameters, and assertions',
+      label: 'Request tabs',
+      title: 'Keep several requests open at once.',
+      body: 'Each endpoint opens in its own tab with its draft intact. An amber dot marks unsaved edits, and Send fires exactly what is on screen.',
+      shot: SHOTS.requestBuilder,
+      alt: 'Beacon request builder with three request tabs open and unsaved edits on Create post',
     },
     {
       label: 'Response & assertions',
       title: 'Inspect the response. Prove the behavior.',
-      body: 'Read structured JSON, response metadata, and every assertion result side by side after a real request.',
-      src: responseAssertionsShot,
-      alt: 'Beacon response inspector showing structured JSON and four passed assertions',
+      body: 'Read structured JSON, status, timing, and headers, with every assertion result beside the body.',
+      shot: SHOTS.responseAssertions,
+      alt: 'Beacon response inspector showing a 200 OK JSON body and four passed assertions',
+    },
+    {
+      label: 'Pre-request scripts',
+      title: 'Sign and shape requests before they leave.',
+      body: 'Run a short Python script per request to compute HMAC signatures, timestamps, or headers. Scripts run in an isolated worker process.',
+      shot: SHOTS.preRequestScript,
+      alt: 'Beacon pre-request script computing an HMAC signature header',
+    },
+    {
+      label: 'GraphQL',
+      title: 'Query GraphQL with the schema at hand.',
+      body: 'Write queries and variables in a dedicated editor, then introspect the schema to browse queries, mutations, and types.',
+      shot: SHOTS.graphql,
+      alt: 'Beacon GraphQL editor with a countries query, variables, and the schema explorer',
+    },
+    {
+      label: 'WebSocket',
+      title: 'Talk to WebSocket endpoints too.',
+      body: 'Connect to ws:// or wss://, send text or binary frames, and inspect every reply with timing.',
+      shot: SHOTS.websocket,
+      alt: 'Beacon WebSocket inspector showing a sent subscribe message and the echoed reply',
     },
     {
       label: 'Scenario setup',
       title: 'Choose the traffic before you press run.',
-      body: 'Start from an understandable preset, then tune users, iterations, ramp-up, retries, and failure behavior.',
-      src: scenarioConfigShot,
-      alt: 'Beacon Scenario mode showing traffic presets and test configuration controls',
+      body: 'Start from a preset, then tune virtual users, iterations, ramp-up, think time, retries, and failure behavior.',
+      shot: SHOTS.scenarioSetup,
+      alt: 'Beacon Scenario mode with traffic presets and virtual user settings',
     },
     {
       label: 'Scenario journey',
-      title: 'See the journey while it runs.',
-      body: 'Follow active users across each endpoint and inspect latency, failures, and recent requests per step.',
-      src: scenarioResultsShot,
-      alt: 'Beacon Scenario mode running a project journey with active users and endpoint steps',
+      title: 'Watch virtual users move through the flow.',
+      body: 'Follow every step of the journey live: per-step success rate, p95 latency, and the most recent requests.',
+      shot: SHOTS.scenarioLive,
+      alt: 'Beacon scenario journey running ten virtual users through eight endpoint steps',
     },
     {
       label: 'Live monitor',
       title: 'Watch the run, not a spinner.',
-      body: 'Track KPI sparklines, throughput, latency, errors, outcomes, and individual responses while the test is still moving.',
-      src: liveMonitorShot,
-      alt: 'Beacon Live Monitor showing KPI sparklines, request rate, response time, error rate, and live responses',
-    },
-    {
-      label: 'Environments',
-      title: 'Switch targets without rewriting requests.',
-      body: 'Keep base URLs, shared variables, auth, and local private values organized per environment.',
-      src: environmentsShot,
-      alt: 'Beacon environment editor showing a base URL and reusable variables',
+      body: 'Throughput, latency percentiles, errors, and individual responses update while the test is still moving.',
+      shot: SHOTS.liveMonitor,
+      alt: 'Beacon live monitor with request rate, response time, and error charts during a load run',
     },
     {
       label: 'Run history',
       title: 'Come back to every useful result.',
-      body: 'Review interactive trends, response outcomes, latency distribution, and previous runs on one observability dashboard.',
-      src: runHistoryShot,
-      alt: 'Beacon run history dashboard showing KPI trends, charts, response outcomes, and latency distribution',
+      body: 'Every run keeps its trends, outcomes, and latency distribution. Pin, label, export, or compare two runs.',
+      shot: SHOTS.runHistory,
+      alt: 'Beacon run history with latency and throughput charts for a completed load run',
     },
     {
-      label: 'Git & local sharing',
+      label: 'Environments',
+      title: 'Switch targets without rewriting requests.',
+      body: 'Keep base URLs and variables per environment, from a local server to staging and production.',
+      shot: SHOTS.environments,
+      alt: 'Beacon environment editor with Local, Staging, and Production environments',
+    },
+    {
+      label: 'Git & sharing',
       title: 'Keep the project in Git or share it nearby.',
-      body: 'Review readable YAML, sync branches, and share project source over the local network while private values stay local.',
-      src: gitProjectShot,
-      alt: 'Beacon Project Settings showing Git synchronization, branches, and local project sharing',
+      body: 'Store the project as readable YAML, review changes, switch branches, and push, all from project settings.',
+      shot: SHOTS.projectSettings,
+      alt: 'Beacon project settings with a linked Git folder, branch controls, and pending changes',
     },
     {
       label: 'MCP tools',
       title: 'Let your AI agent work inside Beacon.',
-      body: 'Connect Cursor, Windsurf, Cline, VS Code, or Zed and give the agent a focused set of Beacon project and test tools.',
-      src: mcpToolsShot,
-      alt: 'Beacon MCP Server page showing AI client setup and available tools',
+      body: 'Connect Cursor, Windsurf, Cline, VS Code, or Zed and give the agent a focused set of Beacon tools.',
+      shot: SHOTS.mcp,
+      alt: 'Beacon MCP server page with client setup snippets and available tools',
     },
     {
       label: 'CLI & CI',
       title: 'Run the same project without opening the app.',
-      body: 'Validate files, target endpoints or folders, pass local secrets, and generate a GitHub Actions workflow from the built-in guide.',
-      src: cliShot,
-      alt: 'Beacon CLI documentation showing commands, variables, and GitHub Actions setup',
+      body: 'Validate files, target endpoints or folders, pick an environment, and generate a GitHub Actions workflow.',
+      shot: SHOTS.cli,
+      alt: 'Beacon CLI guide with common commands and CI setup',
     },
-    /* TODO: take screenshot and replace src when websocket-testing-v060.png exists
-    {
-      label: 'WebSocket',
-      title: 'Stream and load-test WebSocket connections.',
-      body: 'Fire text or binary frames, inspect responses with timing, and run concurrent load tests — all from the same editor.',
-      src: wsTestingShot,
-      alt: 'Beacon WebSocket endpoint with message editor and response inspector',
-    },
-    */
   ]
   const [selected, setSelected] = useState(0)
   const [expanded, setExpanded] = useState(false)
@@ -978,23 +1049,19 @@ function FeatureGallery() {
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
                 <span className="ml-auto flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground"><Maximize2 className="h-3.5 w-3.5" /> Expand</span>
               </div>
-              <div className="aspect-[16/9] overflow-hidden">
+              <div className="aspect-[16/10] overflow-hidden">
                 <AnimatePresence mode="wait" initial={false} custom={direction}>
-                  <motion.img
-                    key={active.src}
-                    src={active.src}
-                    alt={active.alt}
-                    width="2056"
-                    height="1328"
-                    loading="eager"
-                    decoding="async"
+                  <motion.div
+                    key={active.label}
                     custom={direction}
                     initial={reduce ? false : { opacity: 0, x: direction * 26, scale: 1.015 }}
                     animate={{ opacity: 1, x: 0, scale: 1 }}
                     exit={reduce ? undefined : { opacity: 0, x: direction * -18, scale: 0.99 }}
                     transition={{ duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
-                    className="h-full w-full object-cover object-top group-hover:scale-[1.01]"
-                  />
+                    className="h-full w-full"
+                  >
+                    <ThemedShot shot={active.shot} alt={active.alt} eager className="h-full w-full object-cover object-top" />
+                  </motion.div>
                 </AnimatePresence>
               </div>
             </button>
@@ -1040,7 +1107,9 @@ function FeatureGallery() {
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-2 md:p-4">
-              <img key={active.src} src={active.src} alt={active.alt} width="2056" height="1328" className="mx-auto block h-auto max-h-[calc(100dvh-7.5rem)] w-auto max-w-full rounded-lg object-contain" />
+              <div key={active.label} className="flex justify-center">
+                <ThemedShot shot={active.shot} alt={active.alt} eager className="h-auto max-h-[calc(100dvh-7.5rem)] w-auto max-w-full rounded-lg object-contain" />
+              </div>
             </div>
           </div>
         </div>
@@ -1054,71 +1123,48 @@ function HeroProductCapture() {
 
   return (
     <motion.figure
-      className="group relative min-h-[390px] min-w-0 sm:min-h-[450px] xl:min-h-[500px]"
-      initial={reduce ? undefined : { opacity: 0, y: 26, scale: 0.97 }}
+      className="relative mx-auto mt-12 max-w-6xl lg:mt-14"
+      initial={reduce ? undefined : { opacity: 0, y: 32, scale: 0.98 }}
       animate={reduce ? undefined : { opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
+      transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
     >
       <div
-        className="absolute inset-x-[8%] top-[12%] -z-10 h-[62%] rounded-[3rem] bg-blue-500/12 blur-3xl"
+        className="absolute inset-x-[6%] -top-6 -z-10 h-[70%] rounded-[3rem] bg-cyan-500/15 blur-3xl dark:bg-cyan-500/10"
         aria-hidden="true"
       />
-
-      <StackedProductShot
-        src={requestBuilderShot}
-        alt="Beacon desktop request builder showing payloads, extractors, query parameters, and assertions"
-        label="Request builder"
-        eager
-        className="absolute right-0 top-4 z-10 w-[92%] rotate-[1.2deg] transition-transform duration-500 ease-out group-hover:translate-y-[-4px] group-hover:rotate-[0.5deg]"
-      />
-      <StackedProductShot
-        src={gitProjectShot}
-        alt="Beacon project settings with Git synchronization and local project sharing"
-        label="Git & sharing"
-        className="absolute bottom-5 left-0 z-20 w-[62%] -rotate-[3.5deg] transition-transform duration-500 ease-out group-hover:-translate-x-2 group-hover:translate-y-1 group-hover:-rotate-[5deg]"
-      />
-      <StackedProductShot
-        src={scenarioResultsShot}
-        alt="Beacon Scenario journey with active users, endpoint steps, and recent request activity"
-        label="Scenario"
-        className="absolute bottom-0 right-0 z-30 w-[60%] rotate-[3deg] transition-transform duration-500 ease-out group-hover:translate-x-2 group-hover:translate-y-2 group-hover:rotate-[4.5deg]"
-      />
-    </motion.figure>
-  )
-}
-
-interface StackedProductShotProps {
-  src: string
-  alt: string
-  label: string
-  className: string
-  eager?: boolean
-}
-
-function StackedProductShot({ src, alt, label, className, eager = false }: StackedProductShotProps) {
-  return (
-    <div className={`screen-frame overflow-hidden rounded-xl border border-border/90 bg-card shadow-2xl ${className}`}>
-      <div className="flex h-7 items-center justify-between border-b border-border/70 bg-card/95 px-2.5 sm:h-8 sm:px-3">
-        <div className="flex items-center gap-1" aria-hidden="true">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-400/80 sm:h-2 sm:w-2" />
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 sm:h-2 sm:w-2" />
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80 sm:h-2 sm:w-2" />
+      <div className="screen-frame overflow-hidden rounded-2xl border border-border/90 bg-card">
+        <div className="flex h-9 items-center gap-1.5 border-b border-border/70 bg-muted/40 px-4" aria-hidden="true">
+          <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+          <span className="mx-auto font-mono text-[10px] font-medium tracking-wide text-muted-foreground">Beacon — Community API</span>
+          <span className="w-12" />
         </div>
-        <span className="font-mono text-[7px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:text-[8px]">
-          {label}
-        </span>
-      </div>
-      <div className="aspect-[1.55] overflow-hidden bg-muted/20">
-        <img
-          src={src}
-          alt={alt}
-          width="2056"
-          height="1328"
-          loading={eager ? 'eager' : 'lazy'}
-          decoding="async"
-          className="h-full w-full object-cover object-top"
+        <ThemedShot
+          shot={SHOTS.requestBuilder}
+          alt="Beacon desktop app: the request builder with three request tabs, payload fields, and a response extractor"
+          eager
+          className="h-auto w-full"
         />
       </div>
-    </div>
+
+      {/* A second, smaller window adds depth and shows the load side of Beacon. */}
+      <div className="screen-frame absolute -bottom-10 -right-3 hidden w-[38%] overflow-hidden rounded-xl border border-border/90 bg-card md:block lg:-right-8">
+        <div className="flex h-7 items-center gap-1 border-b border-border/70 bg-muted/40 px-3" aria-hidden="true">
+          <span className="h-2 w-2 rounded-full bg-red-400/80" />
+          <span className="h-2 w-2 rounded-full bg-amber-400/80" />
+          <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
+          <span className="ml-auto font-mono text-[8px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Live monitor</span>
+        </div>
+        {/* Zoom into the KPI and chart area of the live monitor capture. */}
+        <div className="relative aspect-[16/9] overflow-hidden">
+          <ThemedShot
+            shot={SHOTS.liveMonitor}
+            alt="Beacon live monitor charting request rate and latency during a load run"
+            className="absolute left-[-24%] top-[-9%] w-[132%] max-w-none"
+          />
+        </div>
+      </div>
+    </motion.figure>
   )
 }
