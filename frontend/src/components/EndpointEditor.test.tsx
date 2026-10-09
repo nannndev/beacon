@@ -137,6 +137,34 @@ describe('EndpointEditor unsaved changes', () => {
     sendOnce.mockRestore()
   })
 
+  it('keeps its draft when another endpoint in the config changes', async () => {
+    const user = userEvent.setup()
+    const other = { ...saved, id: 'e2', name: 'Other' }
+    const { rerender } = render(
+      <EndpointEditor testId="e1" config={{ ...config, tests: [saved, other] } as unknown as TestConfig} onClose={vi.fn()} onSave={vi.fn()} />,
+    )
+    await user.type(screen.getByPlaceholderText('Endpoint name'), ' v2')
+
+    rerender(
+      <EndpointEditor testId="e1" config={{ ...config, tests: [saved, { ...other, name: 'Renamed elsewhere' }] } as unknown as TestConfig} onClose={vi.fn()} onSave={vi.fn()} />,
+    )
+    expect(screen.getByPlaceholderText('Endpoint name')).toHaveValue('Get user v2')
+  })
+
+  it('reports dirty state and ignores shortcuts while in a background tab', async () => {
+    const user = userEvent.setup()
+    const onDirtyChange = vi.fn()
+    const sendOnce = vi.spyOn(api, 'sendOnce').mockResolvedValue({ ok: true, status: 200, time_ms: 1 } as any)
+    render(<EndpointEditor testId="e1" config={savedConfig} onClose={vi.fn()} onSave={vi.fn()} active={false} onDirtyChange={onDirtyChange} />)
+
+    await user.type(screen.getByPlaceholderText('Endpoint name'), 'x')
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+
+    await user.keyboard('{Control>}{Enter}{/Control}')
+    expect(sendOnce).not.toHaveBeenCalled()
+    sendOnce.mockRestore()
+  })
+
   it('reloads a saved GraphQL query instead of showing it empty', () => {
     const gql = { ...saved, method: 'POST', payload_type: 'graphql', payload: { query: '{ viewer { id } }', variables: { first: 2 } } }
     render(

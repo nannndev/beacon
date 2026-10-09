@@ -37,6 +37,8 @@ import { useConfirmDialog } from './components/ui/confirm-dialog'
 import { SendResponsePanel } from './components/SendResponsePanel'
 import { WorkspaceTraceBackground } from './components/WorkspaceTraceBackground'
 import { isDesktop } from './lib/platform'
+import { EditorTabBar, type EditorTabLabel } from './components/EditorTabBar'
+import { closeTab, emptyTabs, openEndpointTab, openNewTab, pruneTabs, activateTab, type EditorTabsState } from './lib/editorTabs'
 
 function loadGlobalSettings(): ExecSettings {
   try {
@@ -77,9 +79,13 @@ function App() {
   const [initializationError, setInitializationError] = useState(false)
   const [retryToken, setRetryToken] = useState(0)
 
-  const [showEditor, setShowEditor] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [newEndpointFolderId, setNewEndpointFolderId] = useState<string | null>(null)
+  // Open request editors. Every tab stays mounted while hidden so its draft
+  // survives switching; `null` active key shows the workspace.
+  const [editorTabs, setEditorTabs] = useState<EditorTabsState>(emptyTabs)
+  const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({})
+  const activeTab = editorTabs.tabs.find((tab) => tab.key === editorTabs.activeKey) || null
+  const showEditor = activeTab !== null
+  const editingId = activeTab?.testId ?? null
 
   const [showProjectDialog, setShowProjectDialog] = useState(false)
   const [showJoinProjectDialog, setShowJoinProjectDialog] = useState(false)
@@ -262,7 +268,14 @@ function App() {
   // ---- Projects / environments -----------------------------------------
   const switchProject = async (id: string) => {
     if (id === currentProjectId) return
-    if (showEditor) { setShowEditor(false); setEditingId(null) }
+    if (Object.values(dirtyTabs).some(Boolean) && !await confirm({
+      title: 'Discard unsaved changes?',
+      description: 'Some open requests have edits that have not been saved. Switching projects closes every open tab.',
+      confirmLabel: 'Discard and switch',
+      cancelLabel: 'Stay here',
+    })) return
+    setEditorTabs(emptyTabs)
+    setDirtyTabs({})
     setSelectedTestId(null)
     try {
       const data: any = await api.switchProject(id)
@@ -540,12 +553,42 @@ function App() {
   // ---- Endpoints --------------------------------------------------------
   // folderId is optional; guarded against click events being passed as the arg.
   const openNewEditor = (folderId?: string) => {
-    setEditingId(null)
-    setNewEndpointFolderId(typeof folderId === 'string' ? folderId : null)
-    setShowEditor(true)
+    setShowProjectSettings(false)
+    setEditorTabs((state) => openNewTab(state, typeof folderId === 'string' ? folderId : null))
   }
-  const openEdit = (id: string) => { setEditingId(id); setNewEndpointFolderId(null); setShowEditor(true) }
-  const closeEditor = () => { setShowEditor(false); setEditingId(null) }
+  const openEdit = (id: string) => {
+    setShowProjectSettings(false)
+    setEditorTabs((state) => openEndpointTab(state, id))
+  }
+  // The editor confirms its own Back/Cancel; this only forgets the tab.
+  const forgetTab = (key: string) => {
+    setEditorTabs((state) => closeTab(state, key))
+    setDirtyTabs(({ [key]: _closed, ...rest }) => rest)
+  }
+  const requestCloseTab = async (key: string) => {
+    if (dirtyTabs[key] && !await confirm({
+      title: 'Close without saving?',
+      description: 'This request has edits that have not been saved. Closing the tab discards them.',
+      confirmLabel: 'Discard changes',
+      cancelLabel: 'Keep editing',
+    })) return
+    forgetTab(key)
+  }
+  const setTabDirty = (key: string, dirty: boolean) => {
+    setDirtyTabs((current) => (Boolean(current[key]) === dirty ? current : { ...current, [key]: dirty }))
+  }
+
+  // Close tabs whose endpoint was deleted or moved out of the project.
+  useEffect(() => {
+    if (initializing) return
+    setEditorTabs((state) => pruneTabs(state, new Set((config.tests as Endpoint[]).map((test) => test.id))))
+  }, [config.tests, initializing])
+
+  const tabLabels: Record<string, EditorTabLabel> = {}
+  for (const tab of editorTabs.tabs) {
+    const saved = tab.testId ? (config.tests as Endpoint[]).find((test) => test.id === tab.testId) : undefined
+    tabLabels[tab.key] = saved ? { name: saved.name, method: saved.method } : { name: 'New endpoint' }
+  }
 
   // Persist a reordered / moved items tree (drag-and-drop, folder ops).
   // Returns whether the save succeeded so callers can show their own toast.
@@ -585,9 +628,7 @@ function App() {
 
   // Editor finished. `created` is set only for brand-new endpoints; if one was
   // targeted at a folder, drop it in there — otherwise just refresh.
-  const handleEditorSave = async (created?: Endpoint) => {
-    const folderId = newEndpointFolderId
-    setNewEndpointFolderId(null)
+  const handleEditorSave = async (created: Endpoint | undefined, folderId: string | null) => {
     if (created && folderId && currentProject) {
       const next = insertIntoFolder(currentProject.items || [], folderId, { ...created, type: 'request' } as CollectionItem)
       await saveItems(next)
@@ -789,16 +830,16 @@ function App() {
         e.preventDefault()
         setShowPalette((p) => !p)
       } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n'
-        && !showEditor && !showProjectSettings && appView.view === 'workspace') {
-        // The palette advertises ⌘N; honor it outside the editor so an
-        // in-progress edit is never replaced.
+        && !showProjectSettings && appView.view === 'workspace') {
+        // The palette advertises ⌘N; each new endpoint opens in its own tab,
+        // so in-progress edits elsewhere are kept.
         e.preventDefault()
         openNewEditorRef.current()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showEditor, showProjectSettings, appView.view])
+  }, [showProjectSettings, appView.view])
 
   // Refetch when the window regains focus, so endpoints an AI agent created via
   // MCP (a separate process) show up when you switch back — without a manual
@@ -915,7 +956,35 @@ function App() {
           onOpenSettings={() => setShowSettings(true)}
         />
 
-        <div className={`flex-1 overflow-auto ${showEditor ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
+        {editorTabs.tabs.length > 0 && !showProjectSettings && (
+          <EditorTabBar
+            tabs={editorTabs.tabs}
+            activeKey={editorTabs.activeKey}
+            labels={tabLabels}
+            dirty={dirtyTabs}
+            onActivate={(key) => setEditorTabs((state) => activateTab(state, key))}
+            onClose={(key) => void requestCloseTab(key)}
+            onNew={() => openNewEditor()}
+          />
+        )}
+        <div className={`flex-1 overflow-auto ${showEditor && !showProjectSettings ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
+          {/* Background tabs stay mounted (hidden) so their drafts survive. */}
+          {editorTabs.tabs.map((tab) => (
+            <div key={tab.key} hidden={showProjectSettings || tab.key !== editorTabs.activeKey}>
+              <EndpointEditor
+                testId={tab.testId}
+                config={config}
+                projectId={currentProject?.id}
+                currentProjectName={currentProject?.name}
+                currentEnvName={currentEnv?.name}
+                onCaptureVariable={captureEnvironmentVariable}
+                onClose={() => forgetTab(tab.key)}
+                onSave={(created) => handleEditorSave(created, tab.folderId)}
+                active={!showProjectSettings && tab.key === editorTabs.activeKey}
+                onDirtyChange={(dirty) => setTabDirty(tab.key, dirty)}
+              />
+            </div>
+          ))}
           {showProjectSettings ? (
             <ProjectSettingsPage
               onBack={() => setShowProjectSettings(false)}
@@ -927,18 +996,7 @@ function App() {
               onDelete={deleteProject}
               onProjectListChange={fetchAll}
             />
-          ) : showEditor ? (
-            <EndpointEditor
-              testId={editingId}
-              config={config}
-              projectId={currentProject?.id}
-              currentProjectName={currentProject?.name}
-              currentEnvName={currentEnv?.name}
-              onCaptureVariable={captureEnvironmentVariable}
-              onClose={closeEditor}
-              onSave={handleEditorSave}
-            />
-          ) : (
+          ) : showEditor ? null : (
             <>
               <ExecutionControls
                 settings={settings}

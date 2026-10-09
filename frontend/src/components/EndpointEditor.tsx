@@ -50,6 +50,10 @@ interface Props {
   /** `created` carries the new endpoint when a brand-new one was saved, so the
    *  caller can place it (e.g. inside a folder). Undefined on edits. */
   onSave: (created?: Endpoint) => void
+  /** False while this editor sits in a background tab: its keyboard
+   *  shortcuts stay off so only the visible editor reacts. */
+  active?: boolean
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 type AuthType = 'none' | 'inherit' | 'bearer' | 'apikey' | 'basic' | 'custom'
@@ -125,7 +129,7 @@ function getDefaultForm() {
   }
 }
 
-export default function EndpointEditor({ testId, config, projectId, currentProjectName, currentEnvName, onCaptureVariable, onClose, onSave }: Props) {
+export default function EndpointEditor({ testId, config, projectId, currentProjectName, currentEnvName, onCaptureVariable, onClose, onSave, active = true, onDirtyChange }: Props) {
   const [form, setForm] = useState<any>(getDefaultForm())
   const [authType, setAuthType] = useState<AuthType>('inherit')
   const [isSnippetDialogOpen, setIsSnippetDialogOpen] = useState(false)
@@ -169,12 +173,21 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const { confirm, confirmationDialog } = useConfirmDialog()
 
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [testId])
+    if (active) window.scrollTo(0, 0)
+  }, [testId, active])
+
+  // Reload only when *this* endpoint's saved data changes. Depending on the
+  // whole config would wipe the draft whenever any other tab saves or a
+  // background refresh lands.
+  const savedEndpoint = testId ? (config.tests as any[]).find((t: any) => t.id === testId) : undefined
+  const savedKey = savedEndpoint ? JSON.stringify(savedEndpoint) : ''
+  const isDirtyRef = useRef(false)
 
   useEffect(() => {
+    // Never overwrite unsaved edits with a remote change; Save reconciles.
+    if (isDirtyRef.current) return
     if (testId) {
-      const existing = (config.tests as any[]).find((t: any) => t.id === testId) || (config as any).items?.flat?.() /* rough */
+      const existing = savedEndpoint
       if (existing) {
         const loaded = {
           ...existing,
@@ -230,7 +243,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       setApiKeyHeader('X-API-Key')
     }
     setLoadGen((g) => g + 1)
-  }, [testId, config])
+  }, [testId, savedKey])
 
   // Unsaved-change tracking: the baseline is captured on the render after the
   // form is (re)loaded (a load bumps `loadGen`; the render that sees the new
@@ -240,6 +253,12 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     if (baseline.gen !== loadGen) setBaseline({ gen: loadGen, value: snapshot })
   }, [baseline.gen, loadGen, snapshot])
   const isDirty = baseline.gen === loadGen && baseline.value !== snapshot
+  isDirtyRef.current = isDirty
+  const onDirtyChangeRef = useRef(onDirtyChange)
+  onDirtyChangeRef.current = onDirtyChange
+  useEffect(() => {
+    onDirtyChangeRef.current?.(isDirty)
+  }, [isDirty])
 
   useEffect(() => {
     if (!isDirty) return
@@ -435,6 +454,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const handleSendRef = useRef(handleSend)
   handleSendRef.current = handleSend
   useEffect(() => {
+    if (!active) return
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && testId) {
         e.preventDefault()
@@ -446,7 +466,7 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [testId])
+  }, [testId, active])
 
   // One-click capture: persist the extractor for future sends and immediately
   // save the value currently visible in the response to the active environment.
