@@ -514,6 +514,7 @@ class APITester:
                 for f in as_completed(futures_running):
                     pass  # drain
         else:
+            next_send = time.time()
             while time.time() < deadline and not self.stop_flag.get("stop"):
                 i += 1
                 self._send_one(i)
@@ -526,8 +527,11 @@ class APITester:
                              f"success={snap['success']} rl={snap['rate_limited']}")
                     next_log = now + 10.0
 
-                sleep_until = time.time() + interval
-                remaining = sleep_until - time.time()
+                # Anchor the next send to the schedule, not to "now + interval",
+                # so the request's duration does not drag the real rate below
+                # the target rps.
+                next_send += interval
+                remaining = next_send - time.time()
                 if remaining > 0:
                     time.sleep(remaining)
 
@@ -557,12 +561,19 @@ class APITester:
             step_rl_before = self.metrics.results["rate_limited"]
             self.log(f"[probe] Testing at {current_rps:.1f} rps ...")
 
+            next_send = time.monotonic()
             for _ in range(step_requests):
                 if self.stop_flag.get("stop"):
                     break
+                pause = next_send - time.monotonic()
+                if pause > 0:
+                    time.sleep(pause)
                 i += 1
                 self._send_one(i)
-                time.sleep(interval)
+                # Space sends by the target interval measured from the previous
+                # scheduled time, not from now, so the request's own duration is
+                # not added on top (which made the real rate lower than labeled).
+                next_send += interval
 
             step_rl_after = self.metrics.results["rate_limited"]
             if step_rl_after > step_rl_before:

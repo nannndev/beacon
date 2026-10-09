@@ -271,3 +271,72 @@ class BenchmarkModeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SchedulingRateTests(unittest.TestCase):
+    """Soak (sequential) and rate-probe must pace sends by the target interval
+    measured from the schedule, not 'now + interval' after each blocking send.
+    Otherwise every request's own duration is added on top and the real rate
+    falls below the labelled rps (soak 20->16, probe mis-reporting the
+    threshold). A fake clock records requested sleeps without real waiting."""
+
+    def _fake_clock(self, tester, request_cost):
+        now = [0.0]
+        sleeps = []
+
+        def fake_send(attempt):
+            now[0] += request_cost  # a blocking request advances the clock
+            with tester._lock:
+                tester.metrics.record_response(200, request_cost * 1000, False)
+            return {"attempt": attempt, "success": True, "rate_limited": False}
+
+        def fake_sleep(seconds):
+            if seconds > 0:
+                sleeps.append(seconds)
+                now[0] += seconds
+
+        tester._send_one = fake_send
+        return now, sleeps, fake_sleep
+
+    def test_soak_subtracts_request_time_from_the_interval(self):
+        import backend.app.core.tester as tester_module
+
+        tester, _ = _tester()
+        now, sleeps, fake_sleep = self._fake_clock(tester, request_cost=0.03)
+        deadline_hit = {"n": 0}
+
+        def clock():
+            # Let the loop run four iterations, then force the deadline.
+            deadline_hit["n"] += 1
+            return now[0] if deadline_hit["n"] <= 30 else 10_000.0
+
+        orig_time, orig_sleep = tester_module.time.time, tester_module.time.sleep
+        tester_module.time.time = clock
+        tester_module.time.sleep = fake_sleep
+        try:
+            tester.run_soak(duration_s=0.2, rps=20, concurrency=1)
+        finally:
+            tester_module.time.time, tester_module.time.sleep = orig_time, orig_sleep
+
+        # Target interval is 50ms; each request already costs 30ms, so the
+        # loop must sleep ~20ms, never the full 50ms.
+        self.assertTrue(sleeps, "soak never paced its sends")
+        self.assertTrue(all(s <= 0.021 for s in sleeps), f"soak slept too long: {sleeps[:5]}")
+
+    def test_rate_probe_paces_by_schedule_not_after_each_send(self):
+        import backend.app.core.tester as tester_module
+
+        tester, _ = _tester()
+        now, sleeps, fake_sleep = self._fake_clock(tester, request_cost=0.03)
+
+        orig_mono, orig_sleep = tester_module.time.monotonic, tester_module.time.sleep
+        tester_module.time.monotonic = lambda: now[0]
+        tester_module.time.sleep = fake_sleep
+        try:
+            # 10 rps -> 100ms interval, each request costs 30ms -> sleep ~70ms.
+            tester.run_rate_probe(start_rps=10, step_rps=10, step_requests=4, max_rps=10)
+        finally:
+            tester_module.time.monotonic, tester_module.time.sleep = orig_mono, orig_sleep
+
+        self.assertTrue(sleeps, "rate probe never paced its sends")
+        self.assertTrue(all(0.06 <= s <= 0.071 for s in sleeps), f"probe pacing wrong: {sleeps[:5]}")
