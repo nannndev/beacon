@@ -119,19 +119,28 @@ class APITester:
         The script sees the fully-templated url/headers/body and can mutate
         them in-place. Falls through gracefully on error."""
         from .scripting import PreRequestEngine, PreRequestError
+        before = self.config.snapshot_variables() if hasattr(self.config, "snapshot_variables") else dict(self.config.variables)
         context = {
             "url": url,
             "method": self.test.method,
             "headers": headers,
             "body": payload,
-            "variables": self.config.variables,
+            "variables": dict(before),
         }
         try:
             engine = PreRequestEngine()
             engine.execute(self.test.pre_request_script, context, timeout=5)
-            return context["url"], context["headers"], context["body"]
         except PreRequestError as e:
             self.log(f"[pre-request script] {e}")
+            return url, headers, payload
+
+        # The script ran out of process; merge only the keys it changed, under
+        # the same guard extractors use, so concurrent writes are not lost.
+        changed = {k: v for k, v in (context.get("variables") or {}).items() if before.get(k) != v}
+        if changed:
+            with self._variables_lock():
+                self.config.variables.update(changed)
+        return context["url"], context["headers"], context["body"]
 
         return url, headers, payload
 

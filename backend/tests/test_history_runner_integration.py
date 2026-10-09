@@ -140,14 +140,17 @@ class HistoryRunnerIntegrationTests(unittest.TestCase):
     def test_virtual_user_scenario_isolates_configs_and_aggregates_steps(self):
         history = RecordingHistory()
         fake_store = target_store(history)
-        config_ids = set()
+        # Hold the configs themselves: comparing bare id()s is flaky because a
+        # finished virtual user's config can be collected and its id reused.
+        configs = []
 
         class IsolatedTester(FakeTester):
             def __init__(self, test, config, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.test = test
                 self.config = config
-                config_ids.add(id(config))
+                if not any(seen is config for seen in configs):
+                    configs.append(config)
 
             def send_once(self, **kwargs):
                 self.config.variables["access_token"] = f"token-{id(self.config)}"
@@ -164,7 +167,7 @@ class HistoryRunnerIntegrationTests(unittest.TestCase):
                 "think_time_ms": 0,
             })
 
-        self.assertEqual(len(config_ids), 2)
+        self.assertEqual(len(configs), 2)
         self.assertEqual(result["total_flows"], 4)
         self.assertEqual(result["successful_flows"], 4)
         self.assertEqual(result["steps"][0]["attempts"], 4)

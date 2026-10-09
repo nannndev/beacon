@@ -15,6 +15,9 @@ if __name__ == "__main__":
     # this guard the frozen child re-enters stdio bootstrap after stdin closes
     # and prints a misleading "I/O operation on closed file" traceback.
     multiprocessing.freeze_support()
+    # Pre-request scripts run in child processes that re-launch this executable.
+    from app.core.scripting import maybe_run_worker
+    maybe_run_worker()
     from app.mcp_server import main
 
     main()
