@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent } from './ui/card'
+import { TestDataPicker, type TestData } from './TestDataPicker'
 import { Button } from './ui/button'
 import { Play, Square, ListVideo, RotateCcw } from 'lucide-react'
 import { RunConfig } from '../types'
@@ -69,6 +70,8 @@ interface Props {
   selectedTestId?: string | null
   selectedTargetType?: 'api' | 'web'
   scenarioBusy?: boolean
+  testData?: TestData | null
+  onTestDataChange?: (value: TestData | null) => void
 }
 
 // ---- Component -----------------------------------------------------------
@@ -76,6 +79,7 @@ interface Props {
 export function ExecutionControls({
   settings, onChange, status, selectedName, hasSelection, endpointCount,
   overrideEnabled, onToggleOverride, onRun, onRunAll, onStop, selectedTestId, selectedTargetType = 'api', scenarioBusy = false,
+  testData = null, onTestDataChange,
 }: Props) {
   const running = status === 'running' || scenarioBusy
 
@@ -196,6 +200,10 @@ export function ExecutionControls({
               <span className="opacity-60">est.</span>
               <span className="font-semibold text-foreground">{estimated}</span>
             </div>
+
+            {onTestDataChange && (
+              <TestDataPicker value={testData} onChange={onTestDataChange} disabled={running} />
+            )}
           </div>
 
           <div className="flex items-center gap-2 ml-auto shrink-0">

@@ -58,6 +58,7 @@ export default defineConfig({
           { text: 'Postman Import', link: '/features/postman-import' },
           { text: 'Git-backed Projects', link: '/features/git-backed-projects' },
           { text: 'Live Monitoring & Load Testing', link: '/features/monitoring' },
+          { text: 'Data-driven Runs (CSV/JSON)', link: '/features/test-data' },
           { text: 'Web Page Load Testing', link: '/features/web-load-testing' },
           { text: 'Rate Limit Testing', link: '/features/rate-limit' },
           { text: 'Authorization', link: '/features/authorization' },

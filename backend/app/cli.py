@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+from .core.datasets import DatasetError, parse_dataset
 from .cli_ci import create_github_workflow_plan, write_github_workflow
 from .cli_github import github_annotations, github_summary_path, write_github_summary
 from .cli_runner import (
@@ -73,7 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--env", metavar="NAME_OR_ID", help="Environment to use")
     run.add_argument("--env-file", metavar="PATH", help="Read KEY=VALUE overrides from a local file")
     run.add_argument("--env-var", action="append", default=[], metavar="KEY=VALUE", help="Override one variable; repeat as needed")
-    run.add_argument("--iterations", type=int, default=1, metavar="N", help="Repeat the selected scope (default: 1)")
+    run.add_argument("--iterations", type=int, default=None, metavar="N", help="Repeat the selected scope (default: 1, or one pass per --data row)")
+    run.add_argument("--data", metavar="PATH", help="CSV or JSON test data; each pass uses the next row as {{column}} variables")
     run.add_argument("--retries", type=int, default=0, metavar="N", help="Retry failed HTTP requests (default: 0)")
     run.add_argument("--retry-delay", type=int, default=0, metavar="MS", help="Delay between retries in milliseconds")
     run.add_argument("--bail", action="store_true", help="Stop after the first failed request")
@@ -124,6 +126,19 @@ def _validation_message(result: ProjectValidationResult) -> str:
     return "Project validation failed:\n  " + "\n  ".join(lines)
 
 
+def _load_data(path: str) -> list[dict[str, str]]:
+    target = Path(path).expanduser()
+    try:
+        text = target.read_text(encoding="utf-8-sig")
+    except OSError as error:
+        raise CliProjectError(f"Could not read test data {path}: {error.strerror or error}") from None
+    fmt = "json" if target.suffix.lower() == ".json" else ("csv" if target.suffix.lower() == ".csv" else None)
+    try:
+        return parse_dataset(text, fmt)
+    except DatasetError as error:
+        raise CliProjectError(f"Test data {path}: {error}") from None
+
+
 def _run(args: argparse.Namespace) -> int:
     github_path = github_summary_path() if args.github else None
     color = bool(sys.stdout.isatty() and not args.no_color and "NO_COLOR" not in os.environ)
@@ -134,14 +149,19 @@ def _run(args: argparse.Namespace) -> int:
     endpoints, scope = select_endpoints(project, args.endpoint, args.folder)
     environment = select_environment(project, args.env)
     variables = _load_variables(args, environment)
-    validation = validate_project(project, endpoints, environment, variables)
+    data_rows = _load_data(args.data) if getattr(args, "data", None) else None
+    iterations = args.iterations if args.iterations is not None else (len(data_rows) if data_rows else 1)
+    # Data columns are real variables at run time; don't flag them as missing.
+    validation_variables = {**variables, **{column: "<test data>" for row in (data_rows or []) for column in row}}
+    validation = validate_project(project, endpoints, environment, validation_variables)
     if not validation.valid:
         raise CliProjectError(_validation_message(validation))
 
     env_label = environment.get("name") if environment else "none"
     console.info(f"Beacon CLI {VERSION}")
     console.info(f"Project: {project.get('name')} ({root})")
-    console.info(f"Scope: {scope} | Environment: {env_label} | Iterations: {args.iterations}")
+    data_label = f" | Data: {len(data_rows)} rows" if data_rows else ""
+    console.info(f"Scope: {scope} | Environment: {env_label} | Iterations: {iterations}{data_label}")
     console.info("")
     result = run_project(
         project,
@@ -149,11 +169,12 @@ def _run(args: argparse.Namespace) -> int:
         environment,
         variables,
         scope=scope,
-        iterations=args.iterations,
+        iterations=iterations,
         retries=args.retries,
         retry_delay_ms=args.retry_delay,
         bail=args.bail,
         on_execution=console.execution,
+        data_rows=data_rows,
     )
     if args.report_json:
         write_json_report(result, args.report_json)

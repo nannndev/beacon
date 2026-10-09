@@ -8,6 +8,9 @@ from .models import RunEvent
 
 RUN_CONFIG_KEYS = {
     "mode",
+    # Test data is summarized, never stored: rows can hold credentials.
+    "dataset_rows",
+    "dataset_mode",
     "concurrency",
     "delay",
     "max_requests",

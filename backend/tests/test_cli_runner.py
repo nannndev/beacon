@@ -312,3 +312,35 @@ def test_cli_round_trips_folder_auth_through_yaml(tmp_path):
     folder = reloaded["items"][0]
     assert folder["auth"] == {"type": "bearer", "token": "{{team_token}}"}
     assert folder["items"][0]["auth"] == {"type": "inherit"}
+
+
+def test_cli_runs_one_pass_per_data_row_without_leaking_values(tmp_path, monkeypatch, capsys):
+    root = project_source(tmp_path)
+    data = tmp_path / "users.csv"
+    data.write_text("tenant,api_token\nglobex,tok-alpha-91\ninitech,tok-beta-92\n", encoding="utf-8")
+    report_json = tmp_path / "report.json"
+    seen = []
+
+    def send_once(self, **kwargs):
+        url, headers, payload = self._build_request()
+        seen.append((payload["tenant"], headers["Authorization"]))
+        return {"ok": True, "status": 200, "time_ms": 5, "assertions": []}
+
+    monkeypatch.setattr("app.cli_runner.APITester.send_once", send_once)
+    code = main(["run", str(root), "--env", "CI", "--data", str(data),
+                 "--report-json", str(report_json), "--no-color"])
+
+    assert code == 0
+    assert seen == [("globex", "Bearer tok-alpha-91"), ("initech", "Bearer tok-beta-92")]
+    report = report_json.read_text()
+    assert [item["data_row"] for item in json.loads(report)["executions"]] == [1, 2]
+    assert "tok-alpha-91" not in report and "globex" not in report
+    assert "Data: 2 rows" in capsys.readouterr().out
+
+
+def test_cli_rejects_unreadable_test_data(tmp_path, capsys):
+    root = project_source(tmp_path)
+    bad = tmp_path / "bad.csv"
+    bad.write_text("a,a\n1,2\n", encoding="utf-8")
+    assert main(["run", str(root), "--env", "CI", "--data", str(bad), "--no-color"]) == 2
+    assert "duplicate" in capsys.readouterr().err

@@ -23,6 +23,7 @@ import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
 import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SquareTerminal, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
 import { ScenarioMonitor } from './components/ScenarioMonitor'
+import type { TestData } from './components/TestDataPicker'
 import type { CloneRepositoryResult, LinkedProjectImportResult, ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
 import { useRun } from './hooks/useRun'
 import { api } from './lib/api'
@@ -139,12 +140,15 @@ function App() {
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null)
 
   const run = useRun()
+  // CSV/JSON test data for data-driven runs; kept in memory only.
+  const [testData, setTestData] = useState<TestData | null>(null)
+  useEffect(() => { run.setDataset(testData?.spec ?? null) }, [testData, run.setDataset])
   const appView = useAppView()
   const { confirm, confirmationDialog } = useConfirmDialog()
 
   const executeScenario = async (testIds: string[], options: Parameters<typeof api.startScenario>[1]) => {
     setScenarioLive(null)
-    const started = await api.startScenario(testIds, options)
+    const started = await api.startScenario(testIds, testData ? { ...options, dataset: testData.spec } : options)
     setScenarioRunId(started.run_id)
     while (true) {
       await new Promise((resolve) => window.setTimeout(resolve, 500))
@@ -1030,6 +1034,8 @@ function App() {
                 selectedTestId={selectedTestId}
                 selectedTargetType={selectedTargetType}
                 scenarioBusy={scenarioBusy}
+                testData={testData}
+                onTestDataChange={setTestData}
               />
 
               <ScenarioMonitor

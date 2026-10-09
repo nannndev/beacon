@@ -38,6 +38,7 @@ class EndpointRunCoordinator:
         request_config: dict,
         history_id: Optional[str] = None,
         history_step_index: int = 0,
+        data_feeder=None,
     ) -> dict:
         run_id = os.urandom(8).hex()
         history_id = str(history_id or run_id)
@@ -69,6 +70,7 @@ class EndpointRunCoordinator:
                 grouped_history=grouped_history,
                 notification_settings=notification_settings,
                 project_name=project.get("name"),
+                data_feeder=data_feeder,
             ),
             daemon=True,
         )
@@ -119,6 +121,7 @@ class EndpointRunCoordinator:
         grouped_history,
         notification_settings,
         project_name,
+        data_feeder=None,
     ) -> None:
         outcome = "completed"
         try:
@@ -142,6 +145,9 @@ class EndpointRunCoordinator:
                 stats_callback=on_stats,
                 response_callback=on_response,
                 stop_flag=self.store.current_runs[run_id]["stop_flag"],
+                # Only passed when set, so tester factories without data
+                # support keep working.
+                **({"data_feeder": data_feeder} if data_feeder is not None else {}),
             )
             results = tester.run_mode(mode, params)
             self.events.dispatch(self.events.broadcast_log(run_id, f"Finished: {results}"))

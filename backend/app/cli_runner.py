@@ -86,6 +86,9 @@ class ExecutionResult:
     assertions: list[dict[str, Any]] = field(default_factory=list)
     extracted: list[str] = field(default_factory=list)
     attempts: int = 1
+    # Row number in the --data file. Values are never copied into reports,
+    # since test data often holds credentials.
+    data_row: int | None = None
 
 
 @dataclass
@@ -603,7 +606,11 @@ def run_project(
     retry_delay_ms: int = 0,
     bail: bool = False,
     on_execution=None,
+    data_rows: list[dict[str, str]] | None = None,
 ) -> CliRunResult:
+    """Run the endpoints `iterations` times. With `data_rows`, each iteration
+    takes the next row (wrapping around) and exposes its columns as
+    {{variables}} for every endpoint in that pass."""
     if iterations < 1:
         raise CliProjectError("Iterations must be at least 1")
     if retries < 0 or retry_delay_ms < 0:
@@ -620,6 +627,11 @@ def run_project(
 
     inherited_auth = auth_chains(project)
     for iteration in range(1, iterations + 1):
+        data_row = None
+        if data_rows:
+            data_row = (iteration - 1) % len(data_rows) + 1
+            with config.variables_lock:
+                config.variables.update(data_rows[data_row - 1])
         for endpoint_data in endpoints:
             endpoint = EndpointTest.from_dict(endpoint_data)
             endpoint.inherited_auth = inherited_auth.get(str(endpoint.id), [])
@@ -655,6 +667,7 @@ def run_project(
                 assertions=assertions,
                 extracted=list(response.get("extracted") or []),
                 attempts=int(response.get("attempts") or 1),
+                data_row=data_row,
             )
             executions.append(execution)
             if on_execution:

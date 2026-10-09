@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
+from ..core.datasets import DatasetError, feeder_from_request, parse_dataset, summarize
 from ..core.models import EndpointTest
 from ..core.tester import APITester, TestConfig
 from ..history.models import RunStart, RunStepStart
@@ -78,6 +79,10 @@ async def start_run(data: dict):
         history_step_index = int(data.get("history_step_index", 0))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="history_step_index must be a number")
+    feeder = _data_feeder(data)
+    request_config = {key: value for key, value in data.items() if key != "dataset"}
+    if feeder is not None:
+        request_config.update(dataset_rows=len(feeder.rows), dataset_mode=feeder.mode)
     coordinator = EndpointRunCoordinator(
         store,
         tester_factory=APITester,
@@ -88,10 +93,31 @@ async def start_run(data: dict):
         test,
         mode=mode,
         params=params,
-        request_config=data,
+        request_config=request_config,
         history_id=data.get("history_id"),
         history_step_index=history_step_index,
+        **({"data_feeder": feeder} if feeder is not None else {}),
     )
+
+
+def _data_feeder(data: dict):
+    try:
+        return feeder_from_request(data)
+    except DatasetError as error:
+        raise HTTPException(status_code=400, detail=f"Test data: {error}")
+
+
+@router.post("/datasets/preview")
+def preview_dataset(data: dict):
+    """Parse CSV/JSON test data and return its columns and first rows, so the
+    UI can show what a data-driven run will use."""
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+    try:
+        rows = parse_dataset(data.get("text") or "", data.get("format"))
+    except DatasetError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return summarize(rows)
 
 
 def _endpoint_from_draft(saved, draft):
@@ -232,6 +258,8 @@ def run_scenario(data: dict):
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="scenario settings must be numbers")
 
+    feeder = data.get("_data_feeder") or _data_feeder(data)
+
     by_id = {t.id: t for t in store.current_config.tests}
     live_run = store.current_runs.get(data.get("_run_id")) if data.get("_run_id") else None
     live_lock = live_run.get("lock") if live_run else None
@@ -356,12 +384,15 @@ def run_scenario(data: dict):
                 "iterations": iterations, "ramp_up_s": ramp_up_s,
                 "think_time_ms": round(think_time_s * 1000),
                 "stop_failure_pct": stop_failure_pct,
+                **({"dataset_rows": len(feeder.rows), "dataset_mode": feeder.mode} if feeder else {}),
             },
         ),
         history_steps,
     )
 
-    is_virtual = virtual_users > 1 or iterations > 1
+    # Test data always runs on isolated per-user configs, so row values never
+    # leak into the saved environment.
+    is_virtual = virtual_users > 1 or iterations > 1 or feeder is not None
     if is_virtual:
         started = time.monotonic()
         records_by_step = [[] for _ in ids]
@@ -386,6 +417,13 @@ def run_scenario(data: dict):
                 for iteration_index in range(iterations):
                     if stop_event.is_set() or external_stop_flag.get("stop"):
                         break
+                    if feeder is not None:
+                        # One test-data row per journey: every step of this
+                        # iteration (login, then the calls that use its token)
+                        # sees the same row's values.
+                        _row_number, row = feeder.next()
+                        with user_config.variables_lock:
+                            user_config.variables.update(row)
                     flow_success = True
                     for step_index, tid in enumerate(ids):
                         if stop_event.is_set() or external_stop_flag.get("stop"):
@@ -589,6 +627,8 @@ def run_scenario(data: dict):
 @router.post("/scenario/start")
 def start_scenario(data: dict):
     """Start a cancellable scenario and return immediately with a run id."""
+    # Reject bad test data now, as a 400, instead of failing inside the thread.
+    feeder = _data_feeder(data) if isinstance(data, dict) else None
     run_id = str(os.urandom(8).hex())
     stop_flag = {"stop": False}
     store.current_runs[run_id] = {
@@ -600,7 +640,7 @@ def start_scenario(data: dict):
 
     def run_in_thread():
         try:
-            result = run_scenario({**data, "_stop_flag": stop_flag, "_run_id": run_id})
+            result = run_scenario({**data, "_stop_flag": stop_flag, "_run_id": run_id, "_data_feeder": feeder})
             store.current_runs[run_id]["result"] = result
             store.current_runs[run_id]["status"] = "stopped" if stop_flag["stop"] else "finished"
         except Exception as exc:

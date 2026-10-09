@@ -911,11 +911,11 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
                   aria-label="Proxy URL"
                   value={requestOptions.proxy ?? ''}
                   onChange={(e) => setRequestOption('proxy', e.target.value)}
-                  placeholder="http://127.0.0.1:8888 or {{proxy_url}}"
+                  placeholder="http://127.0.0.1:8888"
                   className="h-9 font-mono text-xs"
                 />
                 <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                  Routes HTTP and HTTPS through this proxy (e.g. Charles or Burp). Keep credentials in a variable so they stay out of shared project files.
+                  Routes HTTP and HTTPS through this proxy (e.g. Charles or Burp). Supports {'{{variables}}'}: keep credentials in one so they stay out of shared project files.
                 </p>
               </Field>
             </div>

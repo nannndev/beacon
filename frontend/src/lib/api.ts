@@ -213,7 +213,21 @@ export interface ScenarioRunStatus {
   failure?: ScenarioFailure | null
 }
 
+/** Test data sent with a run. Parsed by the backend; never stored in the project. */
+export interface DatasetSpec {
+  text: string
+  format?: 'csv' | 'json'
+  mode?: 'sequential' | 'random'
+}
+
+export interface DatasetSummary {
+  rows: number
+  columns: string[]
+  preview: Array<Record<string, string>>
+}
+
 export interface ScenarioOptions {
+  dataset?: DatasetSpec
   continue_on_error?: boolean
   retries?: number
   retry_delay?: number
@@ -425,6 +439,8 @@ export const api = {
 
   // Runs
   // payload can be a plain RunConfig (load mode default) or any mode-specific dict
+  previewDataset: (text: string, format?: 'csv' | 'json') =>
+    req<DatasetSummary>('/datasets/preview', jsonInit('POST', { text, format })),
   startRun: (payload: Record<string, unknown>) =>
     req<{ run_id: string; mode: string; history_id: string | null }>('/run', jsonInit('POST', payload)),
   stopRun: (runId: string) => req(`/stop/${runId}`, jsonInit('POST')),

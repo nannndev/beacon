@@ -23,10 +23,14 @@ class TemplateResolver:
         with self._lock:
             return dict(self.variables)
 
-    def resolve(self, value: Any) -> Any:
+    def resolve(self, value: Any, overlay: Optional[Mapping[str, Any]] = None) -> Any:
         """Resolve one request's templates against a single consistent view of
-        the variables, so every field of a payload sees the same token."""
-        return self._resolve(value, self._variables_snapshot())
+        the variables, so every field of a payload sees the same token.
+        `overlay` (e.g. a test-data row) takes precedence for this call only."""
+        variables = self._variables_snapshot()
+        if overlay:
+            variables.update(overlay)
+        return self._resolve(value, variables)
 
     def _resolve(self, value: Any, variables: dict) -> Any:
         if isinstance(value, str):

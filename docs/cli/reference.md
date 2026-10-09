@@ -118,7 +118,11 @@ Variable precedence, from lowest to highest:
 
 ### `--iterations N`
 
-Repeat the selected scope. Default: `1`. Full project and folder runs remain sequential so extractors can feed later requests.
+Repeat the selected scope. Default: `1`, or one pass per row when `--data` is given. Full project and folder runs remain sequential so extractors can feed later requests.
+
+### `--data PATH`
+
+Read CSV or JSON test data. Each pass over the selected endpoints uses the next row (wrapping around), and its columns are available as <code v-pre>{{column}}</code> variables. Columns count as defined variables during validation. Reports include each execution's `data_row` number but never the row's values. See [Data-driven Runs](/features/test-data).
 
 ### `--retries N`
 

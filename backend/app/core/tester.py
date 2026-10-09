@@ -14,6 +14,7 @@ from .extractors import ResponseExtractor
 from .metrics import RunMetrics, percentile
 from .models import EndpointTest, TestConfig
 from .templating import TemplateResolver
+from .datasets import DataFeeder
 from .transport import HttpTransport, WebSocketTransport, resolve_target
 
 def _silence_insecure_request_warning() -> None:
@@ -32,8 +33,14 @@ class APITester:
                  log_callback: Callable[[str], None] = None,
                  stats_callback: Callable[[Dict], None] = None,
                  response_callback: Callable[[Dict], None] = None,
-                 stop_flag: Optional[Dict] = None):
+                 stop_flag: Optional[Dict] = None,
+                 data_feeder: Optional["DataFeeder"] = None):
         self.test = test
+        # Data-driven runs: each request takes the next test-data row. The row
+        # lives on the worker thread while that request is built and sent, so
+        # every templated field (URL, headers, body, auth, proxy, script) sees
+        # the same row without touching the shared environment.
+        self.data_feeder = data_feeder
         self.config = config
         self.concurrency = max(1, concurrency)
         self.delay = delay
@@ -78,8 +85,16 @@ class APITester:
     def _snapshot(self) -> Dict:
         return self.metrics.snapshot()
 
+    def _current_row(self) -> Optional[Dict]:
+        current = getattr(self._tls, "data_row", None)
+        return current[1] if current else None
+
+    def _current_row_number(self) -> Optional[int]:
+        current = getattr(self._tls, "data_row", None)
+        return current[0] if current else None
+
     def _substitute(self, value: Any) -> Any:
-        return self.templates.resolve(value)
+        return self.templates.resolve(value, self._current_row())
 
     def _generate_dynamic(self, spec: str) -> str:
         return self.templates.generate(spec)
@@ -104,6 +119,8 @@ class APITester:
         return resolve_auth_headers(effective_auth(*chain), self._substitute)
 
     def _build_request(self):
+        if self.data_feeder is not None:
+            self._tls.data_row = self.data_feeder.next()
         url = resolve_target(self.config.base_url, self._substitute(self.test.url))
 
         headers = {k: self._substitute(v) for k, v in self.test.headers.items()}
@@ -133,8 +150,11 @@ class APITester:
             "method": self.test.method,
             "headers": headers,
             "body": payload,
-            "variables": dict(before),
+            "variables": {**before, **(self._current_row() or {})},
         }
+        # Compare against what the script started with, so test-data columns
+        # are never mistaken for variables the script set.
+        before = dict(context["variables"])
         try:
             engine = PreRequestEngine()
             engine.execute(self.test.pre_request_script, context, timeout=5)
@@ -149,8 +169,6 @@ class APITester:
             with self._variables_lock():
                 self.config.variables.update(changed)
         return context["url"], context["headers"], context["body"]
-
-        return url, headers, payload
 
     def _timeout(self, default: float) -> float:
         """The endpoint's own timeout when set, else the caller's default."""
@@ -288,6 +306,7 @@ class APITester:
                 self._extract_from_response(resp)
 
             result = {
+                "data_row": self._current_row_number(),
                 "attempt": i,
                 "method": self.test.method,
                 "url": url,
@@ -314,6 +333,7 @@ class APITester:
                 snapshot = self._snapshot()
             self.update_stats(snapshot)
             err = {
+                "data_row": self._current_row_number(),
                 "attempt": i,
                 "method": self.test.method,
                 "url": url,

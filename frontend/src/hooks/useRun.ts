@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { RunConfig, RunResponse } from '../types'
 import { RunStats, RunStatus } from '../components/LiveMonitor'
-import { api, getWsUrl } from '../lib/api'
+import { api, getWsUrl, type DatasetSpec } from '../lib/api'
 import { toast } from '../components/ui/toast'
 import { buildLoadRunPayload } from './runPayload'
 import { withHistoryStep } from './useAppView'
@@ -99,6 +99,8 @@ export function useRun() {
   const queueRef = useRef<RunQueueItem[]>([])
   const runQueueRef = useRef<RunQueueProgress | null>(null)
   const historyGroupRef = useRef<string | null>(null)
+  const datasetRef = useRef<DatasetSpec | null>(null)
+  const setDataset = useCallback((spec: DatasetSpec | null) => { datasetRef.current = spec }, [])
   const analyticsModeRef = useRef('load')
 
   useEffect(() => { statusRef.current = status }, [status])
@@ -180,7 +182,9 @@ export function useRun() {
 
     analyticsModeRef.current = String(payload.mode ?? 'load')
     track('run_started', { mode: analyticsModeRef.current })
-    const data = await api.startRun(payload)
+    // Test data rides along with every run started from here (single, queued,
+    // folder, Run All) without each caller having to remember it.
+    const data = await api.startRun(datasetRef.current ? { ...payload, dataset: datasetRef.current } : payload)
     runIdRef.current = data.run_id
     setLastHistoryId(data.history_id || null)
     connectRef.current(data.run_id)
@@ -443,5 +447,6 @@ export function useRun() {
     startAll,
     stop,
     clear,
+    setDataset,
   }
 }
