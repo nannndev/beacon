@@ -78,9 +78,16 @@ def sanitize_response_event(response: dict, elapsed_ms: int) -> RunEvent:
         status = int(status) if status is not None else None
     except (TypeError, ValueError):
         status = None
-    latency = response.get("time_ms", response.get("time"))
+    # Single sends report `time_ms`; load-run responses report `time` in
+    # seconds. Treating seconds as milliseconds made every load run's history
+    # latency 1000x too small (a 104 ms request stored as 0.1 ms).
     try:
-        latency = float(latency) if latency is not None else None
+        if response.get("time_ms") is not None:
+            latency = float(response["time_ms"])
+        elif response.get("time") is not None:
+            latency = float(response["time"]) * 1000.0
+        else:
+            latency = None
     except (TypeError, ValueError):
         latency = None
 

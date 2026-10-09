@@ -144,3 +144,38 @@ class HistoryServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongRunFinalizationTests(unittest.TestCase):
+    def test_run_with_more_samples_than_the_cap_finalizes(self):
+        import os
+        import tempfile
+
+        from backend.app.history.service import SAMPLE_CAP
+        from backend.app.history.sqlite_repository import SqliteRunHistoryRepository
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repository = SqliteRunHistoryRepository(os.path.join(tmp, "history.db"))
+            service = HistoryService(repository)
+            service.initialize()
+            run = run_start()
+            service.start(run, [RunStepStart(sequence=0, endpoint_id="e1", endpoint_name="List posts",
+                                             method="GET", url_template="/posts")])
+
+            # Enough stats updates to downsample the sample buffer several times.
+            for attempt in range(1, SAMPLE_CAP * 3):
+                service.record_stats(run.id, 0, {"attempts": attempt, "success": attempt},
+                                     elapsed_ms=attempt * 10)
+            service.finish_step(run.id, 0, "completed")
+            service.finish_run(run.id, "completed")
+
+            self.assertTrue(service.available)
+            self.assertEqual(repository.get_run(run.id)["status"], "completed")
+
+
+class ResponseLatencyUnitTests(unittest.TestCase):
+    def test_load_run_seconds_are_stored_as_milliseconds(self):
+        # APITester load-run responses carry `time` in seconds.
+        self.assertEqual(sanitize_response_event({"status": 200, "time": 0.104}, 0).latency_ms, 104.0)
+        self.assertEqual(sanitize_response_event({"status": 200, "time_ms": 25}, 0).latency_ms, 25.0)
+        self.assertIsNone(sanitize_response_event({"error": "refused"}, 0).latency_ms)

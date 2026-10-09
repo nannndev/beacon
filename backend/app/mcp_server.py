@@ -64,6 +64,7 @@ def _pin_data_dir() -> None:
 _pin_data_dir()
 
 from .core.tester import APITester, EndpointTest
+from .core.transport import resolve_target
 from .history.models import RunStart, RunStepStart
 from .history.sanitize import sanitize_run_config
 from .services.project_importer import ProjectImportError, materialize_items, normalize_project
@@ -192,9 +193,7 @@ def _resolved_target(base_url: str, url: str) -> str:
     an absolute endpoint URL is used as-is; a relative one is joined onto
     base_url. (Naive `base_url + url` produced garbled targets like
     `https://api.example.comhttps://httpbin.org/get` for absolute URLs.)"""
-    if url.startswith("http"):
-        return url
-    return base_url.rstrip("/") + "/" + url.lstrip("/")
+    return resolve_target(base_url, url)
 
 
 def _find_node(items, pred):

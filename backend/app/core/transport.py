@@ -3,11 +3,24 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import traceback
 
 import websocket
 
 from .models import EndpointTest
+
+
+_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+
+
+def resolve_target(base_url: str, url: str) -> str:
+    """Join a relative endpoint URL onto base_url; any absolute URL (http,
+    https, ws, wss, ...) is used as-is. Checking only for an "http" prefix
+    glued the base URL onto ws:// targets."""
+    if _SCHEME.match(url or ""):
+        return url
+    return (base_url or "").rstrip("/") + "/" + (url or "").lstrip("/")
 
 
 class HttpTransport:

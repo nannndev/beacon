@@ -14,7 +14,7 @@ from .extractors import ResponseExtractor
 from .metrics import RunMetrics, percentile
 from .models import EndpointTest, TestConfig
 from .templating import TemplateResolver
-from .transport import HttpTransport, WebSocketTransport
+from .transport import HttpTransport, WebSocketTransport, resolve_target
 
 class APITester:
     def __init__(self, test: EndpointTest, config: TestConfig,
@@ -94,9 +94,7 @@ class APITester:
         return resolve_auth_headers(effective_auth(*chain), self._substitute)
 
     def _build_request(self):
-        url = self._substitute(self.test.url)
-        if not url.startswith("http"):
-            url = self.config.base_url.rstrip("/") + "/" + url.lstrip("/")
+        url = resolve_target(self.config.base_url, self._substitute(self.test.url))
 
         headers = {k: self._substitute(v) for k, v in self.test.headers.items()}
         # A configured auth spec is authoritative over a hand-written header,

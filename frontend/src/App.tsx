@@ -967,7 +967,7 @@ function App() {
             onNew={() => openNewEditor()}
           />
         )}
-        <div className={`flex-1 overflow-auto ${showEditor && !showProjectSettings ? 'p-1 pb-4' : 'p-4 space-y-4'}`}>
+        <div className={`flex-1 overflow-auto ${showEditor && !showProjectSettings ? 'px-1 pb-4' : 'p-4 space-y-4'}`}>
           {/* Background tabs stay mounted (hidden) so their drafts survive. */}
           {editorTabs.tabs.map((tab) => (
             <div key={tab.key} hidden={showProjectSettings || tab.key !== editorTabs.activeKey}>

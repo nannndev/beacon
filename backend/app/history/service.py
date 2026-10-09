@@ -65,6 +65,11 @@ class _RunBuffer:
     events: list[RunEvent] = field(default_factory=list)
     last_sample_elapsed: Optional[int] = None
     last_sample_attempts: int = 0
+    # Monotonic sample counter. `len(samples)` shrinks whenever the list is
+    # downsampled, so using it reissued sequence numbers already stored and
+    # finalize_run failed on the run_samples primary key, leaving long runs
+    # stuck as "running".
+    next_sample_sequence: int = 0
 
 
 def _append_downsampled(values: list, value, cap: int) -> None:
@@ -198,7 +203,7 @@ class HistoryService:
                 rps = delta_attempts * 1000 / delta_elapsed if delta_elapsed > 0 else 0.0
                 recent_latency = step.latencies[-1] if step.latencies else None
                 sample = RunSample(
-                    sequence=len(buffer.samples),
+                    sequence=buffer.next_sample_sequence,
                     elapsed_ms=elapsed,
                     attempts=totals["attempts"],
                     success=totals["success"],
@@ -207,6 +212,7 @@ class HistoryService:
                     instantaneous_rps=rps,
                     latency_ms=recent_latency,
                 )
+                buffer.next_sample_sequence += 1
                 _append_downsampled(buffer.samples, sample, SAMPLE_CAP)
                 buffer.last_sample_elapsed = elapsed
                 buffer.last_sample_attempts = totals["attempts"]

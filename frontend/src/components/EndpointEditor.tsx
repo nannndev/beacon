@@ -291,7 +291,8 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
   const absoluteUrl = useMemo(() => {
     const url = form.url || ''
     if (!url) return config.base_url || 'base url not set'
-    if (/^https?:\/\//i.test(url)) return url
+    // Any scheme (http, https, ws, wss) marks an absolute URL, as in the backend.
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(url)) return url
     const base = (config.base_url || '').replace(/\/$/, '')
     return base ? `${base}/${url.replace(/^\//, '')}` : url
   }, [config.base_url, form.url])

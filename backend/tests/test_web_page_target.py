@@ -72,3 +72,15 @@ class WebPageTargetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResolveTargetTests(unittest.TestCase):
+    def test_absolute_urls_of_any_scheme_are_kept(self):
+        from backend.app.core.transport import resolve_target
+
+        base = "http://localhost:4010"
+        self.assertEqual(resolve_target(base, "ws://localhost:4000/ws/echo"), "ws://localhost:4000/ws/echo")
+        self.assertEqual(resolve_target(base, "WSS://feed.example.com/live"), "WSS://feed.example.com/live")
+        self.assertEqual(resolve_target(base, "https://api.example.com/x"), "https://api.example.com/x")
+        self.assertEqual(resolve_target(base + "/", "/posts/1"), "http://localhost:4010/posts/1")
+        self.assertEqual(resolve_target(base, "posts"), "http://localhost:4010/posts")
