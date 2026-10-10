@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronDown, ChevronUp, TriangleAlert } from 'lucide-react'
 import { TestMode, ModeInfo, MODE_INFO } from '../types/testModes'
 
 interface Props {
@@ -20,6 +21,7 @@ const colorMap: Record<string, { ring: string; bg: string; text: string; badge: 
 
 function ModeCard({ info, active, onClick }: { info: ModeInfo; active: boolean; onClick: () => void }) {
   const c = colorMap[info.color] ?? colorMap['emerald']
+  const Icon = info.icon
   return (
     <button
       onClick={onClick}
@@ -30,13 +32,13 @@ function ModeCard({ info, active, onClick }: { info: ModeInfo; active: boolean; 
       }`}
     >
       <div className="flex items-start gap-2">
-        <span className="text-base leading-none mt-0.5 shrink-0">{info.emoji}</span>
+        <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${active ? c.text : 'text-muted-foreground'}`} aria-hidden="true" />
         <div className="min-w-0">
           <div className={`text-xs font-semibold leading-tight ${active ? c.text : ''}`}>{info.label}</div>
           <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{info.tagline}</div>
         </div>
         {info.danger && (
-          <span className="ml-auto shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/15 text-red-500">⚠</span>
+          <TriangleAlert className="ml-auto shrink-0 h-3 w-3 text-red-500" aria-label="Use only on systems you are authorized to test" />
         )}
       </div>
     </button>
@@ -47,6 +49,8 @@ export function ModeSelector({ selected, onChange }: Props) {
   const [open, setOpen] = useState(false)
   const current = MODE_INFO.find((m) => m.id === selected)!
   const c = colorMap[current.color] ?? colorMap['emerald']
+  const CurrentIcon = current.icon
+  const Chevron = open ? ChevronUp : ChevronDown
 
   return (
     <div>
@@ -55,11 +59,12 @@ export function ModeSelector({ selected, onChange }: Props) {
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Test Mode</span>
         <button
           onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium border transition-colors ${c.bg} ${c.text} border-transparent ring-1 ${c.ring}`}
         >
-          <span>{current.emoji}</span>
+          <CurrentIcon className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{current.label}</span>
-          <span className="text-[10px] opacity-60 ml-0.5">{open ? '▲' : '▼'}</span>
+          <Chevron className="h-3 w-3 opacity-60 ml-0.5" aria-hidden="true" />
         </button>
         <span className="text-[10px] text-muted-foreground">{current.tagline}</span>
       </div>
@@ -78,11 +83,16 @@ export function ModeSelector({ selected, onChange }: Props) {
             ))}
           </div>
           {/* Description of selected mode */}
-          <div className={`text-[11px] px-3 py-2 rounded-md ${c.bg} ${c.text} border border-current/20`}>
-            {current.emoji} <strong>{current.label}:</strong> {current.description}
-            {current.danger && (
-              <span className="ml-2 text-red-500 font-semibold">⚠ Use only on systems you own / have permission to test.</span>
-            )}
+          <div className={`flex items-start gap-2 text-[11px] px-3 py-2 rounded-md ${c.bg} ${c.text} border border-current/20`}>
+            <CurrentIcon className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden="true" />
+            <div>
+              <strong>{current.label}:</strong> {current.description}
+              {current.danger && (
+                <span className="ml-1 inline-flex items-center gap-1 text-red-500 font-semibold">
+                  <TriangleAlert className="h-3 w-3" aria-hidden="true" /> Use only on systems you own / have permission to test.
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}

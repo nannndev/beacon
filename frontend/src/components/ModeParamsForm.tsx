@@ -163,6 +163,17 @@ function CapacityForm({ p, set }: { p: CapacityParams; set: (v: CapacityParams) 
 
 const FUZZ_TYPES: FuzzType[] = ['string', 'number', 'email', 'sql', 'xss', 'empty', 'long']
 
+// Friendly label + what the generator injects, surfaced in the dropdown and legend.
+const FUZZ_TYPE_INFO: Record<FuzzType, { label: string; desc: string }> = {
+  string: { label: 'Random string', desc: 'Random alphanumeric text of varying length.' },
+  number: { label: 'Random number', desc: 'Integers, negatives, zero and very large values.' },
+  email:  { label: 'Email-ish', desc: 'Valid and malformed email addresses.' },
+  sql:    { label: 'SQL injection', desc: "Classic SQLi payloads, e.g. ' OR 1=1 --." },
+  xss:    { label: 'XSS payload', desc: 'Script and HTML injection snippets.' },
+  empty:  { label: 'Empty / null', desc: 'Empty strings, null and missing values.' },
+  long:   { label: 'Oversized', desc: 'Very long strings to probe length limits.' },
+}
+
 function FuzzForm({ p, set }: { p: FuzzParams; set: (v: FuzzParams) => void }) {
   const [newField, setNewField] = useState('')
 
@@ -205,13 +216,15 @@ function FuzzForm({ p, set }: { p: FuzzParams; set: (v: FuzzParams) => void }) {
               <select
                 value={p.fuzz_types[f] ?? 'string'}
                 onChange={(e) => setType(f, e.target.value as FuzzType)}
+                title={FUZZ_TYPE_INFO[p.fuzz_types[f] ?? 'string'].desc}
                 className="h-6 text-xs bg-background border border-input rounded px-1"
               >
                 {FUZZ_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>{FUZZ_TYPE_INFO[t].label}</option>
                 ))}
               </select>
-              <button onClick={() => removeField(f)} className="text-muted-foreground hover:text-red-500 transition-colors text-xs">✕</button>
+              <span className="truncate text-[10px] text-muted-foreground">{FUZZ_TYPE_INFO[p.fuzz_types[f] ?? 'string'].desc}</span>
+              <button onClick={() => removeField(f)} aria-label={`Remove ${f}`} className="ml-auto shrink-0 text-muted-foreground hover:text-red-500 transition-colors text-xs">✕</button>
             </div>
           ))}
         </div>
@@ -234,8 +247,21 @@ function FuzzForm({ p, set }: { p: FuzzParams; set: (v: FuzzParams) => void }) {
         </button>
       </div>
 
+      {/* Legend: what each injection type does */}
+      <details className="rounded-md border border-rose-500/15 bg-rose-500/[0.04] px-2 py-1.5">
+        <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground select-none">Injection types ({FUZZ_TYPES.length})</summary>
+        <div className="mt-1.5 grid gap-x-3 gap-y-1 sm:grid-cols-2">
+          {FUZZ_TYPES.map((t) => (
+            <div key={t} className="text-[10px] leading-tight">
+              <span className="font-medium text-foreground">{FUZZ_TYPE_INFO[t].label}</span>
+              <span className="text-muted-foreground"> — {FUZZ_TYPE_INFO[t].desc}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+
       {p.fuzz_fields.length === 0 && (
-        <div className="text-[10px] text-muted-foreground">Add payload field names to fuzz. All other fields use their original values.</div>
+        <div className="text-[10px] text-muted-foreground">Add payload field names to fuzz, then pick an injection type for each. All other fields keep their original values.</div>
       )}
     </div>
   )

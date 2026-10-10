@@ -2,6 +2,11 @@
 // Test mode types — one type per backend run mode
 // ---------------------------------------------------------------------------
 
+import {
+  Activity, BarChart3, Gauge, Hourglass, PlugZap, Shuffle, Target, TrendingUp,
+  Workflow, Zap, type LucideIcon,
+} from 'lucide-react'
+
 export type TestMode =
   | 'load'
   | 'ramp'
@@ -184,9 +189,11 @@ export const MODE_DEFAULTS: Record<TestMode, ModeParams['params']> = {
 export interface ModeInfo {
   id: TestMode
   label: string
-  emoji: string
+  icon: LucideIcon        // lucide glyph for cards and pills
   tagline: string
   description: string
+  /** One short line summarising how the mode behaves, shown under the form. */
+  summary: string
   color: string           // tailwind token for accent
   danger?: boolean        // show warning badge
 }
@@ -195,83 +202,93 @@ export const MODE_INFO: ModeInfo[] = [
   {
     id: 'load',
     label: 'Load',
-    emoji: '⚡',
+    icon: Zap,
     tagline: 'Fixed concurrency',
     description: 'Hammer the API with a steady number of workers and requests. The classic load test.',
+    summary: 'A fixed pool of workers fires requests at a steady rate until the request budget runs out.',
     color: 'emerald',
   },
   {
     id: 'ramp',
     label: 'Ramp',
-    emoji: '📈',
+    icon: TrendingUp,
     tagline: 'Gradual scale-up',
     description: 'Start slow and double workers every few seconds. Find the saturation point.',
+    summary: 'Worker count doubles each step until it reaches the max, revealing where throughput stops scaling.',
     color: 'blue',
   },
   {
     id: 'spike',
     label: 'Spike',
-    emoji: '💥',
+    icon: Activity,
     tagline: 'Sudden burst',
     description: 'Normal → burst → normal. Tests whether the API recovers after a traffic spike.',
+    summary: 'Runs a baseline, slams a short burst of peak workers, then drops back to measure recovery.',
     color: 'orange',
     danger: true,
   },
   {
     id: 'soak',
     label: 'Soak',
-    emoji: '🛁',
+    icon: Hourglass,
     tagline: 'Low & slow endurance',
     description: 'Run at a low rate for a long time. Detects memory leaks and gradual degradation.',
+    summary: 'Holds a steady low rate for the full duration to surface leaks and slow degradation over time.',
     color: 'violet',
   },
   {
     id: 'rate_probe',
     label: 'Rate Probe',
-    emoji: '🎯',
+    icon: Target,
     tagline: 'Auto-find 429 threshold',
     description: 'Escalate RPS step by step until the API throws 429. Reports the exact threshold.',
+    summary: 'Raises the request rate step by step and stops at the first 429, reporting the limit it found.',
     color: 'amber',
   },
   {
     id: 'capacity',
     label: 'Capacity',
-    emoji: '🧭',
+    icon: Gauge,
     tagline: 'Find safe RPS',
     description: 'Increase traffic until latency, errors, or success rate breaks your SLO. Reports safe capacity and the breaking point.',
+    summary: 'Climbs the rate until an SLO breaks; the last healthy step is reported as safe capacity.',
     color: 'teal',
   },
   {
     id: 'fuzz',
     label: 'Fuzz',
-    emoji: '🔀',
+    icon: Shuffle,
     tagline: 'Payload mutation',
     description: 'Inject random, malformed, or malicious values into payload fields. Security testing.',
+    summary: 'Replaces the chosen payload fields with mutated values each request to probe input handling.',
     color: 'rose',
     danger: true,
   },
   {
     id: 'benchmark',
     label: 'Benchmark',
-    emoji: '📊',
+    icon: BarChart3,
     tagline: 'Latency percentiles',
     description: 'Sequential single-thread run optimised for accurate p50/p95/p99 latency measurement.',
+    summary: 'Fires one request at a time after a warm-up, for clean p50/p95/p99 latency numbers.',
     color: 'cyan',
   },
   {
     id: 'scenario',
     label: 'Scenario',
-    emoji: '🔗',
+    icon: Workflow,
     tagline: 'Virtual user journeys',
     description: 'Run chained endpoints with isolated users, iterations, ramp-up, think time, retries, and per-step performance.',
+    summary: 'Virtual users run the endpoint or project journey in parallel, each with isolated variables and tokens.',
     color: 'indigo',
   },
   {
     id: 'websocket',
     label: 'WebSocket',
-    emoji: '🔌',
+    icon: PlugZap,
     tagline: 'Message throughput',
     description: 'Open concurrent WebSocket connections and measure message exchange latency and throughput.',
+    summary: 'Opens concurrent WebSocket connections and exchanges messages to measure latency and throughput.',
     color: 'blue',
   },
 ]

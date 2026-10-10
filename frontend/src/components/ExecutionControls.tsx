@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent } from './ui/card'
 import { TestDataPicker, type TestData } from './TestDataPicker'
 import { Button } from './ui/button'
-import { Play, Square, ListVideo, RotateCcw } from 'lucide-react'
+import { Play, Square, ListVideo, RotateCcw, Info, ArrowUp } from 'lucide-react'
 import { RunConfig } from '../types'
 import { RunStatus } from './LiveMonitor'
 import { ModeSelector } from './ModeSelector'
 import { ModeParamsForm, estimateModeDuration } from './ModeParamsForm'
 import { buildRunPayload } from '../lib/modePayload'
-import { TestMode, ModeParams, LoadParams, ScenarioParams } from '../types/testModes'
+import { TestMode, ModeParams, LoadParams, ScenarioParams, MODE_INFO } from '../types/testModes'
 import {
   defaultModeParams,
   loadTestModePreferences,
@@ -126,6 +126,18 @@ export function ExecutionControls({
     : modeParams
 
   const estimated = estimateModeDuration(mode, syncedParams)
+  const currentMode = MODE_INFO.find((m) => m.id === mode)!
+
+  // Why the Run button is disabled, surfaced as its tooltip and an inline hint.
+  const runDisabledReason = running
+    ? 'A run is already in progress'
+    : !hasSelection
+    ? mode === 'scenario'
+      ? 'Select an API or Web endpoint in the list first'
+      : 'Select an endpoint in the list first'
+    : null
+  const runTitle = runDisabledReason
+    ?? (mode === 'scenario' ? 'Run the selected endpoint as a virtual-user journey' : 'Run the selected endpoint in this mode')
 
   const handleRun = () => {
     if (mode === 'scenario') {
@@ -149,11 +161,15 @@ export function ExecutionControls({
 
         {/* Mode parameter form */}
         <div className="pt-1 border-t border-border/60 space-y-1.5">
-          <div className="flex justify-end">
+          <div className="flex items-start justify-between gap-3">
+            <p className="flex items-start gap-1.5 text-[10px] leading-tight text-muted-foreground min-w-0">
+              <Info className="h-3 w-3 mt-px shrink-0 opacity-70" aria-hidden="true" />
+              <span>{currentMode.summary}</span>
+            </p>
             <button
               type="button"
               onClick={resetCurrentMode}
-              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
               title="Restore the recommended defaults for this mode"
             >
               <RotateCcw className="h-3 w-3" /> Reset this mode
@@ -175,10 +191,10 @@ export function ExecutionControls({
                 {mode === 'scenario'
                   ? hasSelection
                     ? <><span>Selected: </span><span className="text-foreground font-medium">{selectedName}</span><span className={`ml-1 rounded px-1 py-0.5 font-mono text-[9px] ${selectedTargetType === 'web' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-blue-500/10 text-blue-400'}`}>{selectedTargetType.toUpperCase()}</span></>
-                    : 'Select an API or Web endpoint for a single-target run'
+                    : <span className="inline-flex items-center gap-1 text-amber-500"><ArrowUp className="h-3 w-3" aria-hidden="true" />Select an API or Web endpoint in the list to run</span>
                   : hasSelection
                   ? <><span>Target: </span><span className="text-foreground font-medium">{selectedName}</span></>
-                  : 'Select an endpoint'}
+                  : <span className="inline-flex items-center gap-1 text-amber-500"><ArrowUp className="h-3 w-3" aria-hidden="true" />Select an endpoint in the list to run</span>}
                 {overrideEnabled && <span className="text-amber-500"> · override</span>}
               </div>
             </div>
@@ -234,6 +250,7 @@ export function ExecutionControls({
               onClick={handleRun}
               disabled={!hasSelection || running}
               size="sm"
+              title={runTitle}
               className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
               <Play className="h-3.5 w-3.5" /> {scenarioBusy ? 'Running…' : mode === 'scenario' ? 'Run selected endpoint' : 'Run'}
