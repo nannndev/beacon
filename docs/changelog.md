@@ -3,6 +3,24 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.8.0] - 2026-10-10
+
+### Added
+
+- **Data-driven runs**: Attach a CSV or JSON file to a run and each request (load modes) or each virtual-user journey (Scenario) takes the next row, with every column exposed as a `{{column}}` template variable. Rows can be fed in order or at random, and a `/datasets/preview` endpoint plus a `--data` CLI flag round out the feature. The file stays in memory for the session and is never written into the project.
+- **Per-request transport controls**: The endpoint editor gains per-request timeout, redirect following, TLS verification toggle, and a per-request proxy, so a single endpoint can override the global transport settings.
+- **Tabbed endpoint editor**: Open multiple requests in tabs that keep their unsaved drafts, with an unsaved-change guard, send-from-draft, and a save shortcut.
+
+### Improved
+
+- **Redrawn observability**: The Live Monitor and Run History charts were rebuilt for honest per-second throughput, monotone (non-overshooting) lines, a p95 latency reference line, an error-rate panel, and a latency-distribution histogram with p50/p95 markers. Average RPS now reports total attempts over the run duration with a true busiest-second peak.
+- **Clearer test-mode dashboard**: Each mode now uses a lucide icon with its accent colour, a one-line behaviour summary under its parameter form, an explicit "select an endpoint" prerequisite hint on the Run button, and — for Fuzz — friendly injection-type labels with an expandable legend.
+- **Sturdier scripting sandbox**: Pre-request scripts run in isolated worker processes with AST checks, an import allowlist, and resource limits, instead of worker threads.
+- **Fixes**: Rate-probe and soak runs are now paced by an absolute schedule rather than drifting after each send; run-history finalisation, load-run latency units, `ws://` targets, and the dev GraphQL proxy were corrected; and folder-level Scenario "Chain" now honours the configured Scenario settings.
+- Landing page refreshed with theme-matched screenshots of the updated dashboards.
+
+[Compare 0.7.0 → 0.8.0](https://github.com/nannndev/beacon/compare/v0.7.0...v0.8.0)
+
 ## [0.7.0] - 2026-08-07
 
 ### Added

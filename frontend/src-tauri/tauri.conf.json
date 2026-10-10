@@ -1,6 +1,6 @@
 {
   "productName": "Beacon",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "identifier": "com.beacon.app",
   "build": {
     "beforeDevCommand": "npm run dev",
