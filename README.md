@@ -16,7 +16,7 @@ Manage multiple projects and environments, group endpoints in nested folders, se
 
 ### Dynamic request builder
 
-Build JSON, form, multipart, or raw requests with environment variables, generated values, authentication helpers, headers, cookies, and response extractors.
+Build JSON, form, multipart, or raw requests with environment variables, generated values, authentication helpers, headers, cookies, and response extractors. Per-request transport controls (timeout, redirects, TLS verification, proxy) and CSV/JSON test data let one endpoint cover many cases.
 
 ![Beacon request builder](./assets/screenshots/request-builder.png)
 
@@ -42,7 +42,7 @@ Keep base URLs and variables separate across development, staging, and other env
 
 ### Local run history
 
-Search, filter, pin, inspect, export, and compare saved runs. History stays local and keeps completed evidence available after the live monitor is cleared.
+Search, filter, pin, inspect, export, and compare saved runs. Each run keeps latency-over-time and throughput charts, a latency-distribution histogram, and outcome breakdowns. History stays local and keeps completed evidence available after the live monitor is cleared.
 
 ![Beacon Run History](./assets/screenshots/run-history.png)
 
@@ -67,12 +67,15 @@ Private environment values remain under the ignored `.beacon/` directory. Respon
 - JSON, form, multipart, and raw request bodies
 - Web Page targets for HTML document load testing, redirects, TTFB, and throughput
 - Per-endpoint authentication, headers, cookies, extractors, and run overrides
+- Per-request transport controls: timeout, redirect following, TLS verification, and proxy
+- Data-driven runs that feed each request or scenario journey a row from a CSV or JSON file, with every column available as a `{{column}}` variable
+- Tabbed endpoint editor that keeps unsaved drafts, with an unsaved-change guard and a save shortcut
 - Single Send with a structured Response Inspector and click-to-extract JSON fields
 - Assertions for status, response time, body content, JSON fields, and headers
 - Ordered scenarios with extractor-based state chaining, isolated virtual users, iterations, ramp-up, think time, retries, and per-step bottleneck metrics
-- Load, Ramp, Spike, Soak, Rate Probe, Capacity, Fuzz, Benchmark, and Scenario test modes
-- Live attempts, successes, rate limits, errors, response logs, latency trend, and exportable results
-- Local Run History with pinning, filters, expandable charts, and semantic two-run comparison
+- Load, Ramp, Spike, Soak, Rate Probe, Capacity, Fuzz, Benchmark, Scenario, and WebSocket test modes, each with a one-line behaviour summary (Fuzz exposes selectable injection types)
+- Live Monitor with honest per-second throughput, response-time and error-rate charts, a p95 reference, response logs, and exportable results
+- Local Run History with pinning, filters, expandable charts, a latency-distribution histogram, and semantic two-run comparison
 - Desktop app via Tauri with bundled FastAPI and MCP sidecars
 - Headless CLI for endpoint, folder, and full-project checks with JSON/JUnit reports and CI exit codes
 - Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
