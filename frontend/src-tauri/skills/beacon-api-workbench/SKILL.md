@@ -1,6 +1,6 @@
 ---
-name: beacon-api-tester
-description: Drive Beacon from an agent to discover, create, import, inspect, send, chain, load-test, and organize API or web endpoints. Supports Beacon/Postman/OpenAPI/Swagger/Insomnia/HAR imports, response assertions/extractors, and authorized rate-limit testing. Prefer the Beacon MCP server; fall back to REST.
+name: beacon-api-workbench
+description: Drive the Beacon API workbench (github.com/nannndev/beacon) from an agent to discover, create, import, send, chain, load-test, and document API or web endpoints. Supports Beacon/Postman/OpenAPI/Swagger/Insomnia/HAR imports, response assertions/extractors, capturing live responses as documented examples, and authorized rate-limit testing. Prefer the Beacon MCP server; fall back to REST.
 ---
 
 # Driving Beacon

@@ -120,7 +120,7 @@ export function McpPage({ onBack }: Props) {
                 <p className="text-[11px] text-muted-foreground">This one path works with every MCP client.</p>
                 <div className="pt-1 text-xs font-medium">Agent skill (Claude Code)</div>
                 <CopyField value={skillPath} placeholder="Resolving…" />
-                <p className="text-[11px] text-muted-foreground">Copy to <code className="rounded bg-muted px-1">~/.claude/skills/beacon/SKILL.md</code>.</p>
+                <p className="text-[11px] text-muted-foreground">Copy to <code className="rounded bg-muted px-1">~/.claude/skills/beacon-api-workbench/SKILL.md</code>.</p>
               </Card>
 
               <Card className="space-y-2.5 p-4">

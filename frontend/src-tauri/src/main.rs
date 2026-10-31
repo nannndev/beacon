@@ -28,7 +28,7 @@ const STAGED_CLI_NAME: &str = "beacon.exe";
 #[cfg(not(windows))]
 const STAGED_CLI_NAME: &str = "beacon";
 
-const SKILL_RELATIVE: &str = "skills/beacon/SKILL.md";
+const SKILL_RELATIVE: &str = "skills/beacon-api-workbench/SKILL.md";
 
 /// Kill any backend sidecar left over from a previous session that crashed or
 /// was force-quit before its `ExitRequested` cleanup ran. Safe to call at
@@ -272,8 +272,8 @@ fn main() {
             app.manage(McpServerPath(Mutex::new(staged_mcp)));
 
             // Stage the agent skill (SKILL.md) to the same stable per-user location.
-            // Users can copy it to their ~/.claude/skills/beacon/ for Claude Code.
-            let staged_skill = data_dir.join("skills").join("beacon").join("SKILL.md");
+            // Users can copy it to their ~/.claude/skills/beacon-api-workbench/ for Claude Code.
+            let staged_skill = data_dir.join("skills").join("beacon-api-workbench").join("SKILL.md");
             if let Ok(resource_dir) = app.path().resource_dir() {
                 let bundled_skill = resource_dir.join(SKILL_RELATIVE);
                 if bundled_skill.exists() {

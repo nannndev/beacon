@@ -165,7 +165,7 @@ Tool failures keep the human-readable `error` field and also return a stable
 ## Agent skill
 
 For agents that prefer skills over raw tool calls, the repo also includes a
-`beacon-api-tester` skill (`.claude/skills/beacon/SKILL.md`) that documents this
+`beacon-api-workbench` skill (`.claude/skills/beacon-api-workbench/SKILL.md`, also installable with `npx skills add nannndev/beacon`) that documents this
 MCP surface plus a REST fallback.
 
 ## Notes
