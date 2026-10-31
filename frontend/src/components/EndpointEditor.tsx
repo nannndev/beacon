@@ -18,12 +18,14 @@ import {
   SlidersHorizontal,
   Sparkles,
   Shuffle,
+  BookmarkCheck,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { KVEditor } from './KVEditor'
 import { PayloadEditor } from './PayloadEditor'
+import { JsonCodeEditor } from './JsonCodeEditor'
 import { toast } from './ui/toast'
 import { TestConfig, Endpoint, type RequestOptions } from '../types'
 import { api, type SendResponse } from '../lib/api'
@@ -36,7 +38,7 @@ import ResponseInspector from './ResponseInspector'
 import { WebSocketInspector } from './WebSocketInspector'
 import { GraphqlEditor } from './graphql/GraphqlEditor'
 import { SchemaExplorer } from './graphql/SchemaExplorer'
-import { AssertionsEditor } from './AssertionsEditor'
+import { AssertionsEditor, type Assertion } from './AssertionsEditor'
 import { QueryParamsEditor } from './QueryParamsEditor'
 import { parseQueryParams } from '../lib/queryParams'
 
@@ -498,6 +500,117 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
       toast.error(e?.message || 'Failed to save extractor')
       throw e
     }
+  }
+
+  const handleSetAsExample = async (res: SendResponse) => {
+    let bodyStr = ''
+    if (res.json !== undefined && res.json !== null) {
+      bodyStr = JSON.stringify(res.json, null, 2)
+    } else if (typeof res.body === 'string') {
+      bodyStr = res.body
+    }
+    const contentType = res.headers?.['content-type'] || res.headers?.['Content-Type'] || res.content_type || 'application/json'
+    const newMock = {
+      enabled: true,
+      status: res.status || 200,
+      headers: {
+        'Content-Type': contentType,
+        ...(form.mock_response?.headers || {}),
+      },
+      body: bodyStr,
+    }
+    handleChange('mock_response', newMock)
+    if (testId) {
+      try {
+        await api.updateTest(testId, { ...buildPayload(), mock_response: newMock } as Partial<Endpoint>)
+      } catch (err) {
+        console.error('Failed to sync mock response to backend', err)
+      }
+    }
+    toast.success(`Saved response (${res.status || 200}) as documented example & mock baseline!`)
+  }
+
+  const handleGenerateAssertions = async (res: SendResponse) => {
+    const currentAssertions: Assertion[] = [...(form.assertions || [])]
+    const added: Assertion[] = []
+
+    if (!currentAssertions.some((a) => a.type === 'status')) {
+      const rule: Assertion = {
+        type: 'status',
+        op: 'eq',
+        value: res.status || 200,
+        value_type: 'number',
+      }
+      currentAssertions.push(rule)
+      added.push(rule)
+    }
+
+    if (!currentAssertions.some((a) => a.type === 'time_ms')) {
+      const timeMs = res.time_ms || 200
+      const budgetMs = Math.max(1000, Math.ceil((timeMs * 2.5) / 100) * 100)
+      const rule: Assertion = {
+        type: 'time_ms',
+        op: 'lt',
+        value: budgetMs,
+        value_type: 'number',
+      }
+      currentAssertions.push(rule)
+      added.push(rule)
+    }
+
+    const contentType = res.headers?.['content-type'] || res.headers?.['Content-Type'] || res.content_type
+    if (
+      contentType &&
+      !currentAssertions.some((a) => a.type === 'header' && (a.name || '').toLowerCase() === 'content-type')
+    ) {
+      const mime = contentType.toLowerCase().includes('json') ? 'application/json' : contentType.split(';')[0].trim()
+      const rule: Assertion = {
+        type: 'header',
+        name: 'content-type',
+        op: 'contains',
+        value: mime,
+        value_type: 'string',
+      }
+      currentAssertions.push(rule)
+      added.push(rule)
+    }
+
+    if (res.json && typeof res.json === 'object') {
+      if (Array.isArray(res.json) && res.json.length > 0 && typeof res.json[0] === 'object' && res.json[0] !== null) {
+        const firstKey = Object.keys(res.json[0])[0]
+        if (firstKey && !currentAssertions.some((a) => a.type === 'jsonpath' && a.path === `body.0.${firstKey}`)) {
+          const rule: Assertion = {
+            type: 'jsonpath',
+            path: `body.0.${firstKey}`,
+            op: 'exists',
+          }
+          currentAssertions.push(rule)
+          added.push(rule)
+        }
+      } else if (!Array.isArray(res.json)) {
+        const preferred = ['id', 'status', 'data', 'success', 'items', 'code']
+        const chosen = preferred.find((k) => k in (res.json as Record<string, unknown>)) || Object.keys(res.json)[0]
+        if (chosen && !currentAssertions.some((a) => a.type === 'jsonpath' && a.path === `body.${chosen}`)) {
+          const rule: Assertion = {
+            type: 'jsonpath',
+            path: `body.${chosen}`,
+            op: 'exists',
+          }
+          currentAssertions.push(rule)
+          added.push(rule)
+        }
+      }
+    }
+
+    handleChange('assertions', currentAssertions)
+    if (testId) {
+      try {
+        await api.updateTest(testId, { ...buildPayload(), assertions: currentAssertions } as Partial<Endpoint>)
+      } catch (err) {
+        console.error('Failed to sync assertions to backend', err)
+      }
+    }
+    toast.success(`Generated ${added.length} test assertions from live response!`)
   }
 
   const save = async () => {
@@ -1096,22 +1209,34 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
             <AssertionsEditor value={form.assertions || []} onChange={(a) => handleChange('assertions', a)} />
           </Panel>
 
-          <Panel title="API Mocking" icon={<Shuffle className="h-4 w-4" />}>
+          <Panel title="Response Example & Mock Baseline" icon={<Shuffle className="h-4 w-4" />}>
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="mock_enabled"
-                  checked={form.mock_response?.enabled || false}
-                  onChange={(e) => {
-                    const mock = form.mock_response || { status: 200, headers: { 'Content-Type': 'application/json' }, body: '' }
-                    handleChange('mock_response', { ...mock, enabled: e.target.checked })
-                  }}
-                  className="h-4 w-4 rounded border-border text-cyan-600 focus:ring-cyan-500 bg-background"
-                />
-                <label htmlFor="mock_enabled" className="text-xs font-bold select-none cursor-pointer">
-                  Enable Mock Response for this endpoint
-                </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="mock_enabled"
+                    checked={form.mock_response?.enabled || false}
+                    onChange={(e) => {
+                      const mock = form.mock_response || { status: 200, headers: { 'Content-Type': 'application/json' }, body: '' }
+                      handleChange('mock_response', { ...mock, enabled: e.target.checked })
+                    }}
+                    className="h-4 w-4 rounded border-border text-cyan-600 focus:ring-cyan-500 bg-background"
+                  />
+                  <label htmlFor="mock_enabled" className="text-xs font-bold select-none cursor-pointer">
+                    Enable Mock Server response for this endpoint
+                  </label>
+                </div>
+                {form.mock_response?.body ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
+                    <BookmarkCheck className="h-3 w-3" />
+                    Documented Baseline (HTTP {form.mock_response.status || 200})
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">
+                    Tip: Hit "Send" and click "Set as Example" to capture live response automatically.
+                  </span>
+                )}
               </div>
 
               {form.mock_response?.enabled && (
@@ -1152,17 +1277,21 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
 
                   <div>
                     <Label className="text-[10px] font-bold uppercase text-muted-foreground">Response Body</Label>
-                    <textarea
-                      value={form.mock_response?.body || ''}
-                      onChange={(e) => {
-                        const mock = form.mock_response || { enabled: true, status: 200, headers: {} }
-                        handleChange('mock_response', { ...mock, body: e.target.value })
-                      }}
-                      placeholder='{\n  "message": "Mocked API Response",\n  "id": "{{uuid}}"\n}'
-                      rows={5}
-                      spellCheck={false}
-                      className="w-full font-mono text-xs p-3 mt-1.5 border border-border rounded-lg bg-[#07090d] text-slate-100 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                    />
+                    <div className="mt-1.5">
+                      <JsonCodeEditor
+                        value={form.mock_response?.body || ''}
+                        onChange={(body) => {
+                          const mock = form.mock_response || { enabled: true, status: 200, headers: {} }
+                          handleChange('mock_response', { ...mock, body })
+                        }}
+                        fileName="mock.response.json"
+                        placeholder={'{\n  "message": "Mocked API Response",\n  "id": "{{uuid}}"\n}'}
+                        minHeight="140px"
+                        showHeader={true}
+                        showToolbar={true}
+                        showStatus={Boolean((form.mock_response?.body || '').trim())}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -1171,15 +1300,70 @@ export default function EndpointEditor({ testId, config, projectId, currentProje
 
           {(sending || response) && isWsTarget ? (
             <WebSocketInspector response={response} loading={sending} />
-          ) : (sending || response) && (
+          ) : (sending || response) ? (
             <ResponseInspector
               response={response}
               loading={sending}
               onExtract={testId ? handleExtract : undefined}
               extractDestinationName={currentEnvName}
               extractors={form.extractors || {}}
+              onSetAsExample={handleSetAsExample}
+              onGenerateAssertions={handleGenerateAssertions}
             />
-          )}
+          ) : form.mock_response?.body ? (
+            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div className="flex min-h-11 items-center justify-between border-b border-border bg-muted/20 px-4 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                    <BookmarkCheck className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-foreground">Documented Example Response</span>
+                      <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                        (form.mock_response.status || 200) >= 400
+                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                          : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                      }`}>
+                        HTTP {form.mock_response.status || 200}
+                      </span>
+                      {form.mock_response.enabled && (
+                        <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-600 dark:text-cyan-400">
+                          Mock Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Official response baseline documented for this endpoint. Send request to verify or re-capture.
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs font-medium"
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  <Send className="h-3 w-3 text-cyan-500" />
+                  Test Live
+                </Button>
+              </div>
+              <div className="p-3">
+                <JsonCodeEditor
+                  value={form.mock_response.body}
+                  readOnly={true}
+                  fileName="documented-example.json"
+                  minHeight="140px"
+                  maxHeight="360px"
+                  showHeader={true}
+                  showToolbar={true}
+                  showStatus={true}
+                />
+              </div>
+            </section>
+          ) : null}
         </main>
       </div>
       <CodeSnippetDialog

@@ -12,6 +12,8 @@ import { ProjectDialog } from './components/dialogs/ProjectDialog'
 import { ImportDialog } from './components/dialogs/ImportDialog'
 import { EnvironmentsDialog } from './components/dialogs/EnvironmentsDialog'
 import { GlobalVarsDialog } from './components/dialogs/GlobalVarsDialog'
+import { ExportDialog } from './components/dialogs/ExportDialog'
+import type { ProjectExportFormat } from './lib/projectExport'
 import { ProjectSettingsPage } from './components/dialogs/ProjectSettingsDialog'
 import { JoinLocalProjectDialog } from './components/dialogs/JoinLocalProjectDialog'
 import { SettingsDialog } from './components/dialogs/SettingsDialog'
@@ -21,7 +23,7 @@ import { CliPage } from './pages/CliPage'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
-import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SquareTerminal, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon } from 'lucide-react'
+import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SquareTerminal, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon, Eye } from 'lucide-react'
 import { ScenarioMonitor } from './components/ScenarioMonitor'
 import type { TestData } from './components/TestDataPicker'
 import type { CloneRepositoryResult, LinkedProjectImportResult, ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
@@ -106,6 +108,8 @@ function App() {
   const [scenarioEndpoints, setScenarioEndpoints] = useState<Array<{ id: string; name: string; method?: string; targetType?: 'api' | 'web' }>>([])
   const [sampleProjectBusy, setSampleProjectBusy] = useState(false)
   const [exportingProject, setExportingProject] = useState(false)
+  const [showExportDialog, setShowExportDialog] = useState(false)
+  const [exportInitialFormat, setExportInitialFormat] = useState<ProjectExportFormat>('html')
   const [sharingStatus, setSharingStatus] = useState<SharingStatus | null>(null)
   const [sharingStatusLoading, setSharingStatusLoading] = useState(false)
   const [sendingTestId, setSendingTestId] = useState<string | null>(null)
@@ -481,26 +485,14 @@ function App() {
   }
 
   // ---- export / import (Postman-style) ---------------------------------
-  const exportProject = async () => {
+  const openExportDialog = (initialFormat: ProjectExportFormat = 'html') => {
     if (!currentProject) return
-    setExportingProject(true)
-    try {
-      // Default export redacts secret values; the backend keeps variable names.
-      const data = await api.exportProject(currentProjectId, false)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      const safeName = (currentProject.name || 'project').replace(/[^a-z0-9-_]+/gi, '_').toLowerCase()
-      a.href = url
-      a.download = `${safeName}.project.json`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success(`Downloaded ${safeName}.project.json · secrets redacted`)
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to export project')
-    } finally {
-      setExportingProject(false)
-    }
+    setExportInitialFormat(initialFormat)
+    setShowExportDialog(true)
+  }
+
+  const exportProject = async () => {
+    openExportDialog('html')
   }
 
   // Parse + send to backend; throws so ImportDialog can surface the error inline.
@@ -541,10 +533,14 @@ function App() {
     await finishLinkedProjectImport(result, 'git')
   }
 
-  const saveEnvironments = async (envs: any[]) => {
+  const saveEnvironments = async (envs: any[], nextActiveEnvId?: string) => {
     if (!currentProjectId) { setShowEnvDialog(false); return }
     try {
       await api.updateEnvironments(currentProjectId, envs)
+      if (nextActiveEnvId && nextActiveEnvId !== currentProject?.current_environment_id) {
+        const data: any = await api.switchEnvironment(currentProjectId, nextActiveEnvId)
+        if (data?.config) setConfig(data.config)
+      }
       toast.success('Environments saved')
       await fetchAll()
     } catch (e: any) {
@@ -793,6 +789,99 @@ function App() {
     }
   }
 
+  const captureSendExample = async (res: SendResponse) => {
+    if (!sendResult) return
+    const endpoint = effectiveTests.find((test) => test.id === sendResult.endpointId)
+      || (config.tests as Endpoint[]).find((test) => test.id === sendResult.endpointId)
+    if (!endpoint) throw new Error('Endpoint is no longer available')
+
+    let bodyStr = ''
+    if (res.json !== undefined && res.json !== null) {
+      bodyStr = JSON.stringify(res.json, null, 2)
+    } else if (typeof res.body === 'string') {
+      bodyStr = res.body
+    }
+    const contentType = res.headers?.['content-type'] || res.headers?.['Content-Type'] || res.content_type || 'application/json'
+    const newMock = {
+      enabled: true,
+      status: res.status || 200,
+      headers: {
+        'Content-Type': contentType,
+        ...(endpoint.mock_response?.headers || {}),
+      },
+      body: bodyStr,
+    }
+
+    try {
+      await api.updateTest(endpoint.id, { ...endpoint, mock_response: newMock })
+      await fetchAll()
+      toast.success(`Saved response (${res.status || 200}) as documented example for "${endpoint.name}"`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save example response')
+      throw error
+    }
+  }
+
+  const captureSendAssertions = async (res: SendResponse) => {
+    if (!sendResult) return
+    const endpoint = effectiveTests.find((test) => test.id === sendResult.endpointId)
+      || (config.tests as Endpoint[]).find((test) => test.id === sendResult.endpointId)
+    if (!endpoint) throw new Error('Endpoint is no longer available')
+
+    const currentAssertions = [...(endpoint.assertions || [])]
+    const added: any[] = []
+
+    if (!currentAssertions.some((a) => a.type === 'status')) {
+      const rule = { type: 'status', op: 'eq', value: res.status || 200, value_type: 'number' }
+      currentAssertions.push(rule)
+      added.push(rule)
+    }
+
+    if (!currentAssertions.some((a) => a.type === 'time_ms')) {
+      const timeMs = res.time_ms || 200
+      const budgetMs = Math.max(1000, Math.ceil((timeMs * 2.5) / 100) * 100)
+      const rule = { type: 'time_ms', op: 'lt', value: budgetMs, value_type: 'number' }
+      currentAssertions.push(rule)
+      added.push(rule)
+    }
+
+    const contentType = res.headers?.['content-type'] || res.headers?.['Content-Type'] || res.content_type
+    if (contentType && !currentAssertions.some((a) => a.type === 'header' && (a.name || '').toLowerCase() === 'content-type')) {
+      const mime = contentType.toLowerCase().includes('json') ? 'application/json' : contentType.split(';')[0].trim()
+      const rule = { type: 'header', name: 'content-type', op: 'contains', value: mime, value_type: 'string' }
+      currentAssertions.push(rule)
+      added.push(rule)
+    }
+
+    if (res.json && typeof res.json === 'object') {
+      if (Array.isArray(res.json) && res.json.length > 0 && typeof res.json[0] === 'object' && res.json[0] !== null) {
+        const firstKey = Object.keys(res.json[0])[0]
+        if (firstKey && !currentAssertions.some((a) => a.type === 'jsonpath' && a.path === `body.0.${firstKey}`)) {
+          const rule = { type: 'jsonpath', path: `body.0.${firstKey}`, op: 'exists' }
+          currentAssertions.push(rule)
+          added.push(rule)
+        }
+      } else if (!Array.isArray(res.json)) {
+        const preferred = ['id', 'status', 'data', 'success', 'items', 'code']
+        const chosen = preferred.find((k) => k in (res.json as Record<string, unknown>)) || Object.keys(res.json)[0]
+        if (chosen && !currentAssertions.some((a) => a.type === 'jsonpath' && a.path === `body.${chosen}`)) {
+          const rule = { type: 'jsonpath', path: `body.${chosen}`, op: 'exists' }
+          currentAssertions.push(rule)
+          added.push(rule)
+        }
+      }
+    }
+
+    try {
+      await api.updateTest(endpoint.id, { ...endpoint, assertions: currentAssertions })
+      await fetchAll()
+      toast.success(`Generated ${added.length} test assertions for "${endpoint.name}"`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save assertions')
+      throw error
+    }
+  }
+
   const runAll = async (mode: TestMode = 'load', modeParams?: ModeParams['params']) => {
     const tests = effectiveTests
     if (!tests.length) {
@@ -893,7 +982,10 @@ function App() {
     { id: 'environments', label: 'Manage environments', icon: Globe, keywords: 'env base url variables', run: () => setShowEnvDialog(true) },
     { id: 'global-vars', label: 'Global variables', icon: Braces, keywords: 'template', run: () => setShowGlobalDialog(true) },
     { id: 'import', label: 'Import project', icon: UploadIcon, keywords: 'postman json', run: () => setShowImportDialog(true) },
-    ...(currentProject ? [{ id: 'export', label: 'Export project', icon: DownloadIcon, keywords: 'save json', run: () => exportProject() } as Command] : []),
+    ...(currentProject ? [
+      { id: 'preview-apis', label: 'Preview APIs (Interactive HTML)', icon: Eye, keywords: 'docs html explorer swagger openapi preview', run: () => openExportDialog('html') } as Command,
+      { id: 'export', label: 'Export project / OpenAPI / Postman', icon: DownloadIcon, keywords: 'save json html openapi postman markdown', run: () => openExportDialog('beacon') } as Command,
+    ] : []),
     { id: 'theme', label: 'Toggle light / dark', icon: SunMoon, keywords: 'appearance mode', run: () => applyThemePref(resolveTheme() === 'dark' ? 'light' : 'dark') },
   ]
 
@@ -968,13 +1060,17 @@ function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header
           currentProject={currentProject}
+          baseUrl={config.base_url}
           sharingStatus={sharingStatus}
           onProjectSettings={() => setShowProjectSettings(true)}
+          onManageEnv={() => setShowEnvDialog(true)}
           onImport={() => setShowImportDialog(true)}
-          onExport={exportProject}
+          onExport={() => openExportDialog('beacon')}
+          onPreviewApis={() => openExportDialog('html')}
           exporting={exportingProject}
           onOpenMcp={() => appView.openMcp()}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenPalette={() => setShowPalette(true)}
         />
 
         {editorTabs.tabs.length > 0 && !showProjectSettings && (
@@ -1070,6 +1166,7 @@ function App() {
                 onDuplicateFolder={duplicateFolderAction}
                 onDeleteFolder={deleteFolder}
                 onReorder={saveItems}
+                onPreviewApis={() => openExportDialog('html')}
               />
 
               {sendResult && (
@@ -1080,6 +1177,8 @@ function App() {
                   extractors={(effectiveTests.find((test) => test.id === sendResult.endpointId)
                     || (config.tests as Endpoint[]).find((test) => test.id === sendResult.endpointId))?.extractors}
                   onExtract={captureSendVariable}
+                  onSetAsExample={captureSendExample}
+                  onGenerateAssertions={captureSendAssertions}
                   onClose={() => setSendResult(null)}
                 />
               )}
@@ -1117,6 +1216,7 @@ function App() {
       />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />
+      <ExportDialog open={showExportDialog} onOpenChange={setShowExportDialog} project={currentProject} config={config} initialFormat={exportInitialFormat} />
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />
       <CommandPalette open={showPalette} onOpenChange={setShowPalette} commands={paletteCommands} />
       {confirmationDialog}

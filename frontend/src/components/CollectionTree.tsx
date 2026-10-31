@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, ReactNode } from 'react'
 import {
   Play, Copy, Trash2, Pencil, Plus, GripVertical, Send,
   ChevronDown, ChevronRight, Folder, FolderOpen,
-  Globe2,
+  Globe2, DatabaseZap, ShieldCheck,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Endpoint, CollectionItem } from '../types'
@@ -215,6 +215,8 @@ export function CollectionTree({
       const req = node as Endpoint & { type: 'request' }
       const isSelected = selectedId === req.id
       const isRunning = runningTestId === req.id && runStatus === 'running'
+      const extCount = Object.keys(req.extractors || {}).filter(Boolean).length
+      const assertCount = (req.assertions || []).length
 
       return (
         <div
@@ -223,6 +225,7 @@ export function CollectionTree({
           data-collection-folder="false"
           onPointerDown={(event) => startPointerDrag(event, req.id)}
           onClick={() => onSelect(req.id)}
+          onDoubleClick={(e) => { e.stopPropagation(); onEdit(req.id) }}
           style={padding}
           className={`group flex items-center gap-2 border-b border-border/30 px-3 py-2 text-sm cursor-pointer transition-colors ${
             isSelected ? 'bg-primary/10' : 'hover:bg-muted/50'
@@ -237,8 +240,26 @@ export function CollectionTree({
               <Globe2 className="h-3 w-3" /> web
             </span>
           )}
+          {extCount > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 px-1 py-0.5 font-mono text-[9px] text-emerald-600 dark:text-emerald-400"
+              title={`${extCount} response extractor(s)`}
+            >
+              <DatabaseZap className="h-2.5 w-2.5" /> {extCount}
+            </span>
+          )}
+          {assertCount > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-cyan-500/10 px-1 py-0.5 font-mono text-[9px] text-cyan-600 dark:text-cyan-400"
+              title={`${assertCount} assertion(s)`}
+            >
+              <ShieldCheck className="h-2.5 w-2.5" /> {assertCount}
+            </span>
+          )}
           <span className="flex-1 truncate font-medium">{req.name}</span>
-          <span className="text-[11px] text-muted-foreground font-mono truncate max-w-[180px] hidden md:inline">{req.url}</span>
+          <span className="text-[11px] text-muted-foreground font-mono truncate max-w-[180px] lg:max-w-[280px] xl:max-w-[420px] hidden md:inline" title={req.url}>
+            {req.url}
+          </span>
 
           <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-cyan-600 dark:text-cyan-400" onClick={(e) => { e.stopPropagation(); onSendRow(req.id) }} title="Send once" disabled={sendingTestId === req.id}>

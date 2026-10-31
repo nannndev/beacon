@@ -345,6 +345,7 @@ def get_endpoint(name_or_id: str) -> dict:
             "extractors": test.extractors,
             "assertions": test.assertions,
             "run_config": test.run_config,
+            "mock_response": getattr(test, "mock_response", None),
         },
         "preflight": {
             "resolved_url": resolved_url,
@@ -384,13 +385,15 @@ def create_endpoint(
     target_type: str = "api",
     folder_id: Optional[str] = None,
     request_options: Optional[dict] = None,
+    mock_response: Optional[dict] = None,
 ) -> dict:
     """Create an endpoint in the active project. `url` may be relative to the
     project base_url. Optionally place it inside a folder by `folder_id`.
     Values may use {{variable}} templating. Set `target_type="web"` for an
     HTML page load target; web targets should normally use GET and an absolute
     http(s) URL. `request_options` may set `timeout_s` (seconds),
-    `follow_redirects` (bool), `verify_ssl` (bool), and `proxy` (URL)."""
+    `follow_redirects` (bool), `verify_ssl` (bool), and `proxy` (URL).
+    `mock_response` optionally sets a documented example response/mock dict."""
     _reload()
     if not str(name or "").strip():
         return _error("invalid_argument", "name must not be empty.", field="name")
@@ -417,6 +420,7 @@ def create_endpoint(
         None, name.strip(), url.strip(), method, headers or {},
         {} if payload is None else payload, normalized_payload_type,
         target_type=normalized_target, request_options=request_options,
+        mock_response=mock_response,
     )
     node = {**test.to_dict(), "type": "request"}
     if target_folder is not None:
@@ -602,6 +606,7 @@ def send_request(
     retries: int = 0,
     retry_delay: float = 0.0,
     max_body_chars: int = 20_000,
+    save_as_example: bool = False,
 ) -> dict:
     """Send an endpoint ONCE and return the full response for inspection:
     status, reason, time_ms, size_bytes, content_type, headers, body (capped),
@@ -610,8 +615,12 @@ def send_request(
     against the response). Fires one real HTTP request. `retries` re-sends while
     the request errors or returns a non-2xx (waiting `retry_delay`s between).
 
-    Use this to debug an endpoint or to prime a token (e.g. send 'Login' so
-    {{access_token}} is refreshed) before other calls."""
+    When `save_as_example=True`, the response payload, status, and headers are
+    automatically persisted into the endpoint's definition as its documented
+    example and mock baseline.
+
+    Use this to debug an endpoint, capture its response contract, or prime a
+    token (e.g. send 'Login' so {{access_token}} is refreshed) before other calls."""
     _reload()
     retries_value, error = _positive_int(retries, "retries", minimum=0, maximum=10)
     if error:
@@ -628,9 +637,184 @@ def send_request(
     result = APITester(test, store.current_config).send_once(
         max_body=body_limit, retries=retries_value, retry_delay=retry_delay_value,
     )
+    changed = False
     if result.get("extracted"):
-        store.save()  # persist tokens refreshed by extractors
+        changed = True  # persist tokens refreshed by extractors
+
+    if save_as_example and result.get("status"):
+        body_text = result.get("body") or ""
+        if isinstance(body_text, (dict, list)):
+            body_text = json.dumps(body_text, indent=2)
+        resp_headers = {}
+        for hk, hv in (result.get("headers") or {}).items():
+            if hk.lower() in {"content-type", "content-length", "x-request-id"}:
+                resp_headers[hk] = str(hv)
+        if not resp_headers and result.get("content_type"):
+            resp_headers["Content-Type"] = result.get("content_type")
+        test.mock_response = {
+            "enabled": True,
+            "status": int(result.get("status") or 200),
+            "headers": resp_headers,
+            "body": str(body_text),
+        }
+        changed = True
+        result["saved_as_example"] = True
+
+    if changed:
+        store.save()
     return result
+
+
+@mcp.tool()
+@_locked
+def capture_endpoint_baseline(
+    name_or_id: str,
+    generate_assertions: bool = True,
+    retries: int = 0,
+    retry_delay: float = 0.0,
+    max_body_chars: int = 20_000,
+) -> dict:
+    """Send an endpoint ONCE, capture its live response as the official documented
+    example/mock baseline, and optionally auto-generate test assertions (status,
+    latency SLA, Content-Type, and JSON structure).
+
+    This persists the live response directly into the endpoint definition so
+    subsequent API documentation previews and mock tests reflect the real API
+    contract.
+    """
+    _reload()
+    test = _find_test(name_or_id)
+    if not test:
+        return _error("endpoint_not_found", f"Endpoint not found: {name_or_id}")
+
+    retries_value, error = _positive_int(retries, "retries", minimum=0, maximum=10)
+    if error:
+        return error
+    retry_delay_value, error = _non_negative_float(retry_delay, "retry_delay", maximum=60)
+    if error:
+        return error
+    body_limit, error = _positive_int(max_body_chars, "max_body_chars", minimum=0, maximum=100_000)
+    if error:
+        return error
+
+    result = APITester(test, store.current_config).send_once(
+        max_body=body_limit, retries=retries_value, retry_delay=retry_delay_value,
+    )
+    status_code = result.get("status")
+    if not status_code:
+        return {
+            "ok": False,
+            "error": result.get("error") or "Request failed without a status code",
+            "endpoint": _endpoint_summary(test),
+            "response": result,
+        }
+
+    body_text = result.get("body") or ""
+    if isinstance(body_text, (dict, list)):
+        body_text = json.dumps(body_text, indent=2)
+
+    resp_headers = {}
+    for hk, hv in (result.get("headers") or {}).items():
+        if hk.lower() in {"content-type", "content-length", "x-request-id"}:
+            resp_headers[hk] = str(hv)
+    if not resp_headers and result.get("content_type"):
+        resp_headers["Content-Type"] = result.get("content_type")
+
+    test.mock_response = {
+        "enabled": True,
+        "status": int(status_code),
+        "headers": resp_headers,
+        "body": str(body_text),
+    }
+
+    generated_assertions = []
+    if generate_assertions:
+        assertions = list(test.assertions or [])
+        # 1. status assertion
+        if not any(a.get("type") == "status" for a in assertions):
+            rule = {"type": "status", "op": "eq", "value": int(status_code)}
+            assertions.append(rule)
+            generated_assertions.append(rule)
+        # 2. latency SLA assertion
+        if not any(a.get("type") == "time_ms" for a in assertions):
+            time_ms = result.get("time_ms") or 200
+            max_ms = max(1000, int((time_ms * 2.5 // 100 + 1) * 100))
+            rule = {"type": "time_ms", "op": "lt", "value": max_ms}
+            assertions.append(rule)
+            generated_assertions.append(rule)
+        # 3. content-type
+        ct = result.get("content_type") or resp_headers.get("Content-Type") or ""
+        if ct and not any(a.get("type") == "header" and str(a.get("name", "")).lower() == "content-type" for a in assertions):
+            val = "application/json" if "json" in ct.lower() else ct.split(";")[0].strip()
+            rule = {"type": "header", "name": "content-type", "op": "contains", "value": val}
+            assertions.append(rule)
+            generated_assertions.append(rule)
+        # 4. JSON body root keys
+        parsed_json = result.get("json")
+        if parsed_json is not None:
+            if isinstance(parsed_json, list) and parsed_json and isinstance(parsed_json[0], dict):
+                first_key = next(iter(parsed_json[0].keys()), None)
+                if first_key and not any(a.get("path") == f"body.0.{first_key}" for a in assertions):
+                    rule = {"type": "jsonpath", "path": f"body.0.{first_key}", "op": "exists"}
+                    assertions.append(rule)
+                    generated_assertions.append(rule)
+            elif isinstance(parsed_json, dict) and parsed_json:
+                preferred = ["id", "status", "data", "success", "items", "code"]
+                chosen = next((k for k in preferred if k in parsed_json), next(iter(parsed_json.keys()), None))
+                if chosen and not any(a.get("path") == f"body.{chosen}" for a in assertions):
+                    rule = {"type": "jsonpath", "path": f"body.{chosen}", "op": "exists"}
+                    assertions.append(rule)
+                    generated_assertions.append(rule)
+        test.assertions = assertions
+
+    if result.get("extracted"):
+        pass
+
+    store.save()
+
+    return {
+        "ok": True,
+        "endpoint": _endpoint_summary(test),
+        "captured_status": status_code,
+        "time_ms": result.get("time_ms"),
+        "body_preview": body_text[:300] + ("..." if len(body_text) > 300 else ""),
+        "mock_response_enabled": True,
+        "generated_assertions": generated_assertions,
+        "total_assertions": len(test.assertions or []),
+    }
+
+
+@mcp.tool()
+@_locked
+def set_example_response(
+    name_or_id: str,
+    status: int = 200,
+    body: str = "",
+    headers: Optional[dict] = None,
+    enabled: bool = True,
+) -> dict:
+    """Document or mock the expected response for an endpoint.
+
+    Useful when creating or mocking endpoints before the backend service is
+    live, or to document the expected response contract."""
+    _reload()
+    test = _find_test(name_or_id)
+    if not test:
+        return _error("endpoint_not_found", f"Endpoint not found: {name_or_id}")
+
+    resp_headers = headers or {"Content-Type": "application/json"}
+    test.mock_response = {
+        "enabled": bool(enabled),
+        "status": int(status or 200),
+        "headers": resp_headers,
+        "body": str(body or ""),
+    }
+    store.save()
+    return {
+        "ok": True,
+        "endpoint": _endpoint_summary(test),
+        "mock_response": test.mock_response,
+    }
 
 
 @mcp.tool()
@@ -861,6 +1045,7 @@ def update_endpoint(
     extractors: Optional[dict] = None,
     target_type: Optional[str] = None,
     request_options: Optional[dict] = None,
+    mock_response: Optional[dict] = None,
 ) -> dict:
     """Update fields of an existing endpoint. Only the arguments you pass are
     changed; the id and the endpoint's place in the folder tree are preserved.
@@ -900,6 +1085,8 @@ def update_endpoint(
         test.target_type = normalized
     if request_options is not None:
         test.request_options = normalize_request_options(request_options)
+    if mock_response is not None:
+        test.mock_response = mock_response
     store.save()  # reconcile updates the request node in place, by id
     return _endpoint_summary(test)
 

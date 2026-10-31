@@ -122,6 +122,71 @@ class MCPToolTests(unittest.TestCase):
         self.assertEqual(calls["max_body"], 20_000)
         self.assertEqual(len(result["body"]), 20_000)
 
+    def test_send_request_can_save_as_example(self):
+        class FakeTester:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def send_once(self, **kwargs):
+                return {
+                    "ok": True,
+                    "status": 200,
+                    "body": '{"user": "alice"}',
+                    "content_type": "application/json",
+                    "headers": {"Content-Type": "application/json"},
+                }
+
+        with (
+            patch.object(mcp_server, "store", self.store),
+            patch.object(mcp_server, "APITester", FakeTester),
+        ):
+            result = mcp_server.send_request("Profile", save_as_example=True)
+        self.assertTrue(result.get("saved_as_example"))
+        self.assertEqual(self.endpoint.mock_response["status"], 200)
+        self.assertEqual(self.endpoint.mock_response["body"], '{"user": "alice"}')
+        self.assertEqual(self.saved, 1)
+
+    def test_capture_endpoint_baseline_records_mock_and_assertions(self):
+        class FakeTester:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def send_once(self, **kwargs):
+                return {
+                    "ok": True,
+                    "status": 200,
+                    "time_ms": 120,
+                    "body": '{"id": 42, "name": "Alice"}',
+                    "json": {"id": 42, "name": "Alice"},
+                    "content_type": "application/json",
+                    "headers": {"Content-Type": "application/json"},
+                }
+
+        with (
+            patch.object(mcp_server, "store", self.store),
+            patch.object(mcp_server, "APITester", FakeTester),
+        ):
+            result = mcp_server.capture_endpoint_baseline("Profile", generate_assertions=True)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["captured_status"], 200)
+        self.assertEqual(self.endpoint.mock_response["status"], 200)
+        # Check generated assertions (status, latency, content-type, jsonpath id)
+        types = [a["type"] for a in self.endpoint.assertions]
+        self.assertIn("status", types)
+        self.assertIn("time_ms", types)
+        self.assertIn("header", types)
+        self.assertIn("jsonpath", types)
+
+    def test_set_example_response_persists_mock_contract(self):
+        with patch.object(mcp_server, "store", self.store):
+            result = mcp_server.set_example_response(
+                "Profile", status=201, body='{"created": true}'
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.endpoint.mock_response["status"], 201)
+        self.assertEqual(self.endpoint.mock_response["body"], '{"created": true}')
+        self.assertEqual(self.saved, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

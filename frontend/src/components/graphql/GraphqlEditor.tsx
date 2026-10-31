@@ -1,5 +1,6 @@
 import { Braces, Database, RefreshCw, Loader2 } from 'lucide-react'
 import type { SendResponse } from '../../lib/api'
+import { JsonCodeEditor } from '../JsonCodeEditor'
 
 interface Props {
   query: string
@@ -59,22 +60,24 @@ export function GraphqlEditor({
             placeholder={`query {\n  \n}`}
             rows={8}
             spellCheck={false}
-            className="w-full font-mono text-xs p-3 border border-border rounded-lg bg-[#07090d] text-slate-300 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-y min-h-[180px]"
+            className="w-full font-mono text-xs p-3 border border-border rounded-lg bg-[#07090d] text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-y min-h-[180px]"
           />
         </div>
 
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             <Braces className="inline h-3 w-3 mr-1" />
-            Variables
+            Variables (JSON)
           </label>
-          <textarea
+          <JsonCodeEditor
             value={variables}
-            onChange={(e) => onVariablesChange(e.target.value)}
-            placeholder={`{\n  \n}`}
-            rows={4}
-            spellCheck={false}
-            className="w-full font-mono text-xs p-3 border border-border rounded-lg bg-[#0b0d10] text-slate-300 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-y min-h-[80px]"
+            onChange={onVariablesChange}
+            fileName="variables.json"
+            placeholder={'{\n  "id": "1"\n}'}
+            minHeight="110px"
+            showHeader={true}
+            showToolbar={true}
+            showStatus={Boolean(variables.trim())}
           />
         </div>
       </div>

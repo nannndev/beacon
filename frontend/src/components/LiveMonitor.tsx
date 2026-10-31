@@ -68,6 +68,7 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
   const exportRef = useRef<HTMLDivElement>(null)
   const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
   const [followLatest, setFollowLatest] = useState(true)
+  const [rawBodyView, setRawBodyView] = useState(false)
   const [copied, setCopied] = useState(false)
   const [liveElapsed, setLiveElapsed] = useState(0)
   const [logFilter, setLogFilter] = useState<LogFilter>('all')
@@ -224,11 +225,13 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
             </Button>
 
             {showExportMenu && (
-              <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+              <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
                 {([
-                  { format: 'json' as ExportFormat, label: 'Export as JSON', sub: 'Full data + stats' },
-                  { format: 'csv'  as ExportFormat, label: 'Export as CSV',  sub: 'Responses table'  },
-                  { format: 'logs' as ExportFormat, label: 'Export Logs',    sub: 'Plain text file'  },
+                  { format: 'html' as ExportFormat, label: 'Export HTML Report', sub: 'Interactive visual report' },
+                  { format: 'json' as ExportFormat, label: 'Export as JSON',     sub: 'Full data + stats' },
+                  { format: 'csv'  as ExportFormat, label: 'Export as CSV',      sub: 'Responses table'  },
+                  { format: 'md'   as ExportFormat, label: 'Export Markdown',    sub: 'Summary & table'  },
+                  { format: 'logs' as ExportFormat, label: 'Export Logs',        sub: 'Plain text file'  },
                 ] as const).map(({ format, label, sub }) => (
                   <button
                     key={format}
@@ -384,7 +387,16 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
                         <span className="truncate text-muted-foreground flex-1" title={selected.url}>{selected.url}</span>
                         <ResponseStatusBadge response={selected} />
                         {selected.time != null && <span className="text-muted-foreground font-mono">{Math.round(selected.time * 1000)}ms</span>}
-                        <Button variant="ghost" size="sm" className="h-6 px-2" onClick={copyBody}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] font-semibold"
+                          onClick={() => setRawBodyView((v) => !v)}
+                          title="Toggle formatted JSON vs raw body"
+                        >
+                          {rawBodyView ? 'Pretty' : 'Raw'}
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-6 px-2" onClick={copyBody} title="Copy response body">
                           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         </Button>
 
@@ -411,7 +423,7 @@ export default function LiveMonitor({ logs, responses, stats, status, maxRequest
                           <div className="p-3 text-[11px] font-mono text-red-400 overflow-auto">{selected.error}</div>
                         ) : (
                           <JsonCodeEditor
-                            value={formatBody(selected)}
+                            value={rawBodyView ? (selected.body || '(empty body)') : formatBody(selected)}
                             readOnly
                             fileName="response.body.json"
                             showHeader={false}

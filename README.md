@@ -137,6 +137,16 @@ Beacon includes a standard stdio MCP server that can list and manage projects, f
 
 In the desktop app, open **MCP Server** to register Beacon with a supported client or copy a ready-to-use configuration. See [MCP Server documentation](./docs/mcp.md) for setup and the available tools.
 
+## Agent Skill (skills.sh)
+
+[![skills.sh](https://skills.sh/b/nannndev/beacon)](https://skills.sh/nannndev/beacon)
+
+Beacon includes an official agent skill (`SKILL.md`) for AI coding agents like Claude Code, Cursor, Windsurf, GitHub Copilot, and Antigravity. Install it directly with:
+
+```bash
+npx skills add nannndev/beacon
+```
+
 ## Beacon CLI
 
 Desktop releases include a standalone `beacon` command for running the same Git-backed project files without opening the app or installing Python:

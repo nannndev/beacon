@@ -52,13 +52,20 @@ engine and the same `tests.json` store:
 - `delete_endpoint(name_or_id)`; `delete_folder(name_or_id, recursive?)` —
   folder delete refuses a non-empty folder unless `recursive=true`.
 
-**Send / inspect**
-- `send_request(name_or_id, retries?, retry_delay?, max_body_chars?)` — fire the endpoint **once** and get the full
+**Send / inspect & document**
+- `send_request(name_or_id, retries?, retry_delay?, max_body_chars?, save_as_example?)` — fire the endpoint **once** and get the full
   response: status, reason, time_ms, size_bytes, content_type, headers, body
   (capped), parsed json, and `extracted` (names of variables the extractors
-  refreshed on a 2xx). The MCP body defaults to 20,000 characters to protect
-  agent context (`max_body_chars` may be 0–100,000). Use it to debug a response or to prime a token (send
+  refreshed on a 2xx). Pass `save_as_example=True` to immediately save the live
+  response and payload as the documented example/mock contract.
+  The MCP body defaults to 20,000 characters to protect agent context
+  (`max_body_chars` may be 0–100,000). Use it to debug a response or to prime a token (send
   "Login" so `{{access_token}}` is fresh) before other calls.
+- `capture_endpoint_baseline(name_or_id, generate_assertions?, retries?, retry_delay?)` —
+  fire the endpoint once, capture the live response as the official documented example/mock baseline,
+  and optionally auto-generate test assertions (status code, latency SLA, Content-Type, and JSON structure).
+- `set_example_response(name_or_id, status?, body?, headers?, enabled?)` — manually document
+  or mock the expected response contract for an endpoint before the backend is live.
 
 **Run**
 - `run_endpoint(name_or_id, concurrency, count, delay, use_min_delay?)` —
@@ -89,6 +96,8 @@ Notes:
    before sending traffic.
 4. Use `send_request` once to inspect the real response, assertions, and
    extractors. For a login flow, send Login first and confirm `extracted`.
+   Use `capture_endpoint_baseline(name_or_id)` to document the response example
+   and generate test assertions in a single step.
 5. Use `run_scenario` for ordered dependent requests.
 6. Use `run_endpoint` only after the single request is correct. Start with
    `count=1`, `concurrency=1`; increase gradually and only with authorization.

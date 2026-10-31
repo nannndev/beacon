@@ -1,12 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Clock, HardDrive, Plus, AlertTriangle, Braces, FileJson, BadgeCheck, Globe2, Route, DatabaseZap, RadioTower, ScanLine, Copy, Check, ChevronDown, ChevronRight, FoldVertical, UnfoldVertical } from 'lucide-react'
+import {
+  Clock,
+  HardDrive,
+  Plus,
+  AlertTriangle,
+  Braces,
+  FileJson,
+  BadgeCheck,
+  Globe2,
+  Route,
+  DatabaseZap,
+  RadioTower,
+  ScanLine,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FoldVertical,
+  UnfoldVertical,
+  Search,
+  BookmarkCheck,
+  Sparkles,
+} from 'lucide-react'
 import type { AssertionResult, SendResponse } from '../lib/api'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { JsonCodeEditor } from './JsonCodeEditor'
 
 type Tab = 'body' | 'headers' | 'extracted' | 'assertions'
+type BodyViewMode = 'tree' | 'code' | 'raw'
 type TreeCommand = { action: 'expand' | 'collapse'; nonce: number }
 
 interface Props {
@@ -17,6 +41,10 @@ interface Props {
   onExtract?: (varName: string, path: string, value: unknown) => Promise<void> | void
   extractDestinationName?: string
   extractors?: Record<string, string>
+  /** Save this response as the documented example & mock baseline for the endpoint. */
+  onSetAsExample?: (response: SendResponse) => Promise<void> | void
+  /** Auto-generate test assertions from this live response. */
+  onGenerateAssertions?: (response: SendResponse) => Promise<void> | void
 }
 
 const fmtSize = (n?: number) => {
@@ -26,8 +54,8 @@ const fmtSize = (n?: number) => {
   return `${(n / 1024 / 1024).toFixed(2)} MB`
 }
 
-/** Classify the response body by content-type so the Body tab can render it
- *  appropriately (JSON tree, indented XML/HTML, or plain text). */
+/** Classify the response body by content-type or parsed JSON so the Body tab can render it
+ *  appropriately (JSON tree/code, indented XML/HTML, or plain text). */
 function bodyKind(ctype?: string, hasJson?: boolean): 'json' | 'xml' | 'html' | 'text' {
   const c = (ctype || '').toLowerCase()
   if (hasJson || c.includes('json')) return 'json'
@@ -75,6 +103,37 @@ function assertionValue(assertion: AssertionResult): string {
   return assertion.type === 'time_ms' ? `${value} ms` : value
 }
 
+function filterJsonByQuery(value: unknown, query: string): unknown {
+  if (!query.trim()) return value
+  const q = query.trim().toLowerCase()
+
+  const walk = (node: unknown, keyMatch = false): { matched: boolean; val: unknown } => {
+    if (keyMatch) return { matched: true, val: node }
+    if (node === null || typeof node !== 'object') {
+      const str = String(node ?? '').toLowerCase()
+      return { matched: str.includes(q), val: node }
+    }
+    if (Array.isArray(node)) {
+      const nextArr: unknown[] = []
+      node.forEach((item, idx) => {
+        const res = walk(item, String(idx).includes(q))
+        if (res.matched) nextArr.push(res.val)
+      })
+      return { matched: nextArr.length > 0, val: nextArr }
+    }
+    const nextObj: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      const kHit = k.toLowerCase().includes(q)
+      const res = walk(v, kHit)
+      if (res.matched) nextObj[k] = res.val
+    }
+    return { matched: Object.keys(nextObj).length > 0, val: nextObj }
+  }
+
+  const result = walk(value)
+  return result.matched ? result.val : {}
+}
+
 function AssertionResultsPanel({ assertions }: { assertions: AssertionResult[] }) {
   const passed = assertions.reduce((total, assertion) => total + Number(assertion.ok), 0)
   const failed = assertions.length - passed
@@ -109,22 +168,34 @@ function AssertionResultsPanel({ assertions }: { assertions: AssertionResult[] }
               }`}
             >
               <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-2.5 text-xs [&::-webkit-details-marker]:hidden">
-                <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
-                  assertion.ok ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'
-                }`}>
+                <span
+                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+                    assertion.ok ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'
+                  }`}
+                >
                   {assertion.ok ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3 w-3" />}
                 </span>
-                <span className={`min-w-0 flex-1 truncate font-medium ${assertion.ok ? '' : 'text-red-600 dark:text-red-300'}`} title={assertionTitle(assertion)}>
+                <span
+                  className={`min-w-0 flex-1 truncate font-medium ${assertion.ok ? '' : 'text-red-600 dark:text-red-300'}`}
+                  title={assertionTitle(assertion)}
+                >
                   {assertionTitle(assertion)}
                 </span>
-                <span className={`max-w-28 truncate font-mono font-semibold ${assertion.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`} title={assertionValue(assertion)}>
+                <span
+                  className={`max-w-28 truncate font-mono font-semibold ${
+                    assertion.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
+                  }`}
+                  title={assertionValue(assertion)}
+                >
                   {assertionValue(assertion)}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
               </summary>
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-border/70 bg-muted/20 px-3 py-2 font-mono text-[10px]">
                 <dt className="text-muted-foreground">Rule</dt>
-                <dd className="break-all">{assertion.type} {assertion.op}</dd>
+                <dd className="break-all">
+                  {assertion.type} {assertion.op}
+                </dd>
                 <dt className="text-muted-foreground">Expected</dt>
                 <dd className="break-all">{JSON.stringify(assertion.expected)}</dd>
                 <dt className="text-muted-foreground">Actual</dt>
@@ -138,17 +209,46 @@ function AssertionResultsPanel({ assertions }: { assertions: AssertionResult[] }
   )
 }
 
-export default function ResponseInspector({ response, loading, onExtract, extractDestinationName, extractors }: Props) {
+export default function ResponseInspector({
+  response,
+  loading,
+  onExtract,
+  extractDestinationName,
+  extractors,
+  onSetAsExample,
+  onGenerateAssertions,
+}: Props) {
   const [tab, setTab] = useState<Tab>('body')
-  const [raw, setRaw] = useState(false)
+  const [bodyMode, setBodyMode] = useState<BodyViewMode>('tree')
+  const [searchQuery, setSearchQuery] = useState('')
   const [capture, setCapture] = useState<{ path: string; value: unknown; name: string } | null>(null)
   const [capturing, setCapturing] = useState(false)
   const [loadingStage, setLoadingStage] = useState(0)
   const [copied, setCopied] = useState(false)
   const [treeCommand, setTreeCommand] = useState<TreeCommand>({ action: 'expand', nonce: 0 })
+
   const linkedPaths = useMemo(
     () => Object.fromEntries(Object.entries(extractors || {}).map(([name, path]) => [path, name])),
     [extractors],
+  )
+
+  const resolvedJson = useMemo(() => {
+    if (!response) return null
+    if (response.json !== undefined && response.json !== null) return response.json
+    const rawBody = (response.body || '').trim()
+    if ((rawBody.startsWith('{') && rawBody.endsWith('}')) || (rawBody.startsWith('[') && rawBody.endsWith(']'))) {
+      try {
+        return JSON.parse(rawBody)
+      } catch {
+        return null
+      }
+    }
+    return null
+  }, [response])
+
+  const filteredJson = useMemo(
+    () => (resolvedJson != null && searchQuery.trim() ? filterJsonByQuery(resolvedJson, searchQuery) : resolvedJson),
+    [resolvedJson, searchQuery],
   )
 
   useEffect(() => {
@@ -165,7 +265,7 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
 
   const copyResponseBody = async () => {
     if (!response) return
-    const text = response.json != null ? JSON.stringify(response.json, null, 2) : (response.body || '')
+    const text = resolvedJson != null ? JSON.stringify(resolvedJson, null, 2) : response.body || ''
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -185,7 +285,7 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [response, loading])
+  }, [response, loading, resolvedJson])
 
   const saveCapture = async () => {
     if (!capture || !capture.name.trim() || !onExtract) return
@@ -248,7 +348,9 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
     return (
       <section className="rounded-xl border border-red-500/30 bg-card">
         <div className="flex items-center gap-2 border-b border-border bg-red-500/10 px-4 py-3">
-          <span className="text-red-500"><AlertTriangle className="h-4 w-4" /></span>
+          <span className="text-red-500">
+            <AlertTriangle className="h-4 w-4" />
+          </span>
           <h2 className="text-sm font-bold">Request failed</h2>
           {response.time_ms != null && (
             <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
@@ -262,8 +364,7 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
   }
 
   const headers = response.headers || {}
-  const kind = bodyKind(response.content_type, response.json != null)
-  const canToggleRaw = kind === 'json' || kind === 'xml' || kind === 'html'
+  const kind = bodyKind(response.content_type, resolvedJson != null)
   const assertions = response.assertions || []
   const showAssertionsSplit = assertions.length > 0 && (tab === 'body' || tab === 'assertions')
 
@@ -283,7 +384,8 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
           </span>
         )}
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <HardDrive className="h-3 w-3" /> {fmtSize(response.size_bytes)}{response.truncated ? ' (truncated)' : ''}
+          <HardDrive className="h-3 w-3" /> {fmtSize(response.size_bytes)}
+          {response.truncated ? ' (truncated)' : ''}
         </span>
         {response.content_type && (
           <span className="truncate font-mono text-[11px] text-muted-foreground">{response.content_type}</span>
@@ -302,15 +404,49 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
           </span>
         )}
         {response.passed != null && (
-          <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${response.passed ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}>
+          <span
+            className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
+              response.passed
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                : 'bg-red-500/15 text-red-600 dark:text-red-400'
+            }`}
+          >
             {response.passed ? '✓ assertions passed' : '✗ assertions failed'}
           </span>
         )}
-        {response.extracted && response.extracted.length > 0 && (
-          <span className="ml-auto rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-            saved: {response.extracted.join(', ')}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+          {onSetAsExample && response.status && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onSetAsExample(response)}
+              className="h-6 px-2 text-[10px] gap-1 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 font-medium"
+              title="Save this response as the documented example & mock baseline for this endpoint"
+            >
+              <BookmarkCheck className="h-3 w-3" />
+              <span>Set as Example</span>
+            </Button>
+          )}
+          {onGenerateAssertions && response.status && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onGenerateAssertions(response)}
+              className="h-6 px-2 text-[10px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-medium"
+              title="Automatically create test assertions from this live response"
+            >
+              <Sparkles className="h-3 w-3" />
+              <span>Generate Assertions</span>
+            </Button>
+          )}
+          {response.extracted && response.extracted.length > 0 && (
+            <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+              saved: {response.extracted.join(', ')}
+            </span>
+          )}
+        </div>
       </div>
 
       {response.final_url && response.final_url !== response.target && (
@@ -320,23 +456,45 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
       )}
 
       {/* tabs */}
-      <div className="flex items-center gap-1 border-b border-border px-3 py-2">
-        <TabBtn active={tab === 'body'} onClick={() => setTab('body')} icon={<FileJson className="h-3.5 w-3.5" />}>Body</TabBtn>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
+        <TabBtn active={tab === 'body'} onClick={() => setTab('body')} icon={<FileJson className="h-3.5 w-3.5" />}>
+          Body
+        </TabBtn>
         <TabBtn active={tab === 'headers'} onClick={() => setTab('headers')} icon={<Braces className="h-3.5 w-3.5" />}>
           Headers <span className="text-muted-foreground">({Object.keys(headers).length})</span>
         </TabBtn>
         {response.extracted && response.extracted.length > 0 && (
-          <TabBtn active={tab === 'extracted'} onClick={() => setTab('extracted')} icon={<Plus className="h-3.5 w-3.5" />}>Extracted</TabBtn>
+          <TabBtn active={tab === 'extracted'} onClick={() => setTab('extracted')} icon={<Plus className="h-3.5 w-3.5" />}>
+            Extracted
+          </TabBtn>
         )}
         {response.assertions && response.assertions.length > 0 && (
           <TabBtn active={tab === 'assertions'} onClick={() => setTab('assertions')} icon={<BadgeCheck className="h-3.5 w-3.5" />}>
-            Assertions <span className="text-muted-foreground">({response.assertions.filter((a) => a.ok).length}/{response.assertions.length})</span>
+            Assertions{' '}
+            <span className="text-muted-foreground">
+              ({response.assertions.filter((a) => a.ok).length}/{response.assertions.length})
+            </span>
           </TabBtn>
         )}
         {tab === 'body' && (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted-foreground">{kind}</span>
-            {kind === 'json' && !raw && (
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {kind === 'json' && bodyMode === 'tree' && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Filter keys/values…"
+                  aria-label="Filter JSON keys or values"
+                  className="h-6 w-36 rounded-md border border-border bg-background pl-6 pr-2 font-mono text-[11px] outline-none focus:border-cyan-500/60"
+                />
+              </div>
+            )}
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted-foreground">
+              {kind}
+            </span>
+            {kind === 'json' && bodyMode === 'tree' && (
               <>
                 <button
                   type="button"
@@ -368,76 +526,161 @@ export default function ResponseInspector({ response, loading, onExtract, extrac
               {copied ? 'Copied' : 'Copy'}
               <kbd className="hidden rounded bg-muted px-1 font-mono text-[9px] text-muted-foreground sm:inline">⌘⇧C</kbd>
             </button>
-            {canToggleRaw && (
+            {kind === 'json' ? (
+              <div className="inline-flex rounded-md border border-border bg-muted/30 p-0.5">
+                {(['tree', 'code', 'raw'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setBodyMode(m)}
+                    className={`rounded px-2 py-0.5 text-[10px] font-semibold capitalize transition-colors ${
+                      bodyMode === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {m === 'tree' ? 'Tree' : m === 'code' ? 'Pretty' : 'Raw'}
+                  </button>
+                ))}
+              </div>
+            ) : (kind === 'xml' || kind === 'html') ? (
               <button
-                onClick={() => setRaw((r) => !r)}
+                type="button"
+                onClick={() => setBodyMode((m) => (m === 'raw' ? 'tree' : 'raw'))}
                 className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
               >
-                {raw ? 'Pretty' : 'Raw'}
+                {bodyMode === 'raw' ? 'Pretty' : 'Raw'}
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </div>
 
-      <div className={showAssertionsSplit ? 'grid min-h-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]' : 'max-h-[460px] overflow-auto p-4'}>
-        <div className={showAssertionsSplit ? 'max-h-[460px] min-w-0 overflow-auto p-4' : ''}>
-        {(tab === 'body' || tab === 'assertions') && (() => {
-          if (kind === 'json' && response.json != null && !raw)
-            return <JsonView value={response.json} path={[]} onCapture={onExtract ? setCapture : undefined} linkedPaths={linkedPaths} command={treeCommand} />
-          if ((kind === 'xml' || kind === 'html') && !raw)
-            return <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{prettyXml(response.body || '')}</pre>
-          return <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{response.body}</pre>
-        })()}
-        {tab === 'headers' && (
-          <table className="w-full text-left font-mono text-xs">
-            <tbody>
-              {Object.entries(headers).map(([k, v]) => (
-                <tr key={k} className="border-b border-border/50">
-                  <td className="py-1 pr-3 align-top font-semibold text-muted-foreground">{k}</td>
-                  <td className="py-1 break-all">{v}</td>
-                </tr>
+      <div
+        className={
+          showAssertionsSplit
+            ? 'grid min-h-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]'
+            : 'max-h-[480px] overflow-auto p-4'
+        }
+      >
+        <div className={showAssertionsSplit ? 'max-h-[480px] min-w-0 overflow-auto p-4' : ''}>
+          {(tab === 'body' || tab === 'assertions') &&
+            (() => {
+              if (kind === 'json' && filteredJson != null && bodyMode === 'tree') {
+                return (
+                  <JsonView
+                    value={filteredJson}
+                    path={[]}
+                    onCapture={onExtract ? setCapture : undefined}
+                    linkedPaths={linkedPaths}
+                    command={treeCommand}
+                  />
+                )
+              }
+              if (kind === 'json' && resolvedJson != null && bodyMode === 'code') {
+                return (
+                  <JsonCodeEditor
+                    value={JSON.stringify(resolvedJson, null, 2)}
+                    readOnly
+                    fileName="response.json"
+                    showHeader={false}
+                    showToolbar={false}
+                    showStatus={false}
+                    minHeight="160px"
+                  />
+                )
+              }
+              if ((kind === 'xml' || kind === 'html') && bodyMode !== 'raw') {
+                return (
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+                    {prettyXml(response.body || '')}
+                  </pre>
+                )
+              }
+              return (
+                <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+                  {response.body || '(empty body)'}
+                </pre>
+              )
+            })()}
+          {tab === 'headers' && (
+            <table className="w-full text-left font-mono text-xs">
+              <tbody>
+                {Object.entries(headers).map(([k, v]) => (
+                  <tr key={k} className="border-b border-border/50">
+                    <td className="py-1.5 pr-3 align-top font-semibold text-muted-foreground">{k}</td>
+                    <td className="py-1.5 break-all">{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {tab === 'extracted' && (
+            <ul className="space-y-1 text-xs">
+              {(response.extracted || []).map((name) => (
+                <li key={name} className="font-mono text-emerald-700 dark:text-emerald-300">
+                  {`{{${name}}}`} refreshed
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
-        {tab === 'extracted' && (
-          <ul className="space-y-1 text-xs">
-            {(response.extracted || []).map((name) => (
-              <li key={name} className="font-mono text-emerald-700 dark:text-emerald-300">{`{{${name}}}`} refreshed</li>
-            ))}
-          </ul>
-        )}
+            </ul>
+          )}
         </div>
         {showAssertionsSplit && <AssertionResultsPanel assertions={assertions} />}
       </div>
-      <Dialog open={capture !== null} onOpenChange={(open) => { if (!open && !capturing) setCapture(null) }}>
+
+      <Dialog
+        open={capture !== null}
+        onOpenChange={(open) => {
+          if (!open && !capturing) setCapture(null)
+        }}
+      >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><DatabaseZap className="h-4 w-4 text-cyan-500" /> Capture response value</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <DatabaseZap className="h-4 w-4 text-cyan-500" /> Capture response value
+            </DialogTitle>
           </DialogHeader>
           {capture ? (
             <div className="space-y-4">
               <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3 text-xs sm:grid-cols-2">
-                <div><div className="text-muted-foreground">Source</div><code className="mt-1 block break-all">{capture.path}</code></div>
-                <div><div className="text-muted-foreground">Save to</div><div className="mt-1 font-semibold text-emerald-600 dark:text-emerald-400">{extractDestinationName || 'Active environment'}</div></div>
+                <div>
+                  <div className="text-muted-foreground">Source</div>
+                  <code className="mt-1 block break-all">{capture.path}</code>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Save to</div>
+                  <div className="mt-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                    {extractDestinationName || 'Active environment'}
+                  </div>
+                </div>
               </div>
               <div>
                 <Label htmlFor="capture-variable-name">Variable name</Label>
-                <Input id="capture-variable-name" autoFocus value={capture.name} onChange={(event) => setCapture({ ...capture, name: event.target.value })} className="mt-1.5 font-mono" placeholder="access_token" />
+                <Input
+                  id="capture-variable-name"
+                  autoFocus
+                  value={capture.name}
+                  onChange={(event) => setCapture({ ...capture, name: event.target.value })}
+                  className="mt-1.5 font-mono"
+                  placeholder="access_token"
+                />
               </div>
               <div>
                 <Label>Captured value</Label>
                 <div className="mt-1.5 rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-muted-foreground">
                   {maskCaptureValue(capture.value)}
                 </div>
-                <p className="mt-1 text-[10px] text-muted-foreground">The value is masked here and stored in the active environment. The extractor keeps it fresh on future sends.</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  The value is masked here and stored in the active environment. The extractor keeps it fresh on future sends.
+                </p>
               </div>
             </div>
           ) : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCapture(null)} disabled={capturing}>Cancel</Button>
-            <Button onClick={() => void saveCapture()} disabled={capturing || !capture?.name.trim()}>{capturing ? 'Capturing…' : 'Capture variable'}</Button>
+            <Button variant="outline" onClick={() => setCapture(null)} disabled={capturing}>
+              Cancel
+            </Button>
+            <Button onClick={() => void saveCapture()} disabled={capturing || !capture?.name.trim()}>
+              {capturing ? 'Capturing…' : 'Capture variable'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -452,9 +695,20 @@ function maskCaptureValue(value: unknown): string {
   return `${raw.slice(0, 4)}${'•'.repeat(Math.min(16, raw.length - 8))}${raw.slice(-4)}`
 }
 
-function TabBtn({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+function TabBtn({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
         active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
@@ -465,51 +719,120 @@ function TabBtn({ active, onClick, icon, children }: { active: boolean; onClick:
   )
 }
 
-/** Recursive JSON tree. Leaf values expose a "save as variable" action that
- *  builds the extractor path (body.<a>.<b>.<index>) from the node's location. */
-function JsonView({ value, path, onCapture, linkedPaths, command }: { value: unknown; path: (string | number)[]; onCapture?: (capture: { path: string; value: unknown; name: string }) => void; linkedPaths: Record<string, string>; command: TreeCommand }) {
-  const indent = { paddingLeft: path.length ? 12 : 0 }
+/** Recursive JSON tree. Keeps keys and opening brackets on the same line,
+ *  and exposes a "save as variable" action on leaf values. */
+function JsonView({
+  value,
+  path,
+  keyName,
+  isArrayItem = false,
+  isLast = true,
+  onCapture,
+  linkedPaths,
+  command,
+}: {
+  value: unknown
+  path: (string | number)[]
+  keyName?: string | number
+  isArrayItem?: boolean
+  isLast?: boolean
+  onCapture?: (capture: { path: string; value: unknown; name: string }) => void
+  linkedPaths: Record<string, string>
+  command: TreeCommand
+}) {
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
     if (path.length > 0) setCollapsed(command.action === 'collapse')
   }, [command.nonce])
 
+  const keyPrefix =
+    keyName !== undefined ? (
+      <>
+        <span className={isArrayItem ? 'text-muted-foreground/70' : 'text-sky-600 dark:text-sky-400'}>
+          {isArrayItem ? keyName : `"${keyName}"`}
+        </span>
+        <span className="text-muted-foreground">: </span>
+      </>
+    ) : null
+
   if (value !== null && typeof value === 'object') {
-    const entries: [string | number, unknown][] = Array.isArray(value)
+    const isArr = Array.isArray(value)
+    const entries: [string | number, unknown][] = isArr
       ? value.map((v, i) => [i, v])
       : Object.entries(value as Record<string, unknown>)
-    const open = Array.isArray(value) ? '[' : '{'
-    const close = Array.isArray(value) ? ']' : '}'
+    const open = isArr ? '[' : '{'
+    const close = isArr ? ']' : '}'
+    const comma = isLast ? '' : ','
+
     if (entries.length === 0) {
-      return <span className="font-mono text-xs text-muted-foreground">{open}{close}</span>
+      return (
+        <div className="font-mono text-xs leading-relaxed">
+          {keyPrefix}
+          <span className="text-muted-foreground">
+            {open}
+            {close}
+            {comma}
+          </span>
+        </div>
+      )
     }
-    const summary = Array.isArray(value) ? `Array(${entries.length})` : `Object(${entries.length})`
+
+    const summary = isArr ? `Array(${entries.length})` : `Object(${entries.length})`
+
     return (
-      <div style={indent} className="font-mono text-xs">
-        <button
-          type="button"
-          onClick={() => setCollapsed((current) => !current)}
-          className="mr-1 inline-flex h-4 w-4 translate-y-0.5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${path.length ? `response key ${path.join('.')}` : 'response root'}`}
-        >
-          {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </button>
-        {collapsed ? (
-          <button type="button" onClick={() => setCollapsed(false)} className="text-muted-foreground hover:text-foreground">
-            {open}<span className="mx-1 text-[10px]">{summary}</span>{close}
+      <div className="font-mono text-xs leading-relaxed">
+        <div className="inline-flex flex-wrap items-center">
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${
+              path.length ? `response key ${path.join('.')}` : 'response root'
+            }`}
+          >
+            {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
-        ) : (
-          <>
+          {keyPrefix}
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {open}
+              <span className="mx-1 rounded bg-muted/60 px-1 py-0.5 text-[10px]">{summary}</span>
+              {close}
+              {comma}
+            </button>
+          ) : (
             <span className="text-muted-foreground">{open}</span>
-            {entries.map(([k, v]) => (
-              <div key={String(k)} className="pl-3">
-                <span className="text-sky-600 dark:text-sky-400">{Array.isArray(value) ? k : `"${k}"`}</span>
-                <span className="text-muted-foreground">: </span>
-                <JsonView value={v} path={[...path, k]} onCapture={onCapture} linkedPaths={linkedPaths} command={command} />
-              </div>
-            ))}
-            <span className="text-muted-foreground">{close}</span>
+          )}
+        </div>
+
+        {!collapsed && (
+          <>
+            <div className="ml-2 border-l border-border/50 pl-3">
+              {entries.map(([k, v], idx) => (
+                <JsonView
+                  key={String(k)}
+                  value={v}
+                  path={[...path, k]}
+                  keyName={k}
+                  isArrayItem={isArr}
+                  isLast={idx === entries.length - 1}
+                  onCapture={onCapture}
+                  linkedPaths={linkedPaths}
+                  command={command}
+                />
+              ))}
+            </div>
+            <div>
+              <span className="pl-5 text-muted-foreground">
+                {close}
+                {comma}
+              </span>
+            </div>
           </>
         )}
       </div>
@@ -518,22 +841,29 @@ function JsonView({ value, path, onCapture, linkedPaths, command }: { value: unk
 
   // leaf
   const display =
-    typeof value === 'string' ? `"${value}"`
-      : value === null ? 'null'
-      : String(value)
+    typeof value === 'string' ? `"${value}"` : value === null ? 'null' : String(value)
   const tone =
-    typeof value === 'string' ? 'text-emerald-600 dark:text-emerald-400'
-      : typeof value === 'number' ? 'text-amber-600 dark:text-amber-400'
+    typeof value === 'string'
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : typeof value === 'number'
+      ? 'text-amber-600 dark:text-amber-400'
       : 'text-purple-600 dark:text-purple-400'
 
   const pathStr = 'body.' + path.join('.')
   const canExtract = !!onCapture && path.length > 0
   const linkedVariable = linkedPaths[pathStr]
+  const comma = isLast ? '' : ','
 
   return (
-    <span className="group inline-flex items-center gap-1">
+    <div className="group flex flex-wrap items-center gap-1 pl-5 font-mono text-xs leading-relaxed">
+      {keyPrefix}
       <span className={`break-all ${tone}`}>{display}</span>
-      {linkedVariable ? <span className="rounded bg-cyan-500/10 px-1 font-mono text-[9px] text-cyan-600 dark:text-cyan-400">→ {`{{${linkedVariable}}}`}</span> : null}
+      {comma && <span className="text-muted-foreground">{comma}</span>}
+      {linkedVariable ? (
+        <span className="rounded bg-cyan-500/10 px-1 font-mono text-[9px] text-cyan-600 dark:text-cyan-400">
+          → {`{{${linkedVariable}}}`}
+        </span>
+      ) : null}
       {canExtract && (
         <button
           type="button"
@@ -548,6 +878,6 @@ function JsonView({ value, path, onCapture, linkedPaths, command }: { value: unk
           <Plus className="h-3 w-3 text-cyan-500 hover:text-cyan-400" />
         </button>
       )}
-    </span>
+    </div>
   )
 }

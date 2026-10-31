@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   FolderKanban, List, Info, Plus, Trash2, FolderPlus, Play, Send,
   Workflow, Download, Terminal, ListTree, Pencil, Copy, FolderPen,
-  FolderMinus, Move,
+  FolderMinus, Move, BookmarkCheck, FileCheck,
 } from 'lucide-react'
 
 export interface McpTool {
@@ -55,6 +55,8 @@ export const MCP_TOOL_GROUPS: McpToolGroup[] = [
     label: 'Run & test',
     tools: [
       { name: 'send_request', desc: 'Send one request and inspect the full response.', icon: Send },
+      { name: 'capture_endpoint_baseline', desc: 'Send request, capture response example/mock, and auto-generate test assertions.', icon: BookmarkCheck },
+      { name: 'set_example_response', desc: 'Document or mock the expected response contract for an endpoint.', icon: FileCheck },
       { name: 'run_endpoint', desc: 'Fire an endpoint N times, optionally concurrently.', icon: Play },
       { name: 'run_scenario', desc: 'Run endpoints in order as a chained flow.', icon: Workflow },
     ],

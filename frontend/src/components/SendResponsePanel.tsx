@@ -9,10 +9,21 @@ interface Props {
   loading: boolean
   extractors?: Record<string, string>
   onExtract?: (name: string, path: string, value: unknown) => Promise<void>
+  onSetAsExample?: (response: SendResponse) => Promise<void> | void
+  onGenerateAssertions?: (response: SendResponse) => Promise<void> | void
   onClose: () => void
 }
 
-export function SendResponsePanel({ endpointName, response, loading, extractors, onExtract, onClose }: Props) {
+export function SendResponsePanel({
+  endpointName,
+  response,
+  loading,
+  extractors,
+  onExtract,
+  onSetAsExample,
+  onGenerateAssertions,
+  onClose,
+}: Props) {
   const [collapsed, setCollapsed] = useState(false)
 
   // A new send is important enough to reveal the inspector even when the
@@ -56,6 +67,8 @@ export function SendResponsePanel({ endpointName, response, loading, extractors,
             extractors={extractors}
             extractDestinationName={endpointName}
             onExtract={onExtract}
+            onSetAsExample={onSetAsExample}
+            onGenerateAssertions={onGenerateAssertions}
           />
         </div>
       )}
