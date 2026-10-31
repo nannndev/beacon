@@ -474,6 +474,28 @@ class RunControlRouteTests(unittest.TestCase):
         status["scenario_steps"][0]["name"] = "mutated"
         self.assertEqual(store.current_runs["r1"]["scenario_steps"][0]["name"], "A")
 
+    def test_proxy_route_validates_url(self):
+        with self.assertRaises(HTTPException) as error:
+            runs.proxy_request({})
+        self.assertEqual(error.exception.status_code, 400)
+
+    def test_proxy_route_executes_ad_hoc_request(self):
+        store = make_store([])
+        with patch("backend.app.routers.runs.store", store), \
+             patch("backend.app.core.tester.APITester._do_request") as do_request:
+            do_request.return_value = FakeResponse(
+                status_code=200,
+                body='[{"id":"1","name":"ACEH"}]',
+                headers={"content-type": "application/json"}
+            )
+            res = runs.proxy_request({
+                "url": "https://wilayah.id/api/provinces.json",
+                "method": "GET",
+            })
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["status"], 200)
+            self.assertEqual(res["json"], [{"id": "1", "name": "ACEH"}])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,23 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.9.0] - 2026-10-31
+
+### Added
+
+- **Interactive HTML Documentation Export**: Export self-contained, offline-ready HTML API documentation with an interactive live playground, real-time requests, syntax-highlighted responses, multi-language snippets (cURL, fetch JS, Python requests), search filtering, environment switching, and dark/light themes.
+- **Documented Response Baselines & Auto-Assertions**: Capture live API execution results directly as documented endpoint baselines (`mock_response`) and generate smart JSON assertions (status code, timing, schema keys) with a single click.
+- **Published on skills.sh (`beacon-api-workbench`)**: Standardized agent skill published for AI agents across Claude, Cursor, Antigravity, and Codex, installable via `npx skills add nannndev/beacon`.
+- **Local Proxy & CORS Fallback**: Dedicated `POST /proxy` endpoint in Beacon backend with automatic fallback in exported HTML documentation, enabling browser playgrounds to test remote APIs that do not emit `Access-Control-Allow-Origin: *` headers, along with instant "Copy as cURL" integration.
+- **MCP Response Capturing Tools**: `capture_response_as_baseline` and `generate_assertions_from_baseline` tools added to the Beacon MCP server.
+
+### Improved
+
+- **Sidebar & Header Layout**: Fixed vertical alignment and padding for the endpoint search bar, method filter badges, and action buttons.
+- **Export Playground Scrolling**: Implemented max-height constraints with internal scrolling for large payloads and response bodies in exported documentation.
+
+[Compare 0.8.0 → 0.9.0](https://github.com/nannndev/beacon/compare/v0.8.0...v0.9.0)
+
 ## [0.8.0] - 2026-10-10
 
 ### Added

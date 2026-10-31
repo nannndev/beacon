@@ -1506,15 +1506,57 @@ export function generateInteractiveHtmlDocs(envelope: ExportedProjectEnvelope): 
       }
 
       const t0 = performance.now();
+      let statusCode = 200;
+      let statusText = 'OK';
+      let ms = 0;
+      let text = '';
+      let isProxied = false;
+
       try {
-        const res = await fetch(targetUrl, { method, headers, body });
-        const ms = Math.round(performance.now() - t0);
-        const text = await res.text();
-        const statusCls = res.status >= 200 && res.status < 300 ? 'status-2xx' : res.status < 500 ? 'status-4xx' : 'status-5xx';
+        try {
+          const res = await fetch(targetUrl, { method, headers, body });
+          ms = Math.round(performance.now() - t0);
+          statusCode = res.status;
+          statusText = res.statusText || '';
+          text = await res.text();
+        } catch (directErr) {
+          // Direct fetch failed (e.g. browser CORS restriction on third-party APIs).
+          // Automatically try local Beacon backend proxy fallback:
+          try {
+            const proxyRes = await fetch('http://127.0.0.1:8000/proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: targetUrl,
+                method: method,
+                headers: headers,
+                body: body,
+              }),
+            });
+            if (proxyRes.ok) {
+              const data = await proxyRes.json();
+              ms = data.time_ms || Math.round(performance.now() - t0);
+              statusCode = data.status || (data.ok ? 200 : 500);
+              statusText = data.reason || (data.ok ? 'OK' : 'Error');
+              text = typeof data.body === 'string' ? data.body : (data.json ? JSON.stringify(data.json, null, 2) : '');
+              if (!text && data.error) {
+                text = data.error;
+              }
+              isProxied = true;
+            } else {
+              throw directErr;
+            }
+          } catch (_proxyErr) {
+            throw directErr;
+          }
+        }
+
+        const statusCls = statusCode >= 200 && statusCode < 300 ? 'status-2xx' : statusCode < 500 ? 'status-4xx' : 'status-5xx';
 
         meta.innerHTML =
           '<div style="display:flex;align-items:center;gap:6px">' +
-            '<span class="status-badge ' + statusCls + '">HTTP ' + res.status + (res.statusText ? ' ' + res.statusText : '') + '</span>' +
+            '<span class="status-badge ' + statusCls + '">HTTP ' + statusCode + (statusText ? ' ' + statusText : '') + '</span>' +
+            (isProxied ? '<span class="meta-pill" style="color:var(--accent);border-color:var(--accent);font-weight:600;">⚡ Proxied</span>' : '') +
             '<span class="meta-pill">' + ms + ' ms</span>' +
             '<span class="meta-pill">' + fmtBytes(text.length) + '</span>' +
           '</div>' +
@@ -1541,9 +1583,29 @@ export function generateInteractiveHtmlDocs(envelope: ExportedProjectEnvelope): 
           '<div style="display:flex;align-items:center;gap:6px">' +
             '<span class="status-badge status-err">Network / CORS Error</span>' +
           '</div>' +
-          '<button type="button" class="action-btn-sm" onclick="clearPlayground(' + idx + ')">Clear</button>';
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<button type="button" class="action-btn-sm" onclick="copyCurl(' + idx + ')">Copy as cURL</button>' +
+            '<button type="button" class="action-btn-sm" onclick="clearPlayground(' + idx + ')">Clear</button>' +
+          '</div>';
         out.textContent = 'Request failed: ' + (err && err.message ? err.message : String(err)) +
-          '\\n\\nNote: If sending requests from an offline HTML file in a browser, ensure the remote API allows CORS (Access-Control-Allow-Origin: *).';
+          '\\n\\nNote: If sending requests from an offline HTML file in a browser, remote APIs without CORS headers (Access-Control-Allow-Origin: *) will be blocked by browser security.\\n' +
+          '💡 Solutions:\\n' +
+          '• Keep Beacon running on http://127.0.0.1:8000 — requests will automatically proxy through Beacon to bypass CORS.\\n' +
+          '• Or click "Copy as cURL" above to run this request directly in your terminal without CORS limits.';
+      }
+    }
+
+    function copyCurl(idx) {
+      const el = document.getElementById('curl-' + idx);
+      if (el) {
+        navigator.clipboard?.writeText(el.textContent || '').then(() => {
+          const btn = event.target;
+          if (btn) {
+            const prev = btn.textContent;
+            btn.textContent = 'cURL Copied!';
+            setTimeout(() => { btn.textContent = prev; }, 1200);
+          }
+        });
       }
     }
 

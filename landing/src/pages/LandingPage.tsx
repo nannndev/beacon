@@ -99,7 +99,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.8.0'
+const RELEASE_VERSION = '0.9.0'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -327,7 +327,7 @@ export default function LandingPage() {
               className="group mb-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 font-semibold text-cyan-600 dark:text-cyan-400">v{RELEASE_VERSION}</span>
-              GraphQL, pre-request scripts, and more
+              Interactive HTML Export, Response Baselines & skills.sh
               <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </a>
           </RevealItem>
@@ -594,8 +594,10 @@ export default function LandingPage() {
               <span className="h-3 w-3 rounded-full bg-amber-400" />
               <span className="h-3 w-3 rounded-full bg-emerald-400" />
             </div>
-            <pre className="overflow-auto"><code>{`# Desktop app > MCP panel > one click to register
-# (or Claude Code, pointing at the bundled binary)
+            <pre className="overflow-auto"><code>{`# Install Beacon skill for AI agents via skills.sh:
+npx skills add nannndev/beacon
+
+# Or register native MCP in Claude Code / Cursor:
 claude mcp add beacon -- <path-to>/mcp_server
 
 # then just ask your assistant:
@@ -721,9 +723,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              Data-driven runs from CSV and JSON, per-request transport
-              controls, redrawn Live Monitor and Run History charts, and a
-              clearer test-mode dashboard.
+              Interactive HTML export & live playground, documented response baselines
+              with one-click assertion generators, skills.sh publishing, and local proxy fallback.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -732,10 +733,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Data-driven runs', 'Feed a CSV or JSON file to a run — each request (or scenario journey) takes the next row, with every column available as a {{variable}}.'],
-              ['Per-request transport controls', 'Set timeout, redirect following, TLS verification, and a per-request proxy right in the endpoint editor.'],
-              ['Redrawn observability', 'Live Monitor and Run History charts rebuilt for honest per-second rates, monotone lines, a p95 reference, and a latency histogram.'],
-              ['Clearer test modes', 'Every mode now has a lucide icon, a one-line behaviour summary, and — for Fuzz — a discoverable list of injection types.'],
+              ['Interactive HTML Export', 'Export self-contained documentation with live interactive playground, cURL/JS/Python snippets, JSON highlighting, search, and dark/light mode.'],
+              ['Response Baseline & Auto-Assertions', 'Capture live API responses directly into documented examples and automatically generate field-level assertions.'],
+              ['Published on skills.sh', 'Install beacon-api-workbench into any agent environment via `npx skills add nannndev/beacon`.'],
+              ['Local Proxy & CORS Fallback', 'Bypass browser CORS barriers seamlessly when previewing or testing third-party APIs from HTML exports.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>

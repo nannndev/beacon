@@ -42,4 +42,5 @@ def cors_origins() -> list[str]:
         "http://127.0.0.1",
         "tauri://localhost",
         "http://tauri.localhost",
+        "null",
     ]

@@ -1,5 +1,6 @@
 import os
 import copy
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -166,6 +167,48 @@ def send_single(data: dict):
     if result.get("extracted"):
         store.save()
     return result
+
+
+@router.post("/proxy")
+def proxy_request(data: dict):
+    """Ad-hoc proxy for standalone HTML exports and web callers to bypass browser CORS restrictions."""
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+    url = str(data.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Missing required field: url")
+    method = str(data.get("method") or "GET").upper()
+    headers = data.get("headers") or {}
+    if not isinstance(headers, dict):
+        headers = {}
+    body = data.get("body")
+    payload = {}
+    payload_type = "none"
+    if body is not None and body != "":
+        if isinstance(body, (dict, list)):
+            payload = body
+            payload_type = "json"
+        elif isinstance(body, str):
+            try:
+                payload = json.loads(body)
+                payload_type = "json"
+            except Exception:
+                payload = body
+                payload_type = "raw"
+        else:
+            payload = body
+            payload_type = "raw"
+
+    test = EndpointTest(
+        test_id="adhoc-proxy",
+        name="Ad-hoc Proxy",
+        url=url,
+        method=method,
+        headers=headers,
+        payload=payload,
+        payload_type=payload_type,
+    )
+    return APITester(test, store.current_config).send_once()
 
 
 def _scenario_step(test, result: dict) -> dict:
