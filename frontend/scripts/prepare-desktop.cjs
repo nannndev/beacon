@@ -98,8 +98,8 @@ fs.copyFileSync(cliSrcBinary, cliDestBinary);
 console.log(`Copied ${cliSrcName} -> ${cliDestBinary}`);
 
 // Copy the agent skill (for Claude Code etc.)
-const skillSrcDir = path.join(__dirname, '..', '..', '.claude', 'skills', 'beacon');
-const skillDestDir = path.join(tauriDir, 'skills', 'beacon');
+const skillSrcDir = path.join(__dirname, '..', '..', '.claude', 'skills', 'beacon-api-workbench');
+const skillDestDir = path.join(tauriDir, 'skills', 'beacon-api-workbench');
 const skillSrcFile = path.join(skillSrcDir, 'SKILL.md');
 const skillDestFile = path.join(skillDestDir, 'SKILL.md');
 
