@@ -41,6 +41,8 @@ import { useConfirmDialog } from './components/ui/confirm-dialog'
 import { SendResponsePanel } from './components/SendResponsePanel'
 import { WorkspaceTraceBackground } from './components/WorkspaceTraceBackground'
 import { isDesktop } from './lib/platform'
+import { TokenAutocomplete } from './components/TokenAutocomplete'
+import { QuickEditDialog } from './components/dialogs/QuickEditDialog'
 import { EditorTabBar, type EditorTabLabel } from './components/EditorTabBar'
 import { closeTab, emptyTabs, openEndpointTab, openNewTab, pruneTabs, activateTab, type EditorTabsState } from './lib/editorTabs'
 
@@ -758,6 +760,22 @@ function App() {
     run.start(ep.id, ep.name, cfg)
   }
 
+  const [quickEditId, setQuickEditId] = useState<string | null>(null)
+  const quickEditEndpoint = quickEditId
+    ? effectiveTests.find((test) => test.id === quickEditId) || (config.tests as Endpoint[]).find((test) => test.id === quickEditId) || null
+    : null
+  const saveQuickEdit = async (endpoint: Endpoint, send: boolean) => {
+    try {
+      await api.updateTest(endpoint.id, endpoint)
+      await fetchAll()
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save request')
+      throw error
+    }
+    if (send) void sendRow(endpoint.id)
+    else toast.success('Request saved')
+  }
+
   const sendRow = async (id: string) => {
     const endpoint = effectiveTests.find((test) => test.id === id) || (config.tests as Endpoint[]).find((test) => test.id === id)
     if (!endpoint || sendingTestId) return
@@ -1153,6 +1171,7 @@ function App() {
                 onNew={openNewEditor}
                 onNewFolder={createFolder}
                 onEdit={openEdit}
+                onQuickEdit={setQuickEditId}
                 onDuplicate={duplicateEndpoint}
                 onDelete={deleteEndpoint}
                 onRunRow={runRow}
@@ -1220,6 +1239,8 @@ function App() {
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} onOpenMcp={() => appView.openMcp()} />
       <CommandPalette open={showPalette} onOpenChange={setShowPalette} commands={paletteCommands} />
       {confirmationDialog}
+      <QuickEditDialog endpoint={quickEditEndpoint} onOpenChange={(open) => { if (!open) setQuickEditId(null) }} onSave={saveQuickEdit} />
+      <TokenAutocomplete variables={config.variables || {}} />
     </div>
   )
 }

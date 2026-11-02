@@ -10,6 +10,7 @@ import {
   Copy,
   Trash2,
   Pencil,
+  SlidersHorizontal,
   Search,
   Loader2,
   ChevronDown,
@@ -49,6 +50,7 @@ interface Props {
   onNew: () => void
   onNewFolder?: () => void
   onEdit: (id: string) => void
+  onQuickEdit: (id: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string, name: string) => void
   onRunRow: (id: string) => void
@@ -115,6 +117,7 @@ export function EndpointTable({
   onNew,
   onNewFolder,
   onEdit,
+  onQuickEdit,
   onDuplicate,
   onDelete,
   onRunRow,
@@ -467,6 +470,7 @@ export function EndpointTable({
                         onToggleFolder={toggleFolder}
                         onSelect={onSelect}
                         onEdit={onEdit}
+                        onQuickEdit={onQuickEdit}
                         onDuplicate={onDuplicate}
                         onDelete={onDelete}
                         onRunRow={onRunRow}
@@ -734,6 +738,16 @@ export function EndpointTable({
                                 <Play className="h-3.5 w-3.5" />
                               )}
                               {running ? 'Running' : 'Run'}
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              title="Quick edit params & body"
+                              aria-label="Quick edit params & body"
+                              onClick={() => onQuickEdit(test.id)}
+                            >
+                              <SlidersHorizontal className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               size="icon"

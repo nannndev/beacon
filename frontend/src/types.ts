@@ -102,6 +102,16 @@ export interface ProjectNotifications {
   discord_webhook?: string
   slack_webhook?: string
   mode?: NotifyMode
+  /** Scheduled check interval in minutes; 0 = off. */
+  monitor_minutes?: number
+}
+
+export interface MonitorResult {
+  checked_at: string
+  passed: boolean
+  summary: { total: number; passed: number; failed: number } | null
+  failures: { name: string; error: string | null }[]
+  error?: string
 }
 
 export interface Project {

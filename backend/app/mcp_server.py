@@ -393,7 +393,9 @@ def create_endpoint(
     HTML page load target; web targets should normally use GET and an absolute
     http(s) URL. `request_options` may set `timeout_s` (seconds),
     `follow_redirects` (bool), `verify_ssl` (bool), and `proxy` (URL).
-    `mock_response` optionally sets a documented example response/mock dict."""
+    `mock_response` optionally sets a documented example response/mock dict.
+    Give it a short human name for what it does (verb + resource, e.g.
+    "List sessions", "Verify OTP"), not "METHOD path"."""
     _reload()
     if not str(name or "").strip():
         return _error("invalid_argument", "name must not be empty.", field="name")
@@ -914,7 +916,9 @@ def import_collection(data: dict | list, into_folder: Optional[str] = None) -> d
     Insomnia, HAR, and legacy Beacon config. For YAML/JSON text pass
     `{"content": "...", "filename": "openapi.yaml"}`. `into_folder` may be
     an existing folder id/name; when omitted, a folder named after the source
-    is created.
+    is created. Requests without a summary are named "METHOD path"; rename
+    those afterwards with `update_endpoint(name=...)` to verb + resource
+    names such as "List sessions".
     """
     _reload()
     proj = _active_project()
@@ -969,7 +973,8 @@ def import_collection(data: dict | list, into_folder: Optional[str] = None) -> d
 def add_endpoint_from_curl(curl: str, name: Optional[str] = None) -> dict:
     """Create an endpoint from a `curl` command string. Parses -X/--request,
     -H/--header, and -d/--data*/--data-raw. Handy when an agent already has a
-    curl snippet."""
+    curl snippet. Pass `name`: a short human name for what the request does
+    (e.g. "Create order"); without it the URL becomes the name."""
     _reload()
     tokens = shlex.split(curl.replace("\\\n", " ").strip())
     method: Optional[str] = None

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config as app_config
 from .state import store
+from .services.monitor import MonitorScheduler
 from .routers import config, projects, environments, tests, runs, history, sharing, mock, graphql
 
 
@@ -20,8 +21,11 @@ async def lifespan(app: FastAPI):
     store.history.initialize()
     store.history.mark_interrupted_runs()
     store.sharing.initialize()
+    monitor.start()
     yield
 
+
+monitor = MonitorScheduler(store)
 
 app = FastAPI(title="Security Tools API", lifespan=lifespan)
 
@@ -45,6 +49,11 @@ app.add_middleware(
 
 for module in (config, projects, environments, tests, runs, history, sharing, mock, graphql):
     app.include_router(module.router)
+
+@app.get("/monitor/status")
+def monitor_status():
+    """Last scheduled check per project id."""
+    return monitor.results
 
 
 if __name__ == "__main__":

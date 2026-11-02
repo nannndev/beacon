@@ -8,8 +8,12 @@ import string
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
 
+
+_FIRST_NAMES = ("Andi", "Budi", "Citra", "Dewi", "Eko", "Fitri", "Gita", "Hadi", "Indah", "Joko", "Alex", "Sam", "Maria", "John")
+_LAST_NAMES = ("Santoso", "Wijaya", "Pratama", "Saputra", "Lestari", "Hidayat", "Kusuma", "Smith", "Garcia", "Lee")
 
 class TemplateResolver:
     def __init__(self, variables: Mapping[str, Any], lock: Optional[Any] = None):
@@ -54,6 +58,13 @@ class TemplateResolver:
         if normalized == "timestamp": return str(int(time.time() * 1000))
         if normalized == "random_string": return "".join(random.choice(string.ascii_letters + string.digits) for _ in range(8))
         if normalized in {"random_number", "random_int"}: return str(random.randint(100000, 999999))
+        if normalized == "random_name": return f"{random.choice(_FIRST_NAMES)} {random.choice(_LAST_NAMES)}"
+        if normalized == "random_bool": return random.choice(("true", "false"))
+        if normalized == "iso_date": return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        if normalized.startswith("random_choice:"):
+            # Keep the options' original case; only the generator name is case-insensitive.
+            options = [item.strip() for item in spec.strip().split(":", 1)[1].split("|") if item.strip()]
+            return random.choice(options) if options else ""
         if normalized.startswith("random_int:"):
             try:
                 _, minimum, maximum = normalized.split(":", 2)

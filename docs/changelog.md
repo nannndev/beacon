@@ -3,6 +3,22 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+## [0.10.0] - 2026-11-02
+
+### Added
+
+- **Quick edit**: A new button on each request row (tree and table) opens a small dialog to edit just the query params and body, then **Save** or **Save & Send** (⌘/Ctrl + Enter) without opening the full editor.
+- **`{{` autocomplete**: Typing `{{` in any text field (body, params, headers, URL, dialogs) lists environment variables and dynamic generators; use arrow keys and Enter or Tab to insert.
+- **New generators**: `{{random_name}}`, `{{random_bool}}`, `{{iso_date}}`, and `{{random_choice:a|b|c}}`, resolved fresh per request and accepted by the CLI validator.
+- **Scheduled monitor**: Project Settings can re-run every request in a project every 5, 15, 30, or 60 minutes while Beacon is open, show the last result, and post it to the project's Discord or Slack webhooks.
+- **Endpoint naming guidance for agents**: The `beacon-api-workbench` skill and MCP tool descriptions now ask agents to give endpoints verb + resource names (for example "List sessions") instead of `METHOD path`.
+
+### Fixed
+
+- **Body field types**: Editing a body in the Fields view no longer turns numbers, booleans, objects, and arrays into strings.
+
+[Compare 0.9.0 → 0.10.0](https://github.com/nannndev/beacon/compare/v0.9.0...v0.10.0)
+
 ## [0.9.0] - 2026-10-31
 
 ### Added

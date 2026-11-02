@@ -306,6 +306,7 @@ def _dynamic_template_error(token: str) -> str | None:
     if normalized in {
         "random_email", "random_phone", "random_uuid", "uuid", "timestamp",
         "random_string", "random_number", "random_int",
+        "random_name", "random_bool", "iso_date",
     }:
         return None
     if normalized.startswith("random_string:"):
@@ -315,6 +316,9 @@ def _dynamic_template_error(token: str) -> str | None:
         except ValueError:
             return "random_string length must be an integer"
         return None if length >= 1 else "random_string length must be at least 1"
+    if normalized.startswith("random_choice:"):
+        options = [item for item in normalized.split(":", 1)[1].split("|") if item.strip()]
+        return None if options else "random_choice needs options like random_choice:a|b|c"
     if normalized.startswith("random_int:"):
         parts = normalized.split(":")
         if len(parts) != 3:

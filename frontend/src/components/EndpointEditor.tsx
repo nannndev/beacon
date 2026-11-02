@@ -41,6 +41,7 @@ import { SchemaExplorer } from './graphql/SchemaExplorer'
 import { AssertionsEditor, type Assertion } from './AssertionsEditor'
 import { QueryParamsEditor } from './QueryParamsEditor'
 import { parseQueryParams } from '../lib/queryParams'
+import { DYNAMIC_HELPERS, isGeneratorName } from '../lib/templateTokens'
 
 interface Props {
   testId: string | null
@@ -78,27 +79,6 @@ const METHOD_STYLES: Record<string, string> = {
   DELETE: 'text-red-600 dark:text-red-400',
 }
 
-// Client-side mirrors of the backend generators (core/tester.py `_generate_dynamic`)
-// purely to show an illustrative sample — the real value is generated per request.
-const _rand = (n: number) =>
-  Array.from({ length: n }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('')
-const _uuid = () =>
-  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
-  })
-const _digits = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('')
-
-interface DynamicHelper { token: string; label: string; sample: () => string }
-const DYNAMIC_HELPERS: DynamicHelper[] = [
-  { token: '{{random_email}}', label: 'Random email', sample: () => `user_${_rand(6)}@example.com` },
-  { token: '{{random_phone}}', label: 'Phone (+62)', sample: () => `+62812${_digits(8)}` },
-  { token: '{{uuid}}', label: 'UUID v4', sample: _uuid },
-  { token: '{{timestamp}}', label: 'Unix seconds', sample: () => String(Math.floor(Date.now() / 1000)) },
-  { token: '{{random_string:12}}', label: 'Random string · N chars', sample: () => _rand(12) },
-  { token: '{{random_int:1:100}}', label: 'Random int · min:max', sample: () => String(1 + Math.floor(Math.random() * 100)) },
-  { token: '{{random_number}}', label: 'Random number', sample: () => String(Math.floor(Math.random() * 1_000_000)) },
-]
 const WEB_ACCEPT = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8'
 const WEB_ASSERTIONS = [
   { type: 'status', op: 'eq', value: 200 },
@@ -111,7 +91,7 @@ function resolvePreview(value: string, variables: Record<string, string>): { val
   const unresolved = new Set<string>()
   const resolved = value.replace(TEMPLATE_TOKEN, (token, name: string) => {
     if (Object.prototype.hasOwnProperty.call(variables, name)) return String(variables[name])
-    if (DYNAMIC_HELPERS.some((helper) => helper.token.includes(`{{${name.split(':')[0]}`))) return `<generated:${name}>`
+    if (isGeneratorName(name)) return `<generated:${name}>`
     unresolved.add(name)
     return token
   })

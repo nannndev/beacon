@@ -153,6 +153,7 @@ def update_project(project_id: str, data: dict):
             "discord_webhook": str(n.get("discord_webhook", "") or "").strip(),
             "slack_webhook": str(n.get("slack_webhook", "") or "").strip(),
             "mode": n.get("mode") if n.get("mode") in ("off", "on_failure", "always") else "off",
+            "monitor_minutes": n.get("monitor_minutes") if n.get("monitor_minutes") in (0, 5, 15, 30, 60) else 0,
         }
     # Sync FIRST so current_config reflects the new env data, THEN persist —
     # otherwise save_active_project() would clobber the just-updated env vars

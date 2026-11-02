@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, ReactNode } from 'react'
 import {
-  Play, Copy, Trash2, Pencil, Plus, GripVertical, Send,
+  Play, Copy, Trash2, Pencil, Plus, GripVertical, Send, SlidersHorizontal,
   ChevronDown, ChevronRight, Folder, FolderOpen,
   Globe2, DatabaseZap, ShieldCheck,
 } from 'lucide-react'
@@ -28,6 +28,7 @@ interface Props {
   onToggleFolder: (id: string) => void
   onSelect: (id: string) => void
   onEdit: (id: string) => void
+  onQuickEdit: (id: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string, name: string) => void
   onRunRow: (id: string) => void
@@ -50,7 +51,7 @@ interface DropTarget {
 
 export function CollectionTree({
   items, selectedId, runningTestId, runStatus, expandedFolders, onToggleFolder,
-  onSelect, onEdit, onDuplicate, onDelete, onRunRow, onSendRow, sendingTestId, onRunFolder, onRunScenario, onNewInFolder,
+  onSelect, onEdit, onQuickEdit, onDuplicate, onDelete, onRunRow, onSendRow, sendingTestId, onRunFolder, onRunScenario, onNewInFolder,
   onRenameFolder, onDuplicateFolder, onDeleteFolder, onReorder,
 }: Props) {
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -267,6 +268,9 @@ export function CollectionTree({
             </Button>
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); onRunRow(req.id) }} title="Run">
               <Play className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); onQuickEdit(req.id) }} title="Quick edit params & body">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); onEdit(req.id) }} title="Edit">
               <Pencil className="h-3.5 w-3.5" />

@@ -12,6 +12,10 @@ Beacon supports powerful variable substitution using `{{variable}}` syntax.
 | <code v-pre>{{random_string:12}}</code>     | Random string of length              | aB3kP9mX2qL            |
 | `{{random_number}}`        | Random number                        | 847291                 |
 | <code v-pre>{{random_int:1:100}}</code>     | Random integer in range              | 47                     |
+| `{{random_name}}`          | Random full name                     | Dewi Pratama           |
+| `{{random_bool}}`          | `true` or `false`                    | true                   |
+| `{{iso_date}}`             | Current UTC time, ISO 8601           | 2026-11-02T08:15:00Z   |
+| <code v-pre>{{random_choice:a\|b\|c}}</code> | One of the listed options   | b                      |
 
 ## Custom Variables
 

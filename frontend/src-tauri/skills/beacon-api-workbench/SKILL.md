@@ -32,7 +32,9 @@ engine and the same `tests.json` store:
   — add an API request or a `web` HTML document load target.
   `url` may be relative to the project `base_url`. Values may use
   `{{variable}}` (static config vars or generators like `{{random_email}}`,
-  `{{uuid}}`, `{{random_int:1:100}}`).
+  `{{random_name}}`, `{{uuid}}`, `{{iso_date}}`, `{{random_bool}}`,
+  `{{random_int:1:100}}`, `{{random_choice:a|b|c}}`). Always pass a
+  descriptive `name` — see **Naming endpoints**.
 - `create_folder(name)` — new top-level folder.
 - `add_endpoint_from_curl(curl, name?)` — build an endpoint from a curl string.
 - `import_collection(data, into_folder?)` — uses Beacon's production importer
@@ -87,6 +89,34 @@ Notes:
 - Tool failures keep a readable `error` and expose a stable `error_code` such
   as `invalid_argument`, `endpoint_not_found`, `folder_not_found`, or
   `import_invalid`. Fix the reported field/resource and retry; do not guess.
+
+## Naming endpoints
+
+Every endpoint you create, import, or are asked to tidy gets a short,
+human-readable name that says **what it does**, not how it is called. The
+method and URL are already shown next to the name, so never repeat them.
+
+- Use verb + resource in Title case: `Login`, `List sessions`,
+  `Get session`, `Delete session`, `Delete all sessions`,
+  `Verify two-factor code`, `Resend OTP`, `Update profile`.
+- Map methods to verbs: GET collection → `List …`, GET one → `Get …`,
+  POST → `Create …` (or the action: `Login`, `Logout`, `Verify …`, `Resend …`),
+  PUT/PATCH → `Update …`, DELETE → `Delete …`.
+- Path parameters become a qualifier, not braces: `GET branch-qr/{branch}` →
+  `Get branch QR code`; `GET menu-fonts/{font}/{style}` → `Get menu font style`.
+- Prefer the OpenAPI `summary` when it is meaningful; otherwise derive the name
+  from the path and the folder. Drop prefixes shared by the whole folder
+  (`k-motion/`, `api/v1/`).
+- Keep names unique inside a folder and under ~40 characters.
+- Bad: `POST login`, `GET me`, `POST /api/v1/otp/verify`, `New Endpoint`,
+  `Login (copy)`. Good: `Login`, `Get current user`, `Verify OTP`.
+
+Imports (and `add_endpoint_from_curl` without `name`) fall back to
+`METHOD path` names. After importing, list the new endpoints and rename the
+generic ones with `update_endpoint(name_or_id, name=...)`. When the user asks to
+clean up names in an existing project, page through `search_endpoints`, propose
+the renames in one table, and apply them after the user agrees. Renaming
+changes no request behaviour.
 
 ## Recommended agent workflow
 

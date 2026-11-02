@@ -6,7 +6,7 @@ import { Trash2, Send, Loader2, CheckCircle2, AlertTriangle, BellOff, Radio, Shi
 import { cn } from '@/lib/utils'
 import { api } from '../../lib/api'
 import { toast } from '../ui/toast'
-import { Project, ProjectNotifications, NotifyMode, ProjectRevision, SharingStatus, ProjectFileSyncStatus, ProjectGitStatus, ProjectGitDiff, ProjectGitBranches, ProjectGitBranchComparison } from '../../types'
+import { Project, ProjectNotifications, NotifyMode, MonitorResult, ProjectRevision, SharingStatus, ProjectFileSyncStatus, ProjectGitStatus, ProjectGitDiff, ProjectGitBranches, ProjectGitBranchComparison } from '../../types'
 import { isDesktop } from '../../lib/platform'
 
 interface Props {
@@ -35,6 +35,8 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
   const [discordWebhook, setDiscordWebhook] = useState('')
   const [slackWebhook, setSlackWebhook] = useState('')
   const [mode, setMode] = useState<NotifyMode>('off')
+  const [monitorMinutes, setMonitorMinutes] = useState(0)
+  const [monitorResult, setMonitorResult] = useState<MonitorResult | null>(null)
   const [testingDiscord, setTestingDiscord] = useState(false)
   const [testingSlack, setTestingSlack] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -68,6 +70,9 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
     setDiscordWebhook(project?.notifications?.discord_webhook || '')
     setSlackWebhook(project?.notifications?.slack_webhook || '')
     setMode(project?.notifications?.mode || 'off')
+    setMonitorMinutes(project?.notifications?.monitor_minutes || 0)
+    setMonitorResult(null)
+    if (project?.id) api.monitorStatus().then((all) => setMonitorResult(all[project.id] || null)).catch(() => {})
     setGitDiff(null)
     setGitDiffOpen(false)
     setGitDiffPath('')
@@ -164,7 +169,8 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
       await onSave(name.trim(), { 
         discord_webhook: discordWebhook.trim(), 
         slack_webhook: slackWebhook.trim(), 
-        mode 
+        mode,
+        monitor_minutes: monitorMinutes,
       })
     } finally {
       setSaving(false)
@@ -1196,6 +1202,31 @@ export function ProjectSettingsPage({ onBack, project, sharingStatus, sharingSta
                   </button>
                 )
               })}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="monitor-interval" className="text-[10px] font-bold uppercase text-muted-foreground">Scheduled check</Label>
+              <select
+                id="monitor-interval"
+                value={monitorMinutes}
+                onChange={(e) => setMonitorMinutes(Number(e.target.value))}
+                className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+              >
+                <option value={0}>Off</option>
+                {[5, 15, 30, 60].map((m) => <option key={m} value={m}>Every {m} minutes</option>)}
+              </select>
+              <p className="text-[10px] text-muted-foreground">
+                Sends every request in this project once, using the active environment, while Beacon is open. Results are posted to your webhooks when run notifications are on.
+              </p>
+              {monitorResult && (
+                <p className={cn('text-[10px]', monitorResult.passed ? 'text-emerald-500' : 'text-red-500')}>
+                  Last check {new Date(monitorResult.checked_at).toLocaleString()}:{' '}
+                  {monitorResult.error
+                    ? monitorResult.error
+                    : `${monitorResult.summary?.passed}/${monitorResult.summary?.total} passed`}
+                  {monitorResult.failures.length > 0 && ` · failing: ${monitorResult.failures.map((f) => f.name).join(', ')}`}
+                </p>
+              )}
             </div>
 
             {mode !== 'off' && (

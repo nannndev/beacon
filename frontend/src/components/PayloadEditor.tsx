@@ -18,6 +18,20 @@ const PLACEHOLDER = `{
   "device": { "id": "{{random_uuid}}" }
 }`
 
+// The Fields table edits everything as text. Keys that held a number, boolean,
+// null, object or array keep that type when the edited text is still valid JSON.
+export function restoreFieldTypes(next: Record<string, string>, previous: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {}
+  for (const [key, text] of Object.entries(next)) {
+    const before = previous?.[key]
+    if (before !== undefined && typeof before !== 'string') {
+      try { out[key] = JSON.parse(text); continue } catch { /* fall through: keep the text */ }
+    }
+    out[key] = text
+  }
+  return out
+}
+
 function canonicalPayload(val: any): string {
   try {
     return JSON.stringify(val ?? {})
@@ -160,8 +174,9 @@ export function PayloadEditor({ value, onChange, payloadType }: Props) {
         <KVEditor
           data={value || {}}
           onChange={(next) => {
-            lastEmittedRef.current = canonicalPayload(next)
-            onChange(next)
+            const typed = restoreFieldTypes(next, value || {})
+            lastEmittedRef.current = canonicalPayload(typed)
+            onChange(typed)
           }}
           allowJson={false}
         />
