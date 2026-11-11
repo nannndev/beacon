@@ -29,6 +29,7 @@ import { GatewayCombos } from '../components/gateway/GatewayCombos'
 import { GatewayQuickstart } from '../components/gateway/GatewayQuickstart'
 import { GatewayPlayground } from '../components/gateway/GatewayPlayground'
 import { GatewayUsagePanel } from '../components/gateway/GatewayUsage'
+import { ProviderLogo } from '../components/gateway/ProviderLogo'
 import type {
   GatewayKey,
   GatewayProvider,
@@ -513,11 +514,14 @@ function ProvidersSection({
           const preview = catalog.slice(0, 2)
           const remaining = catalog.length - preview.length
           return (
-            <Card key={p.id} className="flex flex-col justify-between gap-2.5 p-3.5">
+            <Card key={p.id} className="flex flex-col justify-between gap-2.5 p-3.5 bg-card/60 backdrop-blur-sm hover:border-cyan-500/30 transition-colors">
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold truncate">{p.name}</span>
-                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] shrink-0">{p.alias}/</code>
+                <div className="flex items-center gap-2.5">
+                  <ProviderLogo provider={p.id} size="sm" badge />
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-sm font-semibold truncate">{p.name}</span>
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] shrink-0">{p.alias}/</code>
+                  </div>
                   {p.connected && (
                     <span
                       className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${

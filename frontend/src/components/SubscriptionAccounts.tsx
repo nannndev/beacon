@@ -19,6 +19,7 @@ import { Card } from './ui/card'
 import { Input } from './ui/input'
 import { toast } from './ui/toast'
 import { api } from '../lib/api'
+import { ProviderLogo } from './gateway/ProviderLogo'
 import type {
   OAuthAccount,
   OAuthAccountUsage,
@@ -612,23 +613,26 @@ export function SubscriptionAccounts({ onChanged }: Props) {
             const models = state?.models[meta.id] || []
             const gstat = summaryMap[meta.id]
             return (
-              <Card key={meta.id} className="space-y-3 border-emerald-500/30 p-3.5">
+              <Card key={meta.id} className="space-y-3 border-emerald-500/30 p-3.5 bg-card/60 backdrop-blur-sm">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <code className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                        {meta.alias}/
-                      </code>
-                      <span className="text-xs font-semibold">{meta.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{meta.plan}</span>
-                    </div>
-                    {gstat && (
-                      <div className="mt-1 text-[10px] text-muted-foreground">
-                        Today: <span className="font-mono text-foreground">{fmtNum(gstat.today_requests)}</span> req /{' '}
-                        <span className="font-mono text-foreground">{fmtNum(gstat.today_tokens)}</span> tok · All:{' '}
-                        <span className="font-mono text-foreground">{fmtNum(gstat.total_requests)}</span> req
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <ProviderLogo provider={meta.id} size="md" badge />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-semibold">{meta.name}</span>
+                        <code className="rounded bg-emerald-500/15 px-1 py-0.2 font-mono text-[9.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          {meta.alias}/
+                        </code>
+                        <span className="text-[10px] text-muted-foreground">{meta.plan}</span>
                       </div>
-                    )}
+                      {gstat && (
+                        <div className="mt-1 text-[10px] text-muted-foreground">
+                          Today: <span className="font-mono text-foreground">{fmtNum(gstat.today_requests)}</span> req /{' '}
+                          <span className="font-mono text-foreground">{fmtNum(gstat.today_tokens)}</span> tok · All:{' '}
+                          <span className="font-mono text-foreground">{fmtNum(gstat.total_requests)}</span> req
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <Button
                     size="sm"
@@ -792,15 +796,18 @@ export function SubscriptionAccounts({ onChanged }: Props) {
             const shown = isExpanded ? allIds : allIds.slice(0, 3)
             const rest = allIds.length - shown.length
             return (
-              <Card key={meta.id} className="flex flex-col justify-between gap-2 p-3">
+              <Card key={meta.id} className="flex flex-col justify-between gap-2 p-3 bg-card/60 backdrop-blur-sm hover:border-cyan-500/30 transition-colors">
                 <div className="space-y-2">
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold shrink-0">
-                          {meta.alias}/
-                        </code>
-                        <span className="text-xs font-semibold truncate">{meta.name}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ProviderLogo provider={meta.id} size="sm" badge />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold truncate">{meta.name}</div>
+                          <code className="rounded bg-muted/60 px-1 py-0.2 font-mono text-[9px] font-medium text-muted-foreground">
+                            {meta.alias}/
+                          </code>
+                        </div>
                       </div>
                       <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground shrink-0">
                         {meta.flow === 'redirect' ? 'OAuth PKCE' : 'Device'}

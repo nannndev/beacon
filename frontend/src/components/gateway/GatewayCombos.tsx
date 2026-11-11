@@ -6,6 +6,7 @@ import { Input } from '../ui/input'
 import { toast } from '../ui/toast'
 import { api } from '../../lib/api'
 import { AgentModelPicker } from '../agent/AgentModelPicker'
+import { ProviderLogo } from './ProviderLogo'
 
 interface GatewayCombosProps {
   combos: Record<string, string[]>
@@ -142,9 +143,10 @@ export function GatewayCombos({ combos, models, onChanged, onTestInPlayground }:
               <div className="flex items-center flex-wrap gap-1 min-w-0 flex-1">
                 {list.map((target, idx) => (
                   <span key={`${comboName}-${idx}`} className="inline-flex items-center gap-1">
-                    {idx > 0 && <span className="text-muted-foreground">→</span>}
-                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-foreground">
-                      {target}
+                    {idx > 0 && <span className="text-muted-foreground text-[10px]">→</span>}
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-foreground inline-flex items-center gap-1">
+                      <ProviderLogo provider={target.split('/')[0]} size="xs" />
+                      <span>{target}</span>
                     </code>
                   </span>
                 ))}

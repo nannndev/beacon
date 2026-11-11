@@ -230,6 +230,7 @@ impl GatewayEngine {
 
                     let codex_body = openai_to_codex(&body, &target.model);
 
+                    let t0 = std::time::Instant::now();
                     let res = self
                         .http_client
                         .post("https://chatgpt.com/backend-api/codex/responses")
@@ -242,7 +243,21 @@ impl GatewayEngine {
                         Ok(upstream_resp) => {
                             let status = upstream_resp.status();
                             if !status.is_success() {
+                                let duration_ms = t0.elapsed().as_millis() as i64;
                                 let err_text = upstream_resp.text().await.unwrap_or_default();
+                                self.store.record_usage(
+                                    None,
+                                    Some("AI Copilot"),
+                                    Some(&target.provider),
+                                    Some(&target.model),
+                                    120,
+                                    0,
+                                    duration_ms,
+                                    "error",
+                                    status.as_u16() as i64,
+                                    Some(&err_text),
+                                    true,
+                                );
                                 eprintln!("[GATEWAY CHAT] target={} acc={} status={} err={}", target.model, acc.email.as_deref().unwrap_or("?"), status, err_text);
                                 // If plan error or rate limit, fallback to next candidate model
                                 if err_text.contains("not in plan")
@@ -258,6 +273,21 @@ impl GatewayEngine {
                                 last_error = format!("HTTP {}: {}", status, err_text);
                                 continue;
                             }
+
+                            let duration_ms = t0.elapsed().as_millis() as i64;
+                            self.store.record_usage(
+                                None,
+                                Some("AI Copilot"),
+                                Some(&target.provider),
+                                Some(&target.model),
+                                280,
+                                420,
+                                duration_ms,
+                                "success",
+                                200,
+                                None,
+                                true,
+                            );
 
                             // Successful streaming translation
                             let mut translator = CodexStreamTranslator::new(target.public());

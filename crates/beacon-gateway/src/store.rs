@@ -558,6 +558,46 @@ impl GatewayStore {
         Ok(())
     }
 
+    pub fn record_usage(
+        &self,
+        key_id: Option<&str>,
+        key_name: Option<&str>,
+        provider: Option<&str>,
+        model: Option<&str>,
+        input_tokens: i64,
+        output_tokens: i64,
+        duration_ms: i64,
+        status: &str,
+        status_code: i64,
+        error: Option<&str>,
+        streaming: bool,
+    ) {
+        let conn = self.conn.lock();
+        let id = format!("usg_{}", uuid::Uuid::new_v4().simple());
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        let _ = conn.execute(
+            "INSERT INTO usage (id, ts, key_id, key_name, provider, model, input_tokens, output_tokens, duration_ms, status, status_code, error, streaming) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                id,
+                ts,
+                key_id,
+                key_name,
+                provider,
+                model,
+                input_tokens,
+                output_tokens,
+                duration_ms,
+                status,
+                status_code,
+                error,
+                if streaming { 1 } else { 0 }
+            ],
+        );
+    }
+
     pub fn get_stats(&self) -> Value {
         let conn = self.conn.lock();
         let mut stats = json!({
