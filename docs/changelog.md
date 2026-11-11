@@ -3,6 +3,9 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+
+::: v-pre
+
 ## [0.11.0] - 2026-11-12
 
 ### Added
@@ -607,3 +610,5 @@ tags and installers published in [GitHub Releases](https://github.com/nannndev/b
 
 - Initial React, FastAPI, and Tauri application.
 - Projects, environments, nested endpoint collections, import/export, dynamic variables, and concurrent API test execution.
+
+:::
