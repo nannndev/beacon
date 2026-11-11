@@ -41,8 +41,8 @@ function run(cmd, options = {}) {
 }
 
 async function main() {
-  console.log(pc.bold(pc.blue('🚀 Security Tools Setup')));
-  console.log(pc.dim('One-command setup for backend + frontend...\n'));
+  console.log(pc.bold(pc.blue('🚀 Beacon Setup')));
+  console.log(pc.dim('One-command setup for Rust backend + React frontend...\n'));
 
   // 1. Root
   log('=== Installing root deps ===', 'cyan');
@@ -58,18 +58,13 @@ async function main() {
   const landingDir = path.join(rootDir, 'landing');
   run('pnpm install', { cwd: landingDir });
 
-  // 4. Backend
-  log('=== Installing backend (FastAPI) ===', 'cyan');
-  const backendDir = path.join(rootDir, 'backend');
-  const pipCmd = process.platform === 'win32' 
-    ? 'py -m pip install -r requirements.txt || python -m pip install -r requirements.txt' 
-    : 'python3 -m pip install -r requirements.txt || python -m pip install -r requirements.txt';
-  
-  run(pipCmd, { cwd: backendDir });
+  // 4. Backend (Rust workspace)
+  log('=== Compiling Rust backend (Axum) ===', 'cyan');
+  run('cargo build -p beacon-server');
 
   success('Setup complete!');
   console.log(pc.green('\n✅ Ready!'));
-  console.log(pc.dim('Run "pnpm dev" to start both services together.\n'));
+  console.log(pc.dim('Run "pnpm dev" to start all services together.\n'));
 }
 
 main().catch(console.error);

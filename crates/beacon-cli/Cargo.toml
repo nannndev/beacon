@@ -1,0 +1,18 @@
+[package]
+name = "beacon-cli"
+version = "0.10.0"
+edition = "2021"
+
+[[bin]]
+name = "beacon_cli"
+path = "src/main.rs"
+
+[dependencies]
+beacon-core = { path = "../beacon-core" }
+beacon-server = { path = "../beacon-server" }
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+colored = "2.1"
+

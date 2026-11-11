@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
-import { TestConfig, Project, Endpoint, RunConfig, CollectionItem, ProjectNotifications, SharingStatus } from './types'
+import { useCallback, useState, useEffect, useRef } from 'react'
+import { TestConfig, Project, Endpoint, RunConfig, CollectionItem, ProjectNotifications, SharingStatus, AgentContextPayload, AgentLiveStatus, AgentBubbleAction } from './types'
 import { flattenItems, collectRequestsUnderFolder } from './lib/utils'
 import { insertIntoFolder, renameItem, duplicateFolder, removeItem } from './lib/tree'
 import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
+import { AgentDrawer } from './components/AgentDrawer'
+import { AgentTrigger } from './components/agent/AgentTrigger'
 import { EndpointTable } from './components/EndpointTable'
 import { ExecutionControls, ExecSettings, DEFAULT_SETTINGS, settingsToConfig, configToSettings } from './components/ExecutionControls'
 import LiveMonitor from './components/LiveMonitor'
@@ -20,10 +22,11 @@ import { SettingsDialog } from './components/dialogs/SettingsDialog'
 import { LoadingScreen } from './components/LoadingScreen'
 import { McpPage } from './pages/McpPage'
 import { CliPage } from './pages/CliPage'
+import { GatewayPage } from './pages/GatewayPage'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { applyThemePref, resolveTheme } from './lib/theme'
 import { track } from './lib/analytics'
-import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SquareTerminal, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon, Eye } from 'lucide-react'
+import { FilePlus, FolderPlus, Play, ListVideo, Square, History as HistoryIcon, Plug as PlugIcon, SquareTerminal, Bot as BotIcon, SlidersHorizontal, Globe, Braces, Upload as UploadIcon, Download as DownloadIcon, SunMoon, Eye, BrainCircuit } from 'lucide-react'
 import { ScenarioMonitor } from './components/ScenarioMonitor'
 import type { TestData } from './components/TestDataPicker'
 import type { CloneRepositoryResult, LinkedProjectImportResult, ScenarioResult, ScenarioRunStatus, SendResponse } from './lib/api'
@@ -102,6 +105,13 @@ function App() {
   const [showProjectSettings, setShowProjectSettings] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  const [showAgent, setShowAgent] = useState(false)
+  const [agentStatus, setAgentStatus] = useState<AgentLiveStatus>({ state: 'idle', mode: 'agent' })
+  const [agentOrigin, setAgentOrigin] = useState<{ x: number; y: number } | undefined>(undefined)
+  const agentActionRef = useRef<((action: AgentBubbleAction) => void) | null>(null)
+  const handleAgentActionReady = useCallback((fn: ((action: AgentBubbleAction) => void) | null) => {
+    agentActionRef.current = fn
+  }, [])
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
   const [scenarioLive, setScenarioLive] = useState<ScenarioRunStatus | null>(null)
   const [scenarioBusy, setScenarioBusy] = useState(false)
@@ -656,6 +666,28 @@ function App() {
     await fetchAll()
   }
 
+  // Keep the secret in a private environment variable, never in the request itself.
+  const createGatewayTestRequest = async (url: string, secret: string, model: string) => {
+    if (!currentProject || !currentEnv) { toast.error('Open a project with an environment first'); return }
+    try {
+      await api.captureEnvironmentVariable(currentProjectId, currentEnv.id, 'gateway_api_key', secret)
+      await api.createTest({
+        name: 'AI gateway chat completion',
+        url,
+        method: 'POST',
+        payload_type: 'json',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer {{gateway_api_key}}' },
+        payload: { model, messages: [{ role: 'user', content: 'Reply with the word pong.' }] },
+        assertions: [{ type: 'status', op: 'eq', value: 200 }, { type: 'jsonpath', path: 'choices.0.message.content', op: 'exists' }],
+      } as Partial<Endpoint>)
+      await fetchAll()
+      toast.success('Added "AI gateway chat completion" to this project')
+      appView.openWorkspace()
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to add the test request')
+    }
+  }
+
   const duplicateEndpoint = async (id: string) => {
     try { await api.duplicateTest(id); toast.success('Endpoint duplicated'); await fetchAll() }
     catch (e: any) { toast.error(e?.message || 'Failed to duplicate') }
@@ -951,12 +983,15 @@ function App() {
   const openNewEditorRef = useRef(openNewEditor)
   openNewEditorRef.current = openNewEditor
 
-  // ⌘K / Ctrl+K toggles the command palette from anywhere; ⌘N / Ctrl+N creates an endpoint.
+  // ⌘K / Ctrl+K toggles the command palette from anywhere; ⌘J / Ctrl+J toggles Beacon AI Agent; ⌘N / Ctrl+N creates an endpoint.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setShowPalette((p) => !p)
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault()
+        setShowAgent((a) => !a)
       } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n'
         && !showProjectSettings && appView.view === 'workspace') {
         // The palette advertises ⌘N; each new endpoint opens in its own tab,
@@ -995,6 +1030,8 @@ function App() {
     ...(run.status === 'running' ? [{ id: 'stop', label: 'Stop run', icon: Square, keywords: 'cancel halt', run: () => run.stop() } as Command] : []),
     { id: 'history', label: 'Open Run History', icon: HistoryIcon, keywords: 'runs past results', run: () => appView.openHistory() },
     { id: 'mcp', label: 'Open MCP Server', icon: PlugIcon, keywords: 'ai agent claude cursor', run: () => appView.openMcp() },
+    { id: 'beacon-agent', label: 'Open Beacon AI Agent', hint: '⌘J', icon: BrainCircuit, keywords: 'ai agent brain assistant copilot debug chat', run: () => setShowAgent(true) },
+    { id: 'gateway', label: 'Open AI Gateway', icon: BotIcon, keywords: 'llm proxy openai anthropic claude code keys', run: () => appView.openGateway() },
     { id: 'cli', label: 'Open CLI guide', icon: SquareTerminal, keywords: 'terminal ci github actions headless', run: () => appView.openCli() },
     { id: 'settings', label: 'Open Settings', icon: SlidersHorizontal, keywords: 'preferences config', run: () => setShowSettings(true) },
     { id: 'environments', label: 'Manage environments', icon: Globe, keywords: 'env base url variables', run: () => setShowEnvDialog(true) },
@@ -1006,6 +1043,59 @@ function App() {
     ] : []),
     { id: 'theme', label: 'Toggle light / dark', icon: SunMoon, keywords: 'appearance mode', run: () => applyThemePref(resolveTheme() === 'dark' ? 'light' : 'dark') },
   ]
+
+  const focusedEndpointId = editingId || selectedTestId
+  const focusedEndpoint = focusedEndpointId
+    ? (effectiveTests.find((t) => t.id === focusedEndpointId)
+      || (config.tests as Endpoint[]).find((t) => t.id === focusedEndpointId)
+      || null)
+    : null
+
+  const agentContext: AgentContextPayload = {
+    view: showEditor ? 'editor' : appView.view,
+    projectId: currentProjectId || null,
+    projectName: currentProject?.name || null,
+    baseUrl: config.base_url || null,
+    environmentName: currentEnv?.name || null,
+    selectedEndpointId: focusedEndpoint?.id || null,
+    selectedEndpointName: focusedEndpoint?.name || null,
+    selectedEndpointMethod: focusedEndpoint?.method || null,
+    selectedEndpointUrl: focusedEndpoint?.url || null,
+    selectedHistoryRunId: appView.view === 'history' ? (appView.runId || null) : null,
+    lastSendResult: sendResult?.response
+      ? {
+          status_code: sendResult.response.status_code,
+          elapsed_ms: Math.round(sendResult.response.elapsed_ms),
+          ok: sendResult.response.ok,
+          error: sendResult.response.error,
+          body_preview: (sendResult.response.body || '').slice(0, 600),
+          assertions_passed: sendResult.response.assertions?.filter((a) => a.passed).length,
+          assertions_failed: sendResult.response.assertions?.filter((a) => !a.passed).length,
+        }
+      : null,
+  }
+
+  const agentOverlay = (
+    <>
+      <AgentTrigger
+        open={showAgent}
+        onClick={() => setShowAgent(true)}
+        status={agentStatus}
+        onAnchorChange={setAgentOrigin}
+        onAction={(action) => agentActionRef.current?.(action)}
+      />
+      <AgentDrawer
+        open={showAgent}
+        onOpenChange={setShowAgent}
+        context={agentContext}
+        onWorkspaceChanged={fetchAll}
+        onOpenGateway={() => appView.openGateway()}
+        onStatusChange={setAgentStatus}
+        onActionReady={handleAgentActionReady}
+        origin={agentOrigin}
+      />
+    </>
+  )
 
   if (showIntro) {
     return <Onboarding onGetStarted={finishIntro} />
@@ -1024,6 +1114,7 @@ function App() {
           initialRunId={appView.runId}
           onBack={appView.openWorkspace}
         />
+        {agentOverlay}
       </div>
     )
   }
@@ -1033,6 +1124,17 @@ function App() {
       <div className="app-surface animate-fade-in h-screen text-foreground">
         <WorkspaceTraceBackground />
         <McpPage onBack={appView.openWorkspace} />
+        {agentOverlay}
+      </div>
+    )
+  }
+
+  if (appView.view === 'gateway') {
+    return (
+      <div className="app-surface animate-fade-in h-screen text-foreground">
+        <WorkspaceTraceBackground />
+        <GatewayPage onBack={appView.openWorkspace} onCreateTestRequest={createGatewayTestRequest} />
+        {agentOverlay}
       </div>
     )
   }
@@ -1042,6 +1144,7 @@ function App() {
       <div className="app-surface animate-fade-in h-screen text-foreground">
         <WorkspaceTraceBackground />
         <CliPage onBack={appView.openWorkspace} />
+        {agentOverlay}
       </div>
     )
   }
@@ -1071,6 +1174,7 @@ function App() {
         runAllDisabled={run.status === 'running'}
         onOpenMcp={() => appView.openMcp()}
         onOpenCli={() => appView.openCli()}
+        onOpenGateway={() => appView.openGateway()}
         onOpenHistory={() => appView.openHistory()}
         activeView={appView.view}
       />
@@ -1087,6 +1191,7 @@ function App() {
           onPreviewApis={() => openExportDialog('html')}
           exporting={exportingProject}
           onOpenMcp={() => appView.openMcp()}
+          onOpenAgent={() => setShowAgent(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenPalette={() => setShowPalette(true)}
         />
@@ -1241,6 +1346,7 @@ function App() {
       {confirmationDialog}
       <QuickEditDialog endpoint={quickEditEndpoint} onOpenChange={(open) => { if (!open) setQuickEditId(null) }} onSave={saveQuickEdit} />
       <TokenAutocomplete variables={config.variables || {}} />
+      {agentOverlay}
     </div>
   )
 }

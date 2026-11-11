@@ -79,6 +79,7 @@ Private environment values remain under the ignored `.beacon/` directory. Respon
 - Desktop app via Tauri with bundled FastAPI and MCP sidecars
 - Headless CLI for endpoint, folder, and full-project checks with JSON/JUnit reports and CI exit codes
 - Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
+- Local AI gateway: one OpenAI- and Anthropic-compatible endpoint for OpenAI, Anthropic, DeepSeek, OpenRouter, Groq, Ollama and more, with gateway keys, fallback combos and usage logs
 
 ## Quick Start
 

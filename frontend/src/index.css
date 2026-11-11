@@ -299,7 +299,7 @@
 
 .workspace-trace { z-index: 0; opacity: 0.72; }
 .dark .workspace-trace { opacity: 0.9; }
-.app-surface > :not(.workspace-trace) { position: relative; z-index: 1; }
+.app-surface > :not(.workspace-trace):not(.fixed) { position: relative; z-index: 1; }
 
 /* Subtle vertical sheen on the sidebar so it reads as a distinct, layered panel. */
 .sidebar-surface {
@@ -358,4 +358,117 @@
 
 .animate-arc-in {
   animation: arc-in 1.2s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ── 7Server-style Beacon AI Copilot metallic surfaces & character dock motion ── */
+:root {
+  --agent-rim: #cfcfd3;
+  --agent-metal-1: #ffffff;
+  --agent-metal-2: #f4f4f6;
+  --agent-metal-3: #e5e5ea;
+  --agent-metal-4: #ebebf0;
+  --agent-metal-rim-hi: #ffffff;
+  --agent-metal-rim-lo: #d1d1d6;
+  --agent-metal-lip: #b0b0b8;
+  --agent-metal-ink: #18181b;
+}
+
+.dark {
+  --agent-rim: #3a3a40;
+  --agent-metal-1: #e9e9ec;
+  --agent-metal-2: #c7c7cc;
+  --agent-metal-3: #b8b8be;
+  --agent-metal-4: #d2d2d7;
+  --agent-metal-rim-hi: #ffffff;
+  --agent-metal-rim-lo: #7c7c84;
+  --agent-metal-lip: #5d5d64;
+  --agent-metal-ink: #121214;
+}
+
+.btn-metal {
+  color: var(--agent-metal-ink) !important;
+  border-color: transparent !important;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px) padding-box,
+    linear-gradient(180deg, var(--agent-metal-1), var(--agent-metal-2) 48%, var(--agent-metal-3) 52%, var(--agent-metal-4)) padding-box,
+    linear-gradient(180deg, var(--agent-metal-rim-hi), var(--agent-metal-rim-lo)) border-box !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 1px 0 var(--agent-metal-lip),
+    0 2px 2px rgba(0, 0, 0, 0.08),
+    0 6px 14px -6px rgba(0, 0, 0, 0.12);
+  transition: transform 140ms cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.7, 0.2, 1), filter 160ms ease;
+}
+.dark .btn-metal {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+    0 1px 0 var(--agent-metal-lip),
+    0 2px 1px rgba(0, 0, 0, 0.35),
+    0 6px 14px -6px rgba(0, 0, 0, 0.55);
+}
+.btn-metal:hover { filter: brightness(1.05); }
+.btn-metal:active, .btn-metal[aria-pressed="true"] {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 -1px 0 rgba(255, 255, 255, 0.25), 0 0 0 var(--agent-metal-lip), 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+.btn-metal:disabled { filter: saturate(0.6) brightness(0.9); }
+
+@keyframes agent-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes agent-expand-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes copilot-msg-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
+.copilot-msg {
+  animation: copilot-msg-in 320ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.copilot-drawer {
+  transform-origin: center center;
+  transform: translate3d(var(--copilot-dx, 0px), var(--copilot-dy, 120px), 0) scale(0.05, 0.08);
+  border-radius: 36px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease,
+    width 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform, opacity, border-radius;
+}
+.copilot-drawer.is-open {
+  transform: translate3d(0, 0, 0) scale(1);
+  border-radius: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+.copilot-drawer > * {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 220ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.copilot-drawer.is-open > * { opacity: 1; transform: none; }
+.copilot-drawer.is-open > :nth-child(1) { transition-delay: 90ms; }
+.copilot-drawer.is-open > :nth-child(2) { transition-delay: 130ms; }
+.copilot-drawer.is-open > :nth-child(3) { transition-delay: 170ms; }
+.copilot-drawer.is-open > :nth-child(4) { transition-delay: 210ms; }
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

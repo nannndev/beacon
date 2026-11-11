@@ -1,9 +1,0 @@
-fastapi
-uvicorn[standard]
-pydantic
-requests
-cryptography
-python-multipart
-mcp>=1.2,<2
-PyYAML
-websocket-client

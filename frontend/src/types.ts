@@ -344,3 +344,289 @@ export interface RunResponse {
   ws_received_type?: string
   error?: string
 }
+
+export interface GatewayProvider {
+  id: string
+  alias: string
+  name: string
+  family: 'openai' | 'anthropic'
+  default_base_url: string
+  needs_key: boolean
+  connected: boolean
+  base_url: string | null
+  api_key: string | null
+  models: string[]
+  seed_models?: string[]
+  verified_at: number | null
+  latency_ms: number | null
+  cooling: boolean
+}
+
+export interface GatewayKey {
+  id: string
+  name: string
+  key_prefix: string
+  enabled: boolean
+  allowed_providers: string[] | null
+  rate_limit_per_min: number | null
+  created_at: number
+  last_used_at: number | null
+  total_requests: number
+  total_input_tokens: number
+  total_output_tokens: number
+}
+
+export interface GatewayUsage {
+  id: string
+  ts: number
+  key_name: string
+  provider: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  duration_ms: number
+  status: 'success' | 'error'
+  status_code: number
+  error: string | null
+  streaming: boolean
+}
+
+export interface GatewayStats {
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  errors: number
+  active_keys: number
+  connected_providers: number
+}
+
+export type OAuthProviderId =
+  | 'claude'
+  | 'codex'
+  | 'copilot'
+  | 'gemini-cli'
+  | 'kimi'
+  | 'kilocode'
+  | 'muse'
+  | 'nous'
+
+export interface OAuthProviderMeta {
+  id: OAuthProviderId
+  alias: string
+  name: string
+  plan: string
+  flow: 'redirect' | 'device'
+  family: string
+}
+
+export interface OAuthAccount {
+  id: string
+  provider: OAuthProviderId
+  label: string | null
+  email: string | null
+  connected_at: number
+  refreshed_at: number | null
+  expires_at: number | null
+  last_error: string | null
+}
+
+export interface OAuthQuotaWindow {
+  label: string
+  used_pct: number
+  resets_at: string | null
+}
+
+export interface OAuthProviderUsageStats {
+  today_requests?: number
+  today_tokens?: number
+  total_requests?: number
+  total_tokens?: number
+}
+
+export interface OAuthAccountUsage {
+  provider: OAuthProviderId
+  account_id: string
+  email: string | null
+  last_error: string | null
+  windows: OAuthQuotaWindow[]
+  plan?: string | null
+  limit_reached?: boolean
+  error?: string
+  fetched_at?: number
+  gateway_stats: OAuthProviderUsageStats
+}
+
+export interface GatewaySettings {
+  routing_strategy: 'ordered' | 'round_robin'
+  gemini_oauth_client_id: string
+  gemini_oauth_client_secret_masked: string | null
+  gemini_oauth_configured: boolean
+}
+
+export interface OAuthAccountsState {
+  accounts: OAuthAccount[]
+  models: Record<string, string[]>
+  aliases: Record<string, string>
+  providers: OAuthProviderMeta[]
+  settings: GatewaySettings
+}
+
+export interface OAuthLoginStart {
+  kind: 'redirect' | 'device'
+  session_id: string
+  auth_url?: string
+  redirect_uri?: string
+  auto_callback?: boolean
+  user_code?: string
+  verification_uri?: string
+  interval?: number
+  expires_in?: number
+}
+
+// ── Beacon AI Agent ──────────────────────────────────────────────────────────
+
+export type AgentApprovalMode = 'safe' | 'agent' | 'full'
+
+export type AgentToolTier = 'read' | 'probe' | 'write' | 'heavy'
+
+export interface AgentToolCall {
+  id: string
+  type: 'function'
+  function: {
+    name: string
+    arguments: string
+  }
+}
+
+export interface AgentPendingCall {
+  id: string
+  name: string
+  tier: AgentToolTier
+  summary: string
+  arguments: Record<string, any>
+}
+
+export interface AgentToolExecution {
+  call_id: string
+  name: string
+  tier?: AgentToolTier
+  summary: string
+  arguments?: Record<string, any>
+  status: 'running' | 'done' | 'error' | 'skipped'
+  ok?: boolean
+  mutated?: boolean
+  result?: Record<string, any>
+}
+
+export interface AgentErrorInfo {
+  title: string
+  items?: Array<{ provider: string; reason: string; detail?: string }>
+  hint?: string
+}
+
+export interface AgentMessage {
+  id: string
+  role: 'user' | 'assistant'
+  kind?: 'compact'
+  content: string
+  model?: string
+  step?: number
+  createdAt: number
+  toolExecutions?: AgentToolExecution[]
+  rawAssistantMessage?: {
+    role: 'assistant'
+    content: string
+    tool_calls?: AgentToolCall[]
+  }
+  toolFollowups?: Array<{
+    role: 'tool'
+    tool_call_id: string
+    content: string
+  }>
+  pendingApproval?: {
+    calls: AgentPendingCall[]
+    resolved?: 'approved' | 'skipped'
+  }
+  error?: AgentErrorInfo
+}
+
+export interface AgentCustomSkill {
+  id: string
+  name: string
+  description?: string
+  triggers?: string
+  content: string
+  enabled: boolean
+}
+
+export interface AgentPreferences {
+  language: 'auto' | 'id' | 'en'
+  style: 'concise' | 'balanced' | 'detailed'
+  guides: string[]
+  skills: AgentCustomSkill[]
+  custom: string
+  projectNotes: Record<string, string>
+  maxSteps: number
+}
+
+export interface AgentModelsCatalog {
+  has_any: boolean
+  default_model: string | null
+  combos: Array<{ id: string; label: string; targets: string[] }>
+  subscriptions: Array<{ provider: string; alias: string; models: string[] }>
+  apikeys: Array<{ provider: string; alias: string; models: string[] }>
+}
+
+export interface AgentContextPayload {
+  view: string
+  projectId: string | null
+  projectName: string | null
+  baseUrl?: string | null
+  environmentName?: string | null
+  selectedEndpointId?: string | null
+  selectedEndpointName?: string | null
+  selectedEndpointMethod?: string | null
+  selectedEndpointUrl?: string | null
+  selectedHistoryRunId?: string | null
+  lastSendResult?: {
+    status_code?: number
+    elapsed_ms?: number
+    ok?: boolean
+    error?: string
+    body_preview?: string
+    assertions_passed?: number
+    assertions_failed?: number
+  } | null
+  preferences?: Partial<AgentPreferences>
+}
+
+export interface AgentSession {
+  id: string
+  title: string
+  updatedAt: number
+  projectId?: string | null
+  projectName?: string | null
+  model: string
+  approvalMode: AgentApprovalMode
+  messages: AgentMessage[]
+}
+
+export type AgentBubbleAction =
+  | 'approve'
+  | 'approveAll'
+  | 'skip'
+  | 'stop'
+  | 'retry'
+  | 'dismiss'
+
+export interface AgentLiveStatus {
+  state: 'idle' | 'thinking' | 'executing' | 'approval' | 'limit' | 'done' | 'error'
+  mode: AgentApprovalMode
+  projectName?: string
+  command?: string
+  preview?: string
+  step?: number
+  maxSteps?: number
+  pendingCount?: number
+  isRisky?: boolean
+}

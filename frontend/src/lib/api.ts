@@ -1,6 +1,29 @@
 // Centralized backend calls. All paths are proxied to the FastAPI backend by Vite.
 // For desktop builds (Tauri production), we use a full backend URL.
-import { TestConfig, Endpoint, RunConfig, ProjectNotifications, MonitorResult, ProjectRevision, SharingStatus, ProjectFileSyncStatus, ProjectGitStatus, ProjectGitDiff, ProjectGitBranches, ProjectGitBranchComparison } from '../types'
+import {
+  TestConfig,
+  Endpoint,
+  RunConfig,
+  ProjectNotifications,
+  MonitorResult,
+  GatewayProvider,
+  GatewayKey,
+  GatewayUsage,
+  GatewayStats,
+  GatewaySettings,
+  OAuthAccount,
+  OAuthAccountsState,
+  OAuthAccountUsage,
+  OAuthLoginStart,
+  OAuthProviderUsageStats,
+  ProjectRevision,
+  SharingStatus,
+  ProjectFileSyncStatus,
+  ProjectGitStatus,
+  ProjectGitDiff,
+  ProjectGitBranches,
+  ProjectGitBranchComparison,
+} from '../types'
 import { isDesktop } from './platform'
 import type {
   HistoryCompareResult,
@@ -34,7 +57,7 @@ async function resolveBase(): Promise<string> {
   return '' // dev: relative paths hit the Vite proxy
 }
 
-function getBase(): Promise<string> {
+export function getBase(): Promise<string> {
   if (!basePromise) basePromise = resolveBase()
   return basePromise
 }
@@ -321,6 +344,76 @@ export const api = {
   updateNotifications: (id: string, notifications: ProjectNotifications) =>
     req(`/projects/${id}`, jsonInit('PUT', { notifications })),
   monitorStatus: () => req<Record<string, MonitorResult>>('/monitor/status'),
+  gatewayProviders: () => req<{ providers: GatewayProvider[] }>('/gateway/admin/providers'),
+  gatewayConnect: (id: string, api_key: string, base_url: string) =>
+    req<GatewayProvider>(`/gateway/admin/providers/${id}/connect`, jsonInit('POST', { api_key, base_url })),
+  gatewayDisconnect: (id: string) => req<GatewayProvider>(`/gateway/admin/providers/${id}/disconnect`, jsonInit('POST')),
+  gatewayKeys: () => req<{ keys: GatewayKey[] }>('/gateway/admin/keys'),
+  gatewayCreateKey: (
+    name: string,
+    opts?: { allowed_providers?: string[]; rate_limit_per_min?: number | null },
+  ) =>
+    req<{ key: GatewayKey & { key: string } }>(
+      '/gateway/admin/keys',
+      jsonInit('POST', {
+        name,
+        ...(opts?.allowed_providers?.length ? { allowed_providers: opts.allowed_providers } : {}),
+        ...(opts?.rate_limit_per_min ? { rate_limit_per_min: opts.rate_limit_per_min } : {}),
+      }),
+    ),
+  gatewayToggleKey: (id: string) => req<{ key: GatewayKey }>(`/gateway/admin/keys/${id}/toggle`, jsonInit('PATCH', {})),
+  gatewayDeleteKey: (id: string) => req(`/gateway/admin/keys/${id}`, jsonInit('DELETE')),
+  gatewayCombos: () => req<{ combos: Record<string, string[]> }>('/gateway/admin/combos'),
+  gatewaySaveCombo: (name: string, targets: string[]) =>
+    req<{ combos: Record<string, string[]> }>(`/gateway/admin/combos/${encodeURIComponent(name)}`, jsonInit('PUT', { targets })),
+  gatewayDeleteCombo: (name: string) =>
+    req<{ combos: Record<string, string[]> }>(`/gateway/admin/combos/${encodeURIComponent(name)}`, jsonInit('DELETE')),
+  gatewayModels: () => req<{ models: { id: string; owned_by: string }[] }>('/gateway/admin/models'),
+  gatewayUsage: (limit = 100) => req<{ usage: GatewayUsage[] }>(`/gateway/admin/usage?limit=${limit}`),
+  gatewayClearUsage: () => req<{ status: string }>('/gateway/admin/usage', jsonInit('DELETE')),
+  gatewayStats: () => req<GatewayStats>('/gateway/admin/stats'),
+  gatewaySettings: () => req<{ settings: GatewaySettings }>('/gateway/admin/settings'),
+  gatewayUpdateSettings: (body: {
+    routing_strategy?: 'ordered' | 'round_robin'
+    gemini_oauth_client_id?: string
+    gemini_oauth_client_secret?: string
+    clear_gemini_secret?: boolean
+  }) => req<{ settings: GatewaySettings }>('/gateway/admin/settings', jsonInit('POST', body)),
+  gatewayAccounts: () => req<OAuthAccountsState>('/gateway/admin/accounts'),
+  gatewayAccountUsage: (fresh = false) =>
+    req<{ usage: OAuthAccountUsage[]; summary: Record<string, OAuthProviderUsageStats> }>(
+      `/gateway/admin/accounts/usage?fresh=${fresh ? 'true' : 'false'}&tz_offset_min=${-new Date().getTimezoneOffset()}`,
+    ),
+  gatewayAccountStart: (
+    provider: string,
+    body?: { account_id?: string; label?: string; gemini_oauth_client_id?: string; gemini_oauth_client_secret?: string },
+  ) => req<OAuthLoginStart>(`/gateway/admin/accounts/${encodeURIComponent(provider)}/start`, jsonInit('POST', body || {})),
+  gatewayAccountComplete: (
+    provider: string,
+    body: { session_id: string; callback: string; account_id?: string; label?: string },
+  ) => req<OAuthAccountsState & { account: OAuthAccount }>(
+    `/gateway/admin/accounts/${encodeURIComponent(provider)}/complete`,
+    jsonInit('POST', body),
+  ),
+  gatewayAccountPoll: (
+    provider: string,
+    body: { session_id: string; account_id?: string; label?: string },
+  ) => req<
+    | { status: 'pending' }
+    | ({ status: 'done'; account: OAuthAccount } & OAuthAccountsState)
+  >(`/gateway/admin/accounts/${encodeURIComponent(provider)}/poll`, jsonInit('POST', body)),
+  gatewayAccountTest: (provider: string, account_id?: string) =>
+    req<{ valid: boolean; latency_ms?: number; email?: string | null; models?: string[]; error?: string }>(
+      `/gateway/admin/accounts/${encodeURIComponent(provider)}/test`,
+      jsonInit('POST', account_id ? { account_id } : {}),
+    ),
+  gatewayAccountReorder: (provider: string, account_ids: string[]) =>
+    req<OAuthAccountsState>(`/gateway/admin/accounts/${encodeURIComponent(provider)}/reorder`, jsonInit('POST', { account_ids })),
+  gatewayAccountDelete: (provider: string, account_id?: string) =>
+    req<OAuthAccountsState>(
+      `/gateway/admin/accounts/${encodeURIComponent(provider)}${account_id ? `?account_id=${encodeURIComponent(account_id)}` : ''}`,
+      jsonInit('DELETE'),
+    ),
   testNotification: (id: string, webhook_url: string) =>
     req<{ ok: boolean; error?: string }>(
       `/projects/${id}/notifications/test`,

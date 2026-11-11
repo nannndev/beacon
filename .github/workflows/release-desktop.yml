@@ -33,8 +33,6 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      BEACON_PYTHON: python
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,27 +46,15 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: frontend/src-tauri
-
-      - name: Install backend dependencies (+ PyInstaller)
-        working-directory: backend
-        run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Verify desktop build Python
-        run: python -c "import PyInstaller; print('PyInstaller', PyInstaller.__version__)"
+          workspaces: |
+            .
+            frontend/src-tauri
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -118,9 +104,7 @@ jobs:
         env:
           GITHUB_REF: ${{ github.ref }}
 
-      # Builds the Python sidecars (backend + mcp_server) + Tauri desktop app.
-      # The signing key env vars are required because createUpdaterArtifacts is
-      # on — the build emits a signed installer + a .sig used by the updater.
+      # Builds the Rust native sidecars (backend + mcp_server + cli) + Tauri desktop app.
       - name: Build backend sidecar + desktop app
         working-directory: frontend
         env:
@@ -128,12 +112,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm run desktop:build
 
-      - name: Smoke-test packaged backend sharing routes
+      - name: Smoke-test packaged backend routes
         shell: pwsh
         run: |
           $env:BEACON_PORT = "18765"
           $env:BEACON_DATA_DIR = Join-Path $env:RUNNER_TEMP "beacon-smoke"
-          $env:BEACON_ALLOW_INSECURE_LAN = "1"
           New-Item -ItemType Directory -Force $env:BEACON_DATA_DIR | Out-Null
           $backend = Resolve-Path "frontend/src-tauri/backend-x86_64-pc-windows-msvc.exe"
           $process = Start-Process -FilePath $backend -ArgumentList "--port", "18765" -PassThru
@@ -141,16 +124,13 @@ jobs:
             $ready = $false
             for ($attempt = 0; $attempt -lt 30; $attempt++) {
               try {
-                $openapi = Invoke-RestMethod "http://127.0.0.1:18765/openapi.json"
-                $hasSharing = $null -ne $openapi.paths.'/sharing/projects/{project_id}'
-                $hasScenario = $null -ne $openapi.paths.'/scenario/start'
                 $info = Invoke-RestMethod "http://127.0.0.1:18765/system/info"
-                if ($hasSharing -and $hasScenario -and $info.capabilities -contains 'sharing.v1') { $ready = $true; break }
+                if ($info.api_protocol -eq 2) { $ready = $true; break }
               } catch {
                 Start-Sleep -Seconds 1
               }
             }
-            if (-not $ready) { throw "Packaged backend did not expose Scenario + Sharing capabilities" }
+            if (-not $ready) { throw "Packaged Rust backend did not start cleanly" }
           } finally {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           }
@@ -158,8 +138,8 @@ jobs:
       - name: Prepare standalone Windows CLI
         shell: pwsh
         run: |
-          backend/dist/beacon_cli.exe --version
-          Copy-Item backend/dist/beacon_cli.exe beacon-windows-x64.exe
+          target/release/beacon_cli.exe --version
+          Copy-Item target/release/beacon_cli.exe beacon-windows-x64.exe
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -174,8 +154,6 @@ jobs:
 
   build-macos:
     runs-on: macos-15
-    env:
-      BEACON_PYTHON: python3
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -189,22 +167,15 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: frontend/src-tauri
-
-      - name: Install desktop backend dependencies
-        working-directory: backend
-        run: python3 -m pip install -r requirements-desktop.txt
+          workspaces: |
+            .
+            frontend/src-tauri
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -246,8 +217,8 @@ jobs:
 
       - name: Prepare standalone macOS CLI
         run: |
-          backend/dist/beacon_cli --version
-          cp backend/dist/beacon_cli beacon-macos-arm64
+          target/release/beacon_cli --version
+          cp target/release/beacon_cli beacon-macos-arm64
           chmod +x beacon-macos-arm64
 
       - name: Upload macOS artifacts
@@ -256,8 +227,6 @@ jobs:
           name: beacon-macos-arm64
           if-no-files-found: error
           retention-days: 14
-          # DMG for manual download + the .app.tar.gz updater artifact (and its
-          # signature) so the in-app updater can offer macOS updates too.
           path: |
             frontend/src-tauri/target/release/bundle/dmg/*.dmg
             frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz
@@ -266,8 +235,6 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-22.04
-    env:
-      BEACON_PYTHON: python3
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -296,22 +263,15 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: frontend/src-tauri
-
-      - name: Install desktop backend dependencies
-        working-directory: backend
-        run: python3 -m pip install -r requirements-desktop.txt
+          workspaces: |
+            .
+            frontend/src-tauri
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -353,8 +313,8 @@ jobs:
 
       - name: Prepare standalone Linux CLI
         run: |
-          backend/dist/beacon_cli --version
-          cp backend/dist/beacon_cli beacon-linux-x64
+          target/release/beacon_cli --version
+          cp target/release/beacon_cli beacon-linux-x64
           chmod +x beacon-linux-x64
 
       - name: Upload Linux artifacts
@@ -370,8 +330,6 @@ jobs:
             frontend/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
             beacon-linux-x64
 
-  # Dedicated job: collects the verified Windows installer and creates one clean release.
-  # This ensures we attach only the installers (no source code in the main assets).
   release:
     needs: [build, build-macos, build-linux]
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')
@@ -414,7 +372,7 @@ jobs:
             printf '## Beacon %s\n\n' "$REL_VER"
             printf '%s\n\n' "$CHANGELOG"
             printf '## Downloads\n\n'
-            printf 'The desktop app includes the backend, MCP server, and Beacon CLI. No Python installation is required.\n\n'
+            printf 'The desktop app includes the native Rust backend, MCP server, and Beacon CLI. No Python runtime is required.\n\n'
             printf -- '- **Windows 10/11 (x64):** download and run the `.exe`.\n'
             printf -- '- **macOS (Apple Silicon):** open the `.dmg` and drag Beacon to Applications.\n'
             printf -- '- **Linux (x64):** use the `.AppImage` or install the `.deb`.\n\n'
@@ -423,9 +381,6 @@ jobs:
             printf 'After the first install, Beacon can update itself in-app.\n'
           } > artifacts/release-notes.md
 
-      # Build the Tauri v2 updater manifest that the in-app updater polls at
-      # /releases/latest/download/latest.json. Assembles one entry per platform
-      # whose signed updater artifact is present (Windows .exe, macOS .app.tar.gz).
       - name: Generate updater manifest (latest.json)
         env:
           REL_VER: ${{ steps.ver.outputs.release_version }}
@@ -435,13 +390,9 @@ jobs:
           PLATFORMS='{}'
 
           add_platform() {
-            # $1 = tauri platform key, $2 = artifact file path (may be nested)
             local key="$1" file="$2"
             local base sig url
             base=$(basename "$file")
-            # The .sig sits next to the artifact; downloaded artifacts keep their
-            # bundle subdirs (e.g. macos/), so search recursively rather than
-            # assuming a flat artifacts/ layout.
             sig=$(find artifacts -name "${base}.sig" | head -1)
             if [ -z "$sig" ] || [ ! -f "$sig" ]; then
               echo "::error::Missing signature for ${base} — was TAURI_SIGNING_PRIVATE_KEY set on the build job?"
@@ -454,7 +405,6 @@ jobs:
             echo "  + $key -> $base"
           }
 
-          # find (recursive) — artifacts land in per-bundle subdirs (nsis/, macos/).
           EXE=$(find artifacts -name '*-setup.exe' | head -1)
           [ -n "$EXE" ] && add_platform "windows-x86_64" "$EXE"
 
@@ -481,7 +431,6 @@ jobs:
       - name: Publish Desktop Installers to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # For real tags, reuse the tag that triggered us. For manual dispatch we synthesize a tag.
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.ver.outputs.release_version) }}
           name: Beacon ${{ steps.ver.outputs.release_version }}
           generate_release_notes: true
@@ -500,9 +449,6 @@ jobs:
             artifacts/**/beacon-linux-x64
             artifacts/latest.json
 
-      # Announce inline here rather than via a separate `release: published`
-      # workflow — releases created by GITHUB_TOKEN do NOT trigger that event,
-      # so the old discord-changelog.yml never fired on auto-releases.
       - name: Announce release to Discord
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -516,7 +462,6 @@ jobs:
           fi
           TAG="v${REL_VER}"
           URL="https://github.com/${REPO}/releases/tag/${TAG}"
-          # Pull this version's section out of docs/changelog.md (drop the Compare line).
           BODY=$(awk -v v="$REL_VER" '$0 ~ ("^## \\[" v "\\]") {f=1; next} /^## \[/{f=0} f' docs/changelog.md 2>/dev/null | sed '/^\[Compare/d' | head -c 3800)
           [ -z "$BODY" ] && BODY="A new Beacon release is out — see the notes and download on GitHub."
           payload=$(jq -n \
