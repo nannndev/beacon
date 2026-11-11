@@ -287,3 +287,4 @@ export function ProviderLogo({ provider, size = 'sm', className = '', badge = fa
     </span>
   )
 }
+

@@ -170,6 +170,7 @@ pub async fn start_run(
     let state_clone = state.clone();
     let run_id_clone = run_id.clone();
 
+    let mode_clone = mode.clone();
     tokio::spawn(async move {
         let tester = APITester::new(
             test,
@@ -180,57 +181,67 @@ pub async fn start_run(
             Some(Arc::clone(&run_clone.stop_flag)),
         );
 
-        let snap = tester
-            .run_load(|snap, maybe_output| {
-                let snap_val = serde_json::to_value(snap).unwrap_or(json!({}));
-                *run_clone.stats.write() = snap_val.clone();
-                state_clone.broadcast_ws(json!({
-                    "type": "stats",
-                    "run_id": run_id_clone,
-                    "stats": snap_val
-                }));
-
-                if let Some(out) = maybe_output {
-                    let out_val = serde_json::to_value(out).unwrap_or(json!({}));
-                    {
-                        let mut resp_lock = run_clone.responses.write();
-                        resp_lock.push(out_val.clone());
-                        if resp_lock.len() > 100 {
-                            resp_lock.remove(0);
-                        }
-                    }
-                    state_clone.broadcast_ws(json!({
-                        "type": "response",
-                        "run_id": run_id_clone,
-                        "response": out_val
-                    }));
-
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    let log_entry = format!("[{}] {} {} -> {}", ts, out.method, out.target_url, out.status);
-                    {
-                        let mut log_lock = run_clone.logs.write();
-                        log_lock.push(log_entry.clone());
-                        if log_lock.len() > 100 {
-                            log_lock.remove(0);
-                        }
-                    }
-                    state_clone.broadcast_ws(json!({
-                        "type": "log",
-                        "run_id": run_id_clone,
-                        "message": log_entry
-                    }));
+        let push_log = |run: &ActiveRun, state: &AppState, rid: &str, message: String| {
+            let entry = format!("[{}] {}", Local::now().format("%H:%M:%S"), message);
+            {
+                let mut log_lock = run.logs.write();
+                log_lock.push(entry.clone());
+                if log_lock.len() > 100 {
+                    log_lock.remove(0);
                 }
-            })
+            }
+            state.broadcast_ws(json!({ "type": "log", "run_id": rid, "message": entry }));
+        };
+
+        // `delay` arrives in seconds; the tester takes the same body via `params`.
+        let mut params = payload.clone();
+        if use_min_delay {
+            params["delay"] = json!(0.001);
+        }
+
+        let snap = tester
+            .run_mode(
+                &mode_clone,
+                &params,
+                &mut |snap, maybe_output| {
+                    let snap_val = serde_json::to_value(snap).unwrap_or(json!({}));
+                    *run_clone.stats.write() = snap_val.clone();
+                    state_clone.broadcast_ws(json!({ "type": "stats", "run_id": run_id_clone, "stats": snap_val }));
+
+                    if let Some(out) = maybe_output {
+                        let out_val = serde_json::to_value(out).unwrap_or(json!({}));
+                        {
+                            let mut resp_lock = run_clone.responses.write();
+                            resp_lock.push(out_val.clone());
+                            if resp_lock.len() > 100 {
+                                resp_lock.remove(0);
+                            }
+                        }
+                        state_clone.broadcast_ws(json!({ "type": "response", "run_id": run_id_clone, "response": out_val }));
+                        push_log(
+                            &run_clone,
+                            &state_clone,
+                            &run_id_clone,
+                            format!("{} {} -> {} ({:.0}ms)", out.method, out.target_url, out.status, out.time_ms),
+                        );
+                    }
+                },
+                &mut |line| push_log(&run_clone, &state_clone, &run_id_clone, line),
+            )
             .await;
 
+        let stopped = run_clone.stop_flag.load(std::sync::atomic::Ordering::Relaxed);
         let final_snap = serde_json::to_value(&snap).unwrap_or(json!({}));
-        *run_clone.stats.write() = final_snap;
-        *run_clone.status.write() = "finished".into();
+        *run_clone.stats.write() = final_snap.clone();
+        *run_clone.status.write() = if stopped { "stopped" } else { "finished" }.into();
 
+        state_clone.broadcast_ws(json!({ "type": "stats", "run_id": run_id_clone, "stats": final_snap }));
+        // The frontend ends a run when it sees a log line containing "run_finished".
+        state_clone.broadcast_ws(json!({ "type": "log", "run_id": run_id_clone, "message": "run_finished" }));
         state_clone.broadcast_ws(json!({
             "type": "run_finished",
             "run_id": run_id_clone,
-            "status": "finished"
+            "status": if stopped { "stopped" } else { "finished" }
         }));
     });
 

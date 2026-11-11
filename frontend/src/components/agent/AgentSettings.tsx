@@ -149,29 +149,42 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
               />
             </div>
             <div className="grid grid-cols-[76px_1fr] items-center gap-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground">Scope</span>
+              <Seg
+                label="Scope"
+                value={draft.scope}
+                onChange={(scope) => set({ scope })}
+                options={[
+                  ['global', 'Global (all projects)'],
+                  ['workspace', 'This workspace only'],
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-[76px_1fr] items-center gap-2.5">
               <span className="text-[11px] font-medium text-muted-foreground">Max steps</span>
               <div className="flex items-center gap-1.5 min-w-0">
                 <Seg
                   label="Max steps"
-                  value={[6, 10, 16, 20].includes(draft.maxSteps) ? String(draft.maxSteps) : 'custom'}
+                  value={[6, 10, 20, 0].includes(draft.maxSteps) ? String(draft.maxSteps) : 'custom'}
                   onChange={(v) => {
                     if (v !== 'custom') set({ maxSteps: Number(v) })
                   }}
                   options={[
                     ['6', '6'],
                     ['10', '10'],
-                    ['16', '16'],
                     ['20', '20'],
+                    ['0', 'Unlimited'],
                   ]}
                 />
                 <input
                   type="number"
-                  min={2}
-                  max={20}
+                  min={0}
+                  max={500}
                   value={draft.maxSteps}
-                  aria-label="Max steps"
+                  aria-label="Max steps (0 = unlimited)"
+                  title="0 = unlimited"
                   onChange={(e) => {
-                    const n = Math.max(2, Math.min(20, Math.floor(Number(e.target.value) || 10)))
+                    const n = Math.max(0, Math.min(500, Math.floor(Number(e.target.value) || 0)))
                     set({ maxSteps: n })
                   }}
                   className="w-14 h-[29px] px-2 rounded-lg border border-border bg-background text-[11px] font-mono tabular-nums text-center text-foreground focus:outline-none focus:border-ring shrink-0"

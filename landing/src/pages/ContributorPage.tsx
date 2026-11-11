@@ -93,7 +93,7 @@ const RULES = [
   'Use Beacon only against systems you own or are explicitly authorized to test.',
   'Remove bearer tokens, JWTs, target details, logs, and operational config before sharing.',
   'Keep changes focused and document the exact commands used to verify them.',
-  'Testing-engine changes must stay synchronized across both Python implementations.',
+  'Testing-engine changes go in crates/beacon-core, the single source of truth for every run mode.',
   'Treat contributors respectfully and report conduct or security concerns privately.',
 ]
 

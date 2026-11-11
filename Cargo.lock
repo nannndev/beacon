@@ -234,7 +234,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "beacon-agent"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-stream",
  "axum",
@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "beacon-cli"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "beacon-core",
  "beacon-server",
@@ -264,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "beacon-core"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "beacon-gateway"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -307,10 +307,12 @@ dependencies = [
 
 [[package]]
 name = "beacon-mcp"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
+ "beacon-agent",
  "beacon-core",
  "beacon-server",
+ "parking_lot",
  "serde",
  "serde_json",
  "tokio",
@@ -320,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "beacon-server"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "axum",
  "beacon-agent",

@@ -9,6 +9,101 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Base prompt plus the live UI context and user preferences the frontend sends
+/// with every chat request (project, environment, selection, language, guides,
+/// custom instructions, project notes, enabled SKILL.md files, scope).
+pub fn build_system_prompt(context: &Value) -> String {
+    let s = |k: &str| context.get(k).and_then(|v| v.as_str()).filter(|v| !v.is_empty());
+    let mut out = String::from(BEACON_AGENT_SYSTEM_PROMPT);
+    if context.is_null() {
+        return out;
+    }
+    out.push_str("\n\nLIVE WORKSPACE CONTEXT (from the Beacon UI right now):\n");
+    match s("projectName") {
+        Some(name) => out.push_str(&format!("- Active project: {} (id={})\n", name, s("projectId").unwrap_or("?"))),
+        None => out.push_str("- Active project: none selected\n"),
+    }
+    if let Some(env) = s("environmentName") {
+        out.push_str(&format!("- Environment: {}\n", env));
+    }
+    out.push_str(&format!("- Base URL: {}\n", s("baseUrl").unwrap_or("(unset)")));
+    if let Some(view) = s("view") {
+        out.push_str(&format!("- Current view: {}\n", view));
+    }
+    if let Some(ep) = s("selectedEndpointName") {
+        out.push_str(&format!(
+            "- Selected endpoint: {} {} (name=\"{}\", id={})\n",
+            s("selectedEndpointMethod").unwrap_or("GET"),
+            s("selectedEndpointUrl").unwrap_or(""),
+            ep,
+            s("selectedEndpointId").unwrap_or("")
+        ));
+    }
+    if let Some(r) = context.get("lastSendResult").filter(|v| v.is_object()) {
+        out.push_str(&format!(
+            "- Last send result: HTTP {} in {}ms, ok={}{}\n",
+            r.get("status_code").map(|v| v.to_string()).unwrap_or_else(|| "error".into()),
+            r.get("elapsed_ms").map(|v| v.to_string()).unwrap_or_else(|| "?".into()),
+            r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+            r.get("error").and_then(|v| v.as_str()).map(|e| format!(", error: {}", e)).unwrap_or_default()
+        ));
+    }
+
+    let prefs = match context.get("preferences").filter(|v| v.is_object()) {
+        Some(p) => p,
+        None => return out,
+    };
+    let ps = |k: &str| prefs.get(k).and_then(|v| v.as_str()).filter(|v| !v.is_empty());
+    out.push_str("\nUSER PREFERENCES:\n");
+    match ps("scope") {
+        Some("workspace") => out.push_str(&format!(
+            "- Scope: WORKSPACE-LOCKED to the active project{}. Do not call beacon_switch_project or beacon_create_project unless the user explicitly asks to change projects.\n",
+            s("projectName").map(|n| format!(" \"{}\"", n)).unwrap_or_default()
+        )),
+        _ => out.push_str("- Scope: GLOBAL. You may list, switch, and create projects freely with the project tools.\n"),
+    }
+    match ps("language") {
+        Some("id") => out.push_str("- Language: always reply in Indonesian.\n"),
+        Some("en") => out.push_str("- Language: always reply in English.\n"),
+        _ => {}
+    }
+    match ps("style") {
+        Some("concise") => out.push_str("- Length: concise, no filler.\n"),
+        Some("detailed") => out.push_str("- Length: detailed, with explanations.\n"),
+        _ => {}
+    }
+    if let Some(guides) = prefs.get("guides").and_then(|g| g.as_array()) {
+        for g in guides.iter().filter_map(|g| g.as_str()) {
+            let text = match g {
+                "verify-live-first" => "Inspect state or probe with a single request before mutating endpoints or running concurrent load.",
+                "capture-examples" => "When an endpoint succeeds live, capture its response as the documented example and add smart assertions.",
+                "explain-actions" => "Briefly state what each tool action checks or modifies before invoking it.",
+                "summary-table" => "Conclude audits, scenarios, and multi-endpoint runs with a concise markdown summary table.",
+                other => other,
+            };
+            out.push_str(&format!("- Guide: {}\n", text));
+        }
+    }
+    if let Some(custom) = ps("custom") {
+        out.push_str(&format!("- Custom instructions: {}\n", custom));
+    }
+    if let (Some(pid), Some(notes)) = (s("projectId"), prefs.get("projectNotes").and_then(|n| n.as_object())) {
+        if let Some(note) = notes.get(pid).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+            out.push_str(&format!("- Notes for this project: {}\n", note));
+        }
+    }
+    if let Some(skills) = prefs.get("skills").and_then(|k| k.as_array()) {
+        for sk in skills.iter().filter(|sk| sk.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false)) {
+            let name = sk.get("name").and_then(|v| v.as_str()).unwrap_or("skill");
+            let content: String = sk.get("content").and_then(|v| v.as_str()).unwrap_or("").chars().take(4000).collect();
+            if !content.trim().is_empty() {
+                out.push_str(&format!("\nSKILL \"{}\":\n{}\n", name, content));
+            }
+        }
+    }
+    out
+}
+
 pub struct AgentOrchestrator {
     pub gateway: GatewayEngine,
 }
@@ -23,6 +118,8 @@ impl AgentOrchestrator {
         mut messages: Vec<Value>,
         model: Option<String>,
         workspace: Arc<dyn WorkspaceOps>,
+        max_steps: usize,
+        context: Value,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         let gateway = self.gateway.clone();
         let tools = agent_tool_definitions();
@@ -36,14 +133,14 @@ impl AgentOrchestrator {
             if !has_system {
                 messages.insert(0, json!({
                     "role": "system",
-                    "content": BEACON_AGENT_SYSTEM_PROMPT
+                    "content": build_system_prompt(&context)
                 }));
             }
 
             let mut turn = 0;
-            const MAX_TURNS: usize = 8;
+            let max_turns = max_steps.max(1);
 
-            while turn < MAX_TURNS {
+            while turn < max_turns {
                 turn += 1;
 
                 let req_body = json!({
@@ -234,5 +331,25 @@ impl AgentOrchestrator {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_prompt_includes_context_and_scope() {
+        let ctx = json!({
+            "projectName": "G-SPOT", "projectId": "p1", "baseUrl": "https://x",
+            "preferences": { "scope": "workspace", "language": "id", "guides": ["summary-table"], "projectNotes": { "p1": "staging only" } }
+        });
+        let p = build_system_prompt(&ctx);
+        assert!(p.contains("Active project: G-SPOT"));
+        assert!(p.contains("WORKSPACE-LOCKED"));
+        assert!(p.contains("reply in Indonesian"));
+        assert!(p.contains("markdown summary table"));
+        assert!(p.contains("staging only"));
+        assert!(!build_system_prompt(&Value::Null).contains("LIVE WORKSPACE CONTEXT"));
     }
 }

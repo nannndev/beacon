@@ -199,7 +199,7 @@ export function ExportDialog({ open, onOpenChange, project, config, initialForma
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success(
-        `Downloaded ${fileName} · ${includeSecrets ? 'secrets included' : 'secrets redacted'}`,
+        `Downloaded ${fileName} (${includeSecrets ? 'secrets included' : 'secrets redacted'})`,
       )
     } catch (e: any) {
       toast.error(e?.message || 'Failed to download export')
@@ -216,18 +216,18 @@ export function ExportDialog({ open, onOpenChange, project, config, initialForma
         window.setTimeout(() => win.print(), 400)
       }
     } else {
-      toast.error('Popup blocked — use Download to save the HTML file.')
+      toast.error('Popup blocked. Use Download to save the HTML file.')
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[920px]">
+      <DialogContent className="sm:max-w-[920px]">
         <DialogHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
-            <div>
-              <DialogTitle className="text-base font-bold">
-                Export &amp; Preview APIs — {project?.name || 'Project'}
+          <div className="flex flex-wrap items-start justify-between gap-2 pr-8">
+            <div className="min-w-0">
+              <DialogTitle className="truncate text-base font-bold">
+                Export {project?.name || 'Project'}
               </DialogTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {endpointCount} endpoint{endpointCount === 1 ? '' : 's'} ·{' '}
@@ -284,7 +284,7 @@ export function ExportDialog({ open, onOpenChange, project, config, initialForma
                     {opt.badge}
                   </span>
                 </div>
-                <div className="mt-2 text-xs font-bold">{opt.label}</div>
+                <div className="mt-2 text-xs font-bold leading-tight">{opt.label}</div>
                 <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground">
                   {opt.description}
                 </p>
@@ -420,15 +420,15 @@ export function ExportDialog({ open, onOpenChange, project, config, initialForma
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:justify-between">
-          <div className="text-[11px] text-muted-foreground self-center">
+        <DialogFooter className="gap-2 sm:items-center sm:justify-between">
+          <div className="min-w-0 text-[11px] text-muted-foreground">
             {format === 'html'
               ? 'Self-contained HTML file — works offline in any browser with zero dependencies.'
               : format === 'openapi'
               ? 'OpenAPI 3.0.3 JSON — ready for Swagger UI, Scalar, Redoc, or Postman.'
               : 'Ready to share or commit to version control.'}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>

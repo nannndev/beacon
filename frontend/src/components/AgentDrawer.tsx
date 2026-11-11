@@ -583,13 +583,18 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
   const filteredChats = useMemo(() => {
     const q = historySearch.trim().toLowerCase()
-    if (!q) return sessions
-    return sessions.filter(
+    // Workspace scope hides chats from other projects (and keeps the active one visible).
+    const scoped =
+      prefs.scope === 'workspace' && context.projectId
+        ? sessions.filter((c) => !c.projectId || c.projectId === context.projectId || c.id === activeSessionId)
+        : sessions
+    if (!q) return scoped
+    return scoped.filter(
       (c) =>
         c.title.toLowerCase().includes(q) ||
         c.messages.some((m) => m.kind !== 'compact' && m.content.toLowerCase().includes(q)),
     )
-  }, [sessions, historySearch])
+  }, [sessions, historySearch, prefs.scope, context.projectId, activeSessionId])
 
   // Slash commands matching current input
   const matchingSlashCommands = useMemo(() => {
@@ -1106,6 +1111,15 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
       <aside
         aria-label="Beacon AI Copilot"
+        style={
+          origin
+            ? ({
+                // Genie effect: scale from the mascot's position (see .copilot-drawer in index.css).
+                '--copilot-origin-x': `${Math.max(0, Math.min(1, origin.x / window.innerWidth)) * 100}%`,
+                '--copilot-origin-y': `${Math.max(0, Math.min(1, origin.y / window.innerHeight)) * 100}%`,
+              } as React.CSSProperties)
+            : undefined
+        }
         className={`fixed top-0 right-0 z-50 h-full w-full ${
           wide ? 'sm:w-[min(860px,92vw)]' : 'sm:w-[490px]'
         } bg-card border-l border-border shadow-2xl flex flex-col copilot-drawer ${shown ? 'is-open' : ''}`}
@@ -1206,10 +1220,19 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         {/* Active Context & Step Bar */}
         <div className="px-3.5 py-1.5 border-b border-border/60 bg-background/40 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground shrink-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium text-[9.5px] shrink-0">
-              <Globe className="w-2.5 h-2.5" />
-              Global Session
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              title="Change scope in settings"
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-medium text-[9.5px] shrink-0 cursor-pointer ${
+                prefs.scope === 'workspace'
+                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+              }`}
+            >
+              {prefs.scope === 'workspace' ? <FolderKanban className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
+              {prefs.scope === 'workspace' ? 'Workspace' : 'Global Session'}
+            </button>
             {context.projectName ? (
               <span className="flex items-center gap-1 truncate text-foreground font-medium">
                 <FolderKanban className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -1234,7 +1257,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           {streaming && activeStep > 1 && (
             <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono text-[9.5px] flex items-center gap-1 shrink-0">
               <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              Step {activeStep}/{prefs.maxSteps}
+              Step {activeStep}/{prefs.maxSteps > 0 ? prefs.maxSteps : '∞'}
             </span>
           )}
         </div>

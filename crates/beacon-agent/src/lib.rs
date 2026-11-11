@@ -39,9 +39,15 @@ async fn handle_agent_chat(
         .and_then(|m| serde_json::from_value(m.clone()).ok())
         .unwrap_or_default();
     let model = payload.get("model").and_then(|m| m.as_str()).map(String::from);
+    // 0 means unlimited; hard cap keeps a runaway loop from burning quota.
+    let max_steps = match payload.get("max_steps").and_then(|m| m.as_u64()).unwrap_or(10) {
+        0 => 500,
+        n => n.min(500),
+    } as usize;
+    let context = payload.get("context").cloned().unwrap_or(Value::Null);
     let workspace = Arc::clone(&state.workspace);
 
-    let stream = state.orchestrator.run_stream(messages, model, workspace);
+    let stream = state.orchestrator.run_stream(messages, model, workspace, max_steps, context);
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 

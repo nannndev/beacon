@@ -1,14 +1,31 @@
-use beacon_core::{APITester, EndpointTest};
-use beacon_server::store::Store;
+//! Stdio JSON-RPC 2.0 MCP server exposing the same tool set as the in-app agent.
+use beacon_agent::{agent_tool_definitions, execute_tool};
+use beacon_server::store::{ServerWorkspace, Store};
+use parking_lot::RwLock;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
-use uuid::Uuid;
+use std::sync::Arc;
+
+/// OpenAI-style `{type, function:{name,description,parameters}}` -> MCP `{name,description,inputSchema}`.
+fn mcp_tools() -> Vec<Value> {
+    agent_tool_definitions()
+        .into_iter()
+        .filter_map(|t| {
+            let f = t.get("function")?;
+            Some(json!({
+                "name": f.get("name")?,
+                "description": f.get("description").cloned().unwrap_or(Value::Null),
+                "inputSchema": f.get("parameters").cloned().unwrap_or(json!({ "type": "object", "properties": {} })),
+            }))
+        })
+        .collect()
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
+    let workspace = ServerWorkspace(Arc::new(RwLock::new(Store::new())));
 
     for line in stdin.lock().lines() {
         let line = match line {
@@ -19,7 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if trimmed.is_empty() {
             continue;
         }
-
         let req: Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(_) => continue,
@@ -35,158 +51,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "id": id,
                 "result": {
                     "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {}
-                    },
-                    "serverInfo": {
-                        "name": "beacon-mcp",
-                        "version": "0.10.0"
-                    }
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "beacon-mcp", "version": env!("CARGO_PKG_VERSION") }
                 }
             }),
             "notifications/initialized" => continue,
-            "tools/list" => json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "tools": [
-                        {
-                            "name": "beacon_list_endpoints",
-                            "description": "List all configured API endpoints in the active Beacon project.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "beacon_probe_endpoint",
-                            "description": "Fire an HTTP probe against an endpoint or URL and return status, latency, headers, and body.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "url": { "type": "string", "description": "Target endpoint URL" },
-                                    "method": { "type": "string", "description": "HTTP method (GET, POST, etc.)" },
-                                    "headers": { "type": "object", "description": "Headers key-value pairs" },
-                                    "payload": { "type": "object", "description": "JSON request body" }
-                                },
-                                "required": ["url"]
-                            }
-                        },
-                        {
-                            "name": "beacon_list_variables",
-                            "description": "List current project and environment variables.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "beacon_set_variable",
-                            "description": "Set or update an environment variable in the active Beacon project.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "name": { "type": "string", "description": "Variable name" },
-                                    "value": { "type": "string", "description": "Variable value" }
-                                },
-                                "required": ["name", "value"]
-                            }
-                        }
-                    ]
-                }
-            }),
+            "tools/list" => json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": mcp_tools() } }),
             "tools/call" => {
                 let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                let mut store = Store::new();
-
-                let result_text = match tool_name {
-                    "beacon_list_endpoints" => {
-                        let tests: Vec<Value> = store
-                            .current_config
-                            .tests
-                            .iter()
-                            .map(|t| {
-                                json!({
-                                    "id": t.id,
-                                    "name": t.name,
-                                    "method": t.method,
-                                    "url": t.url,
-                                })
-                            })
-                            .collect();
-                        serde_json::to_string_pretty(&tests).unwrap_or_default()
-                    }
-                    "beacon_list_variables" => {
-                        let vars = store.current_config.snapshot_variables();
-                        serde_json::to_string_pretty(&vars).unwrap_or_default()
-                    }
-                    "beacon_set_variable" => {
-                        let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                        let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
-                        if !name.is_empty() {
-                            store.current_config.variables.write().insert(name.to_string(), value.to_string());
-                            let _ = store.save();
-                            format!("Successfully set {} = {}", name, value)
-                        } else {
-                            "Error: 'name' is required".to_string()
-                        }
-                    }
-                    "beacon_probe_endpoint" => {
-                        let url = args.get("url").and_then(|u| u.as_str()).unwrap_or("/");
-                        let method = args.get("method").and_then(|m| m.as_str()).unwrap_or("GET");
-                        let headers: HashMap<String, Value> = args
-                            .get("headers")
-                            .and_then(|h| serde_json::from_value(h.clone()).ok())
-                            .unwrap_or_default();
-                        let payload = args.get("payload").cloned().unwrap_or(Value::Null);
-
-                        let mut test = EndpointTest::new(
-                            Some(Uuid::new_v4().to_string()),
-                            "MCP Probe".to_string(),
-                            url.to_string(),
-                            Some(method.to_string()),
-                        );
-                        test.headers = headers;
-                        test.payload = payload;
-
-                        let tester = APITester::new(test, store.current_config.clone(), 1, 0, 1, None);
-                        match tester.execute_single().await {
-                            Ok(out) => serde_json::to_string_pretty(&out).unwrap_or_default(),
-                            Err(e) => format!("Error executing probe: {}", e),
-                        }
-                    }
-                    _ => format!("Unknown tool: {}", tool_name),
-                };
-
+                // Re-read the store so edits made in the desktop app since the last call are visible.
+                workspace.0.write().load();
+                let result = execute_tool(tool_name, &args, &workspace).await;
+                let is_error = result.get("error").is_some();
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": result_text
-                            }
-                        ]
+                        "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap_or_default() }],
+                        "isError": is_error
                     }
                 })
             }
             _ => json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found"
-                }
+                "error": { "code": -32601, "message": "Method not found" }
             }),
         };
 
-        let out_str = serde_json::to_string(&response).unwrap_or_default();
-        writeln!(stdout, "{}", out_str)?;
+        writeln!(stdout, "{}", serde_json::to_string(&response).unwrap_or_default())?;
         stdout.flush()?;
     }
-
     Ok(())
 }
-

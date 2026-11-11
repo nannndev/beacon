@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { AgentApprovalMode, AgentLiveStatus } from '../../types'
 
 export type CharacterMood =
@@ -77,15 +77,29 @@ const MODE_SKINS: Record<AgentApprovalMode, SkinPalette> = {
   },
 }
 
-/** Advances a frame counter at the mood's target FPS. */
+/** Advances a frame counter at the mood's target FPS, driven by rAF so it
+ *  pauses in background tabs and stays smooth. The counter keeps running
+ *  across mood changes, so poses never snap back to frame 0. Under
+ *  prefers-reduced-motion the character holds a still pose. */
 function useMoodFrameTicker(fps: number): number {
   const [frame, setFrame] = useState(0)
+  const frameRef = useRef(0)
   useEffect(() => {
-    const intervalMs = Math.max(16, Math.round(1000 / fps))
-    const id = window.setInterval(() => {
-      setFrame((f) => (f + 1) % 10000)
-    }, intervalMs)
-    return () => window.clearInterval(id)
+    if (typeof window === 'undefined') return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const intervalMs = Math.max(16, 1000 / fps)
+    let rafId = 0
+    let last = performance.now()
+    const step = (now: number) => {
+      if (now - last >= intervalMs) {
+        last = now
+        frameRef.current = (frameRef.current + 1) % 10000
+        setFrame(frameRef.current)
+      }
+      rafId = window.requestAnimationFrame(step)
+    }
+    rafId = window.requestAnimationFrame(step)
+    return () => window.cancelAnimationFrame(rafId)
   }, [fps])
   return frame
 }
@@ -388,7 +402,10 @@ export function AgentCharacter({
       )}
 
       {/* Main Chibi Character Rig */}
-      <g transform={`${flipTransform}${squashTransform}translate(${shakeX}, ${bobY}) rotate(${rigRotate}, 44, 52)`}>
+      <g
+        transform={`${flipTransform}${squashTransform}translate(${shakeX}, ${bobY}) rotate(${rigRotate}, 44, 52)`}
+        style={{ transition: 'transform 90ms linear' }}
+      >
         {/* Fluttering Cyan-Mint Beacon Signal Scarf Tail (behind body/head) */}
         <path
           d={`M 26 56 Q ${14 - scarfFlutter * 0.4} ${58 + scarfFlutter * 0.6} ${10 - scarfFlutter * 0.25} ${68 + scarfFlutter * 0.5} Q 18 69 27 62 Z`}
@@ -426,7 +443,7 @@ export function AgentCharacter({
         </g>
 
         {/* Left Chibi Arm */}
-        <g transform={`translate(0, ${leftArmShiftY}) rotate(${leftArmAngle}, 27, 58)`}>
+        <g transform={`translate(0, ${leftArmShiftY}) rotate(${leftArmAngle}, 27, 58)`} style={{ transition: 'transform 120ms ease-out' }}>
           <rect
             x="17.5"
             y="55"
@@ -441,7 +458,7 @@ export function AgentCharacter({
         </g>
 
         {/* Right Chibi Arm */}
-        <g transform={`translate(0, ${rightArmShiftY}) rotate(${rightArmAngle}, 61, 58)`}>
+        <g transform={`translate(0, ${rightArmShiftY}) rotate(${rightArmAngle}, 61, 58)`} style={{ transition: 'transform 120ms ease-out' }}>
           <rect
             x="59.5"
             y="55"
@@ -507,7 +524,7 @@ export function AgentCharacter({
         />
 
         {/* Big Expressive Chibi Head + Beacon Drop Crest */}
-        <g transform={`rotate(${headTilt}, 44, 51)`}>
+        <g transform={`rotate(${headTilt}, 44, 51)`} style={{ transition: 'transform 120ms ease-out' }}>
           {/* Cute Beacon Teardrop / Crystal Fin Antenna on Top */}
           {mode === 'full' ? (
             <g>

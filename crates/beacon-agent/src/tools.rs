@@ -111,7 +111,7 @@ pub fn agent_tool_definitions() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "beacon_create_endpoint",
-                "description": "Create a new API endpoint in the active Beacon project. Automatically persists to the project workspace and updates the UI.",
+                "description": "Create a new API endpoint in the ACTIVE Beacon project. If the endpoint belongs to a different API family than the active project, switch or create the right project first (or ask the user). Automatically persists and updates the UI.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -247,6 +247,39 @@ pub fn agent_tool_definitions() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "beacon_set_example_response",
+                "description": "Document the expected response contract of an endpoint by hand (e.g. after reading the handler source code). Saves status, headers and body as the endpoint's documented example and mock baseline, which exports (OpenAPI, Postman, HTML docs) and the mock server use.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Endpoint ID or name" },
+                        "status": { "type": "integer", "description": "HTTP status code of the example (default 200)" },
+                        "body": { "description": "Example response body: a JSON object/array or a raw string" },
+                        "headers": { "type": "object", "description": "Example response headers (default Content-Type: application/json)" },
+                        "enabled": { "type": "boolean", "description": "Also serve this example from the mock server (default false)" }
+                    },
+                    "required": ["id", "body"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_capture_baseline",
+                "description": "Fire the endpoint once against the live API and save the real response as its documented example and mock baseline. Optionally auto-generates assertions (status code, latency SLA, content-type, first JSON key).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Endpoint ID or name" },
+                        "generate_assertions": { "type": "boolean", "description": "Add smart assertions derived from the live response (default true)" }
+                    },
+                    "required": ["id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "beacon_list_variables",
                 "description": "List all active project, environment, and global variables.",
                 "parameters": {
@@ -259,7 +292,7 @@ pub fn agent_tool_definitions() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "beacon_set_variable",
-                "description": "Set or update an environment variable in the active Beacon project workspace.",
+                "description": "Set or update an environment variable in the ACTIVE project's environment. Variables for a different API family belong in that API's own project; create/switch first.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -299,7 +332,7 @@ pub fn agent_tool_definitions() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "beacon_create_project",
-                "description": "Create a new project workspace in Beacon with a name and optional base URL, and switch to it immediately.",
+                "description": "Create a new project workspace in Beacon with a name and optional base URL, and switch to it immediately. Use this when the user asks for endpoints of a new API family (e.g. 'Google APIs') that does not match the active project.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -706,6 +739,106 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
             }
         }
 
+        "beacon_set_example_response" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if id.is_empty() {
+                return json!({ "error": "Endpoint id is required" });
+            }
+            let body = match args.get("body") {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Null) | None => return json!({ "error": "'body' is required" }),
+                Some(other) => serde_json::to_string_pretty(other).unwrap_or_default(),
+            };
+            let mut headers = args.get("headers").cloned().unwrap_or(json!({}));
+            if headers.as_object().map_or(true, |h| h.is_empty()) {
+                headers = json!({ "Content-Type": "application/json" });
+            }
+            let mock = json!({
+                "enabled": args.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false),
+                "status": args.get("status").and_then(|v| v.as_u64()).unwrap_or(200),
+                "headers": headers,
+                "body": body,
+            });
+            match workspace.update_endpoint(id, json!({ "mock_response": mock })) {
+                Ok(ep) => json!({ "status": "documented", "mutated": true, "id": ep.id, "mock_response": ep.mock_response }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
+        "beacon_capture_baseline" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let test = match workspace.get_endpoint(id) {
+                Some(ep) => ep,
+                None => return json!({ "error": format!("Endpoint '{}' not found", id) }),
+            };
+            let generate = args.get("generate_assertions").and_then(|v| v.as_bool()).unwrap_or(true);
+            let tester = APITester::new(test.clone(), workspace.get_config(), 1, 0, 1, None);
+            let out = match tester.execute_single().await {
+                Ok(out) => out,
+                Err(err) => return json!({ "error": err }),
+            };
+            let content_type = out
+                .headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| "application/json".into());
+            let body = match &out.json {
+                Some(j) => serde_json::to_string_pretty(j).unwrap_or_default(),
+                None => out.body.clone(),
+            };
+            let mut patch = json!({
+                "mock_response": {
+                    "enabled": test.mock_response.as_ref().and_then(|m| m.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false),
+                    "status": out.status,
+                    "headers": { "Content-Type": content_type },
+                    "body": body,
+                }
+            });
+            let mut added = Vec::new();
+            if generate {
+                // Mirrors the editor's "Generate assertions" button; same type names as assertions.rs.
+                let mut assertions = test.assertions.clone();
+                let has = |a: &Vec<Value>, t: &str| a.iter().any(|x| x.get("type").and_then(|v| v.as_str()) == Some(t));
+                if !has(&assertions, "status") {
+                    assertions.push(json!({ "type": "status", "op": "eq", "value": out.status }));
+                    added.push("status");
+                }
+                if !has(&assertions, "time_ms") {
+                    let budget = ((out.time_ms * 3.0).max(500.0) / 100.0).ceil() * 100.0;
+                    assertions.push(json!({ "type": "time_ms", "op": "lt", "value": budget as i64 }));
+                    added.push("time_ms");
+                }
+                if !has(&assertions, "header") {
+                    let ct = content_type.split(';').next().unwrap_or("").trim().to_string();
+                    if !ct.is_empty() {
+                        assertions.push(json!({ "type": "header", "name": "content-type", "op": "contains", "value": ct }));
+                        added.push("header");
+                    }
+                }
+                if let Some(first_key) = out.json.as_ref().and_then(|j| j.as_object()).and_then(|o| o.keys().next()) {
+                    if !has(&assertions, "jsonpath") {
+                        assertions.push(json!({ "type": "jsonpath", "path": format!("body.{}", first_key), "op": "exists" }));
+                        added.push("jsonpath");
+                    }
+                }
+                patch["assertions"] = Value::Array(assertions);
+            }
+            match workspace.update_endpoint(&test.id, patch) {
+                Ok(ep) => json!({
+                    "status": "captured",
+                    "mutated": true,
+                    "id": ep.id,
+                    "http_status": out.status,
+                    "time_ms": out.time_ms,
+                    "assertions_added": added,
+                    "assertions_count": ep.assertions.len(),
+                    "example_preview": out.body.chars().take(400).collect::<String>(),
+                }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
         "beacon_list_variables" => {
             let config = workspace.get_config();
             let vars = config.snapshot_variables();
@@ -946,6 +1079,24 @@ mod tests {
         let del_res = execute_tool("beacon_delete_endpoint", &json!({ "id": created_id }), &ws).await;
         assert_eq!(del_res["status"], "deleted");
         assert_eq!(ws.list_endpoints().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_set_example_response_documents_endpoint() {
+        let ws = InMemoryWorkspace::new();
+        let res = execute_tool(
+            "beacon_set_example_response",
+            &json!({ "id": "ep-1", "status": 201, "body": { "token": "abc" } }),
+            &ws,
+        )
+        .await;
+        assert_eq!(res["status"], "documented");
+        let ep = ws.get_endpoint("ep-1").unwrap();
+        let mock = ep.mock_response.unwrap();
+        assert_eq!(mock["status"], 201);
+        assert_eq!(mock["enabled"], false);
+        assert!(mock["body"].as_str().unwrap().contains("\"token\""));
+        assert_eq!(mock["headers"]["Content-Type"], "application/json");
     }
 
     #[tokio::test]

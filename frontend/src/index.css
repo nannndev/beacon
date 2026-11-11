@@ -442,35 +442,77 @@
 @keyframes copilot-msg-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px) scale(0.97);
+  }
+  60% {
+    opacity: 1;
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 .copilot-msg {
-  animation: copilot-msg-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: copilot-msg-in 280ms cubic-bezier(0.2, 0.9, 0.25, 1.08) both;
   will-change: transform, opacity;
 }
+/* Bubbles grow from the side they come from, like Messages.app. */
+.copilot-msg.justify-end { transform-origin: 100% 100%; }
+.copilot-msg.justify-start { transform-origin: 0% 100%; }
 
 .copilot-drawer {
-  transform: translate3d(100%, 0, 0);
+  /* Genie-style open/close: slide in while scaling up from the mascot's
+     position (set via --copilot-origin-x/y), like a macOS panel. */
+  --copilot-origin-x: 100%;
+  --copilot-origin-y: 100%;
+  transform-origin: var(--copilot-origin-x) var(--copilot-origin-y);
+  transform: translate3d(18%, 0, 0) scale(0.92);
   opacity: 0;
   pointer-events: none;
   transition:
-    transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 360ms cubic-bezier(0.2, 0.9, 0.2, 1.02),
+    opacity 220ms cubic-bezier(0.16, 1, 0.3, 1),
     width 260ms cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform, opacity;
   box-shadow: -12px 0 40px -4px rgba(0, 0, 0, 0.3), -1px 0 0 rgba(255, 255, 255, 0.05);
 }
 
 .copilot-drawer.is-open {
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) scale(1);
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Closing is quicker and pulls back toward the mascot. */
+.copilot-drawer:not(.is-open) {
+  transition-duration: 240ms, 180ms, 260ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.6, 1), ease-in, cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Content settles slightly after the panel (staggered). */
+.copilot-drawer > * {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 240ms ease-out 120ms, transform 300ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+}
+.copilot-drawer.is-open > * {
+  opacity: 1;
+  transform: none;
+}
+.copilot-drawer:not(.is-open) > * {
+  transition-delay: 0ms;
+  transition-duration: 120ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copilot-drawer,
+  .copilot-drawer > * {
+    transition-duration: 1ms;
+  }
+  .copilot-msg {
+    animation: none;
+  }
 }
 
 .no-scrollbar {

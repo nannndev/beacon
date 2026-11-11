@@ -52,6 +52,7 @@ export const DEFAULT_AGENT_PREFERENCES: AgentPreferences = {
   custom: '',
   projectNotes: {},
   maxSteps: 10,
+  scope: 'global',
 }
 
 export function loadAgentPreferences(): AgentPreferences {
@@ -67,8 +68,9 @@ export function loadAgentPreferences(): AgentPreferences {
       projectNotes:
         parsed.projectNotes && typeof parsed.projectNotes === 'object' ? parsed.projectNotes : {},
       maxSteps: Number.isFinite(Number(parsed.maxSteps))
-        ? Math.max(2, Math.min(20, Number(parsed.maxSteps)))
+        ? Math.max(0, Math.min(500, Math.floor(Number(parsed.maxSteps))))
         : 10,
+      scope: parsed.scope === 'workspace' ? 'workspace' : 'global',
     }
   } catch {
     return { ...DEFAULT_AGENT_PREFERENCES }

@@ -74,6 +74,10 @@ import mcpLight from '../assets/screens/mcp-light.webp'
 import mcpDark from '../assets/screens/mcp-dark.webp'
 import cliLight from '../assets/screens/cli-light.webp'
 import cliDark from '../assets/screens/cli-dark.webp'
+import agentLight from '../assets/screens/agent-light.webp'
+import agentDark from '../assets/screens/agent-dark.webp'
+import gatewayLight from '../assets/screens/gateway-light.webp'
+import gatewayDark from '../assets/screens/gateway-dark.webp'
 
 // Every screenshot exists in a light and a dark capture of the real app.
 const SHOTS = {
@@ -90,6 +94,8 @@ const SHOTS = {
   projectSettings: { light: projectSettingsLight, dark: projectSettingsDark },
   mcp: { light: mcpLight, dark: mcpDark },
   cli: { light: cliLight, dark: cliDark },
+  agent: { light: agentLight, dark: agentDark },
+  gateway: { light: gatewayLight, dark: gatewayDark },
 } satisfies Record<string, ShotPair>
 
 // URLs injected from the root .env via vite.config.ts (define block).
@@ -99,7 +105,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.10.0'
+const RELEASE_VERSION = '0.11.0'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -327,7 +333,7 @@ export default function LandingPage() {
               className="group mb-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 font-semibold text-cyan-600 dark:text-cyan-400">v{RELEASE_VERSION}</span>
-              Interactive HTML Export, Response Baselines & skills.sh
+              Rust engine, Beacon AI agent & AI Gateway
               <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </a>
           </RevealItem>
@@ -570,13 +576,14 @@ export default function LandingPage() {
               Hand the workspace to your agent.
             </h2>
             <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
-              Beacon ships a standard MCP server — not Claude-only — so any assistant can
-              drive the projects you already have. It exposes{' '}
+              Beacon ships a standard MCP server, not Claude-only, so any assistant can
+              drive the projects you already have. The same{' '}
               <span className="font-semibold text-foreground">
-                <CountUp value={21} durationMs={900} /> tools
+                <CountUp value={15} durationMs={900} /> tools
               </span>{' '}
-              for creating, importing, sending, asserting, chaining, and load-testing
-              endpoints, all through the same local engine you use by hand.
+              power the built-in Beacon AI: switch or create projects, build endpoints,
+              chain collections, load-test, and document responses from a live call or
+              straight from your handler code.
             </p>
             <a
               href={DOCS_URL.replace(/\/$/, '') + '/mcp'}
@@ -602,7 +609,8 @@ claude mcp add beacon -- <path-to>/mcp_server
 
 # then just ask your assistant:
 "send Login, then run the Checkout scenario"
-"load-test /reports 100x at concurrency 10"`}</code></pre>
+"load-test /reports 100x at concurrency 10"
+"document GET /orders from src/orders/handler.rs"`}</code></pre>
           </Reveal>
         </div>
       </section>
@@ -723,8 +731,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              Interactive HTML export & live playground, documented response baselines
-              with one-click assertion generators, skills.sh publishing, and local proxy fallback.
+              A native Rust engine, a built-in AI agent that works across projects, and
+              every traffic mode running at full speed.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -733,10 +741,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['Interactive HTML Export', 'Export self-contained documentation with live interactive playground, cURL/JS/Python snippets, JSON highlighting, search, and dark/light mode.'],
-              ['Response Baseline & Auto-Assertions', 'Capture live API responses directly into documented examples and automatically generate field-level assertions.'],
-              ['Published on skills.sh', 'Install beacon-api-workbench into any agent environment via `npx skills add nannndev/beacon`.'],
-              ['Local Proxy & CORS Fallback', 'Bypass browser CORS barriers seamlessly when previewing or testing third-party APIs from HTML exports.'],
+              ['Native Rust engine', 'The backend, CLI, and MCP server are now one Rust binary. Load, ramp, spike, soak, rate probe, capacity, fuzz, and benchmark runs pace requests on schedule, so the RPS you set is the RPS you get.'],
+              ['Beacon AI agent', 'Ask in plain language and the agent lists, switches, or creates projects, builds endpoints, chains collections, and runs load tests. It asks a short follow-up when the target project is unclear.'],
+              ['Global or workspace scope', 'Let the agent work across every project, or lock it to the one you have open. Step limits go from 6 to unlimited.'],
+              ['Responses documented for you', 'Capture a live response as the documented example with assertions in one call, or have the agent write it from your handler code before the API is up.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>
@@ -916,6 +924,20 @@ function FeatureGallery() {
       body: 'Store the project as readable YAML, review changes, switch branches, and push, all from project settings.',
       shot: SHOTS.projectSettings,
       alt: 'Beacon project settings with a linked Git folder, branch controls, and pending changes',
+    },
+    {
+      label: 'Beacon AI',
+      title: 'Ask in plain language. Get a real audit back.',
+      body: 'The built-in agent lists projects, reads endpoints, and answers with a summary table. Every tool call is shown, and it asks first when the target project is unclear.',
+      shot: SHOTS.agent,
+      alt: 'Beacon AI drawer showing executed project and endpoint tools followed by an audit summary table',
+    },
+    {
+      label: 'AI Gateway',
+      title: 'Bring the AI subscriptions you already pay for.',
+      body: 'Connect ChatGPT, Claude, Copilot, Gemini, and more through one local OpenAI-compatible proxy with round-robin rotation and 429 failover.',
+      shot: SHOTS.gateway,
+      alt: 'Beacon AI Gateway with connected subscription accounts and provider cards',
     },
     {
       label: 'MCP tools',

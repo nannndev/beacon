@@ -498,3 +498,4 @@ export function GatewayChart({ usage, stats }: GatewayChartProps) {
     </Card>
   )
 }
+

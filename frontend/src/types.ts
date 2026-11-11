@@ -568,7 +568,10 @@ export interface AgentPreferences {
   skills: AgentCustomSkill[]
   custom: string
   projectNotes: Record<string, string>
+  /** 0 = unlimited (backend caps at 500). */
   maxSteps: number
+  /** global: may switch/create projects. workspace: locked to the active project; history filtered to it. */
+  scope: 'global' | 'workspace'
 }
 
 export interface AgentModelsCatalog {

@@ -74,6 +74,7 @@ pub struct MetricsSnapshot {
     pub probe_threshold_rps: Option<f64>,
     pub capacity_safe_rps: Option<f64>,
     pub capacity_breaking_rps: Option<f64>,
+    pub capacity_breach_reason: Option<String>,
 }
 
 pub struct RunMetricsInner {
@@ -220,6 +221,32 @@ impl RunMetrics {
         g.results.ws_disconnects += 1;
     }
 
+    pub fn set_probe_threshold(&self, rps: f64) {
+        self.inner.lock().probe_threshold_rps = Some(rps);
+    }
+
+    pub fn set_capacity_safe(&self, rps: f64) {
+        self.inner.lock().capacity_safe_rps = Some(rps);
+    }
+
+    pub fn set_capacity_breaking(&self, rps: f64, reason: String) {
+        let mut g = self.inner.lock();
+        g.capacity_breaking_rps = Some(rps);
+        g.capacity_breach_reason = Some(reason);
+    }
+
+    /// Number of latency samples recorded so far; pass it back to `p95_since`.
+    pub fn latency_count(&self) -> usize {
+        self.inner.lock().all_latencies.len()
+    }
+
+    pub fn p95_since(&self, offset: usize) -> f64 {
+        let g = self.inner.lock();
+        let mut step: Vec<f64> = g.all_latencies.get(offset..).unwrap_or(&[]).to_vec();
+        step.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        percentile(&step, 95.0)
+    }
+
     pub fn snapshot(&self) -> MetricsSnapshot {
         let g = self.inner.lock();
         let count = g.latency.count;
@@ -263,6 +290,7 @@ impl RunMetrics {
             probe_threshold_rps: g.probe_threshold_rps,
             capacity_safe_rps: g.capacity_safe_rps,
             capacity_breaking_rps: g.capacity_breaking_rps,
+            capacity_breach_reason: g.capacity_breach_reason.clone(),
         }
     }
 }
