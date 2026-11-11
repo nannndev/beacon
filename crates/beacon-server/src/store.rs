@@ -449,6 +449,125 @@ impl Store {
         }
         self.save()
     }
+
+    pub fn list_projects(&mut self) -> Vec<Value> {
+        self.save_active_project();
+        self.projects
+            .iter()
+            .map(|p| {
+                let active_env = Self::get_active_env(p);
+                let base_url = active_env.map(|e| e.base_url.clone()).unwrap_or_default();
+                let env_name = active_env.map(|e| e.name.clone()).unwrap_or_else(|| "Default".into());
+                let count = if let Some(ref items) = p.items {
+                    let mut c = 0;
+                    fn count_items(nodes: &[Value], c: &mut usize) {
+                        for n in nodes {
+                            if n.get("type").and_then(|t| t.as_str()) == Some("request") {
+                                *c += 1;
+                            } else if let Some(sub) = n.get("items").and_then(|i| i.as_array()) {
+                                count_items(sub, c);
+                            } else if let Some(sub) = n.get("tests").and_then(|i| i.as_array()) {
+                                *c += sub.len();
+                            }
+                        }
+                    }
+                    count_items(items, &mut c);
+                    c
+                } else if let Some(ref tests) = p.tests {
+                    tests.len()
+                } else {
+                    0
+                };
+
+                json!({
+                    "id": p.id,
+                    "name": p.name,
+                    "is_active": Some(&p.id) == self.current_project_id.as_ref(),
+                    "base_url": base_url,
+                    "environment": env_name,
+                    "endpoints_count": count,
+                })
+            })
+            .collect()
+    }
+
+    pub fn switch_project(&mut self, id_or_name: &str) -> Result<Value, String> {
+        let needle = id_or_name.trim();
+        let target_id = {
+            let found = self.projects.iter().find(|p| {
+                p.id == needle || p.name.eq_ignore_ascii_case(needle)
+            });
+            match found {
+                Some(p) => p.id.clone(),
+                None => return Err(format!("Project '{}' not found", needle)),
+            }
+        };
+
+        self.save_active_project();
+        self.current_project_id = Some(target_id.clone());
+        self.sync_current_config();
+        self.save()?;
+
+        let proj = self.projects.iter().find(|p| p.id == target_id).unwrap();
+        let active_env = Self::get_active_env(proj);
+        let base_url = active_env.map(|e| e.base_url.clone()).unwrap_or_default();
+        let name = proj.name.clone();
+        let endpoints_count = self.current_config.tests.len();
+
+        Ok(json!({
+            "status": "switched",
+            "id": target_id,
+            "name": name,
+            "base_url": base_url,
+            "endpoints_count": endpoints_count,
+        }))
+    }
+
+    pub fn create_project(&mut self, name: &str, base_url: &str) -> Result<Value, String> {
+        let name_str = if name.trim().is_empty() {
+            format!("Project {}", self.projects.len() + 1)
+        } else {
+            name.trim().to_string()
+        };
+
+        let pid = Uuid::new_v4().to_string();
+        let env_id = Uuid::new_v4().to_string();
+
+        let new_env = Environment {
+            id: env_id.clone(),
+            name: "Default".to_string(),
+            base_url: base_url.trim().to_string(),
+            variables: HashMap::new(),
+        };
+
+        let new_p = Project {
+            id: pid.clone(),
+            name: name_str.clone(),
+            template_id: None,
+            environments: vec![new_env],
+            current_environment_id: Some(env_id),
+            notifications: None,
+            shared_origin: None,
+            file_sync: None,
+            items: Some(Vec::new()),
+            tests: None,
+            auth: None,
+        };
+
+        self.save_active_project();
+        self.projects.push(new_p);
+        self.current_project_id = Some(pid.clone());
+        self.sync_current_config();
+        self.save()?;
+
+        Ok(json!({
+            "status": "created",
+            "id": pid,
+            "name": name_str,
+            "base_url": base_url,
+            "endpoints_count": 0,
+        }))
+    }
 }
 
 pub struct ServerWorkspace(pub std::sync::Arc<parking_lot::RwLock<Store>>);
@@ -477,5 +596,14 @@ impl beacon_agent::WorkspaceOps for ServerWorkspace {
     }
     fn save_extracted_variables(&self, vars: HashMap<String, String>) -> Result<(), String> {
         self.0.write().save_extracted_variables(vars)
+    }
+    fn list_projects(&self) -> Vec<Value> {
+        self.0.write().list_projects()
+    }
+    fn switch_project(&self, id_or_name: &str) -> Result<Value, String> {
+        self.0.write().switch_project(id_or_name)
+    }
+    fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String> {
+        self.0.write().create_project(name, base_url)
     }
 }

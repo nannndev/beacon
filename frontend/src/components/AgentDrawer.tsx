@@ -12,6 +12,7 @@ import {
   Copy,
   Download,
   FolderKanban,
+  Globe,
   History,
   Layers,
   Loader2,
@@ -84,6 +85,12 @@ interface SlashCommandItem {
 }
 
 const SLASH_COMMANDS: SlashCommandItem[] = [
+  {
+    cmd: '/projects',
+    title: 'Workspace Projects',
+    desc: 'List all project workspaces, active focus, and endpoint counts',
+    prompt: 'List all projects configured in this Beacon workspace, showing active focus, base URLs, and endpoint summaries.',
+  },
   {
     cmd: '/compact',
     title: 'Compact Context',
@@ -1057,14 +1064,14 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
     }
     out.push(
       {
+        icon: '🌐',
+        label: 'Explore all projects & health',
+        prompt: 'List all projects configured in this Beacon workspace, showing active focus, base URLs, and endpoint counts.',
+      },
+      {
         icon: '🔍',
         label: 'Audit active project & variables',
         prompt: `Audit project "${context.projectName || 'current'}" (${context.environmentName || 'default'}): check base URL, unresolved {{variables}}, missing assertions, and recommend improvements.`,
-      },
-      {
-        icon: '📥',
-        label: 'Import cURL / create endpoints',
-        prompt: 'Help me create or organize endpoints for this project cleanly with {{variables}} and assertions.',
       },
       {
         icon: '⚡',
@@ -1075,6 +1082,11 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         icon: '🔗',
         label: 'Wire login -> token extractor chain',
         prompt: 'Inspect auth/protected endpoints, set up extractors so tokens refresh automatically, and test the chain.',
+      },
+      {
+        icon: '💻',
+        label: 'General software & code helper',
+        prompt: 'I need assistance with software architecture, debugging code, or writing a custom script in Rust, TypeScript, or Python.',
       },
     )
     return out.slice(0, 5)
@@ -1194,16 +1206,21 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         {/* Active Context & Step Bar */}
         <div className="px-3.5 py-1.5 border-b border-border/60 bg-background/40 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground shrink-0">
           <div className="flex items-center gap-1.5 min-w-0">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium text-[9.5px] shrink-0">
+              <Globe className="w-2.5 h-2.5" />
+              Global Session
+            </span>
             {context.projectName ? (
               <span className="flex items-center gap-1 truncate text-foreground font-medium">
-                <FolderKanban className="w-3 h-3 text-emerald-500 shrink-0" />
+                <FolderKanban className="w-3 h-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground font-normal text-[10px]">Scope:</span>
                 <span className="truncate">{context.projectName}</span>
                 {context.environmentName ? (
-                  <span className="font-mono text-[10px] text-muted-foreground">({context.environmentName})</span>
+                  <span className="font-mono text-[9.5px] text-muted-foreground">({context.environmentName})</span>
                 ) : null}
               </span>
             ) : (
-              <span>No project active</span>
+              <span>No project scope</span>
             )}
             <span className="px-1.5 py-0.2 rounded bg-muted font-mono text-[9.5px] uppercase shrink-0">
               {context.view}
@@ -1725,7 +1742,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                       void handleSend()
                     }
                   }}
-                  placeholder={`Ask Beacon AI about ${context.projectName || 'your API'} (or / for commands)`}
+                  placeholder={`Ask Beacon AI anything, or manage APIs across projects (or / for commands)`}
                   className="block w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-[13px] text-foreground placeholder-muted-foreground outline-none max-h-40"
                 />
 

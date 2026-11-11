@@ -15,6 +15,9 @@ pub trait WorkspaceOps: Send + Sync {
     fn delete_endpoint(&self, id_or_name: &str) -> Result<String, String>;
     fn set_variable(&self, name: &str, value: &str) -> Result<(), String>;
     fn save_extracted_variables(&self, vars: HashMap<String, String>) -> Result<(), String>;
+    fn list_projects(&self) -> Vec<Value>;
+    fn switch_project(&self, id_or_name: &str) -> Result<Value, String>;
+    fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String>;
 }
 
 /// Fallback read-only workspace adapter wrapping a TestConfig clone.
@@ -57,6 +60,21 @@ impl WorkspaceOps for ConfigWorkspace {
             v.insert(k, val);
         }
         Ok(())
+    }
+    fn list_projects(&self) -> Vec<Value> {
+        vec![json!({
+            "id": "standalone",
+            "name": "Active Workspace",
+            "is_active": true,
+            "base_url": self.0.base_url,
+            "endpoints_count": self.0.tests.len(),
+        })]
+    }
+    fn switch_project(&self, _id_or_name: &str) -> Result<Value, String> {
+        Err("Project switching not supported in standalone config mode".into())
+    }
+    fn create_project(&self, _name: &str, _base_url: &str) -> Result<Value, String> {
+        Err("Project creation not supported in standalone config mode".into())
     }
 }
 
@@ -249,6 +267,46 @@ pub fn agent_tool_definitions() -> Vec<Value> {
                         "value": { "type": "string", "description": "Variable value" }
                     },
                     "required": ["name", "value"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_list_projects",
+                "description": "List all projects configured in the user's Beacon workspace, indicating which project is currently active/in-focus, its base URL, environment, and endpoint count.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_switch_project",
+                "description": "Switch the active Beacon project workspace to another project by its ID or name (e.g. 'K-MOTION API' or 'JSONPlaceholder API'). Updates the active workspace context and syncs the UI in real time.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project": { "type": "string", "description": "Project ID or project name to switch to" }
+                    },
+                    "required": ["project"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_create_project",
+                "description": "Create a new project workspace in Beacon with a name and optional base URL, and switch to it immediately.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Name of the new project" },
+                        "base_url": { "type": "string", "description": "Optional base URL (e.g. 'https://api.myproject.com')" }
+                    },
+                    "required": ["name"]
                 }
             }
         }),
@@ -672,6 +730,42 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
             }
         }
 
+        "beacon_list_projects" => {
+            let list = workspace.list_projects();
+            json!({ "projects": list, "count": list.len() })
+        }
+
+        "beacon_switch_project" => {
+            let target = args.get("project").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if target.is_empty() {
+                return json!({ "error": "Project name or ID is required to switch" });
+            }
+            match workspace.switch_project(target) {
+                Ok(info) => json!({
+                    "status": "switched",
+                    "mutated": true,
+                    "active_project": info,
+                }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
+        "beacon_create_project" => {
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let base_url = args.get("base_url").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if name.is_empty() {
+                return json!({ "error": "Project name is required" });
+            }
+            match workspace.create_project(name, base_url) {
+                Ok(info) => json!({
+                    "status": "created",
+                    "mutated": true,
+                    "active_project": info,
+                }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
         _ => json!({ "error": format!("Unknown tool: {}", name) }),
     }
 }
@@ -775,6 +869,33 @@ mod tests {
             }
             Ok(())
         }
+        fn list_projects(&self) -> Vec<Value> {
+            vec![json!({
+                "id": "proj-1",
+                "name": "Default Project",
+                "is_active": true,
+                "base_url": "https://jsonplaceholder.typicode.com",
+                "endpoints_count": 1,
+            })]
+        }
+        fn switch_project(&self, id_or_name: &str) -> Result<Value, String> {
+            Ok(json!({
+                "status": "switched",
+                "id": id_or_name,
+                "name": id_or_name,
+                "base_url": "https://example.com",
+                "endpoints_count": 5,
+            }))
+        }
+        fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String> {
+            Ok(json!({
+                "status": "created",
+                "id": "proj-new",
+                "name": name,
+                "base_url": base_url,
+                "endpoints_count": 0,
+            }))
+        }
     }
 
     #[tokio::test]
@@ -833,5 +954,26 @@ mod tests {
         let collection_res = execute_tool("beacon_run_collection", &json!({}), &ws).await;
         assert_eq!(collection_res["total_steps"], 1);
         assert!(collection_res["steps"].as_array().unwrap().len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_agent_project_tools() {
+        let ws = InMemoryWorkspace::new();
+
+        let list_res = execute_tool("beacon_list_projects", &json!({}), &ws).await;
+        assert_eq!(list_res["count"], 1);
+
+        let switch_res = execute_tool("beacon_switch_project", &json!({ "project": "K-MOTION API" }), &ws).await;
+        assert_eq!(switch_res["status"], "switched");
+        assert_eq!(switch_res["mutated"], true);
+
+        let create_res = execute_tool(
+            "beacon_create_project",
+            &json!({ "name": "Auth Service", "base_url": "https://auth.internal" }),
+            &ws,
+        )
+        .await;
+        assert_eq!(create_res["status"], "created");
+        assert_eq!(create_res["mutated"], true);
     }
 }
