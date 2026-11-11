@@ -5,7 +5,7 @@ use colored::*;
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "beacon")]
+#[command(name = "beacon", version)]
 #[command(about = "Beacon API Workbench CLI & CI Test Runner", long_about = None)]
 struct Cli {
     #[command(subcommand)]
