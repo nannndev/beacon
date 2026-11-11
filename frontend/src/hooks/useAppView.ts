@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 
 
-export type AppView = 'workspace' | 'history' | 'mcp' | 'cli'
+export type AppView = 'workspace' | 'history' | 'mcp' | 'cli' | 'gateway'
 
 export function parseAppView(pathname: string, search: string): { view: AppView; runId: string | null } {
   const params = new URLSearchParams(search)
   if (pathname === '/history') return { view: 'history', runId: params.get('run') }
   if (pathname === '/mcp') return { view: 'mcp', runId: null }
   if (pathname === '/cli') return { view: 'cli', runId: null }
+  if (pathname === '/ai-gateway') return { view: 'gateway', runId: null }
   return { view: 'workspace', runId: null }
 }
 
@@ -36,6 +37,8 @@ export function useAppView() {
         ? '/mcp'
         : view === 'cli'
           ? '/cli'
+        : view === 'gateway'
+          ? '/ai-gateway'
         : '/'
     window.history.pushState({}, '', url)
     setState({ view, runId: view === 'history' ? runId || null : null })
@@ -47,5 +50,6 @@ export function useAppView() {
     openWorkspace: () => navigate('workspace'),
     openMcp: () => navigate('mcp'),
     openCli: () => navigate('cli'),
+    openGateway: () => navigate('gateway'),
   }
 }

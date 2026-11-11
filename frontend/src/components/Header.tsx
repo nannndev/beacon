@@ -13,6 +13,7 @@ import {
   Database,
   Eye,
   Search,
+  BrainCircuit,
 } from 'lucide-react'
 import { Project, SharingStatus } from '../types'
 import { BrandMark } from './BrandMark'
@@ -27,6 +28,7 @@ interface Props {
   onExport: () => void
   onPreviewApis?: () => void
   onOpenPalette?: () => void
+  onOpenAgent?: () => void
   exporting?: boolean
   onOpenMcp: () => void
   onOpenSettings: () => void
@@ -42,6 +44,7 @@ export function Header({
   onExport,
   onPreviewApis,
   onOpenPalette,
+  onOpenAgent,
   exporting = false,
   onOpenMcp,
   onOpenSettings,
@@ -189,6 +192,18 @@ export function Header({
           <span className="truncate">{currentProject?.name || 'No project'}</span>
           <Settings className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
+        {onOpenAgent && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 gap-1.5 border border-primary/30 bg-primary/10 font-medium text-primary hover:bg-primary/20"
+            onClick={onOpenAgent}
+            title="Beacon AI Agent (⌘J)"
+          >
+            <BrainCircuit className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Beacon AI</span>
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"

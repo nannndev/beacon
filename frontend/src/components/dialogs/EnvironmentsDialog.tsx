@@ -145,7 +145,7 @@ export function EnvironmentsDialog({ open, onOpenChange, project, activeEnvId, o
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[760px]">
+      <DialogContent className="sm:max-w-[760px]">
         <DialogHeader>
           <div className="flex flex-col gap-2 pr-8 sm:flex-row sm:items-center sm:justify-between">
             <DialogTitle>Environments — {project?.name}</DialogTitle>

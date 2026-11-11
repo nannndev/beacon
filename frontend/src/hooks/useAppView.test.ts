@@ -7,6 +7,7 @@ describe('app view and history run metadata', () => {
   it('maps history URLs and preserves a requested run id', () => {
     expect(parseAppView('/history', '?run=r1')).toEqual({ view: 'history', runId: 'r1' })
     expect(parseAppView('/cli', '')).toEqual({ view: 'cli', runId: null })
+    expect(parseAppView('/ai-gateway', '')).toEqual({ view: 'gateway', runId: null })
     expect(parseAppView('/', '')).toEqual({ view: 'workspace', runId: null })
   })
 

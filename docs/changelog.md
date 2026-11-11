@@ -3,6 +3,33 @@
 All notable changes to Beacon are documented here. Version numbers match the
 tags and installers published in [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
+
+::: v-pre
+
+## [0.11.0] - 2026-11-12
+
+### Added
+
+- **Native Rust engine**: The backend, CLI, and MCP server now run on one Rust engine. Load, ramp, spike, soak, rate probe, capacity, fuzz, and benchmark runs all work in Rust, and paced modes keep to the RPS you configure.
+- **Beacon AI agent**: Ask in plain language to list, switch, or create projects, build endpoints, chain collections, and run load tests. The agent sees the project, environment, and endpoint you have open, and asks one short question when the target project is unclear.
+- **Agent scope and step limit**: Choose Global to let the agent work across every project, or Workspace to lock it to the open one. The step limit now goes from 6 to unlimited.
+- **Documented responses from the agent**: `beacon_capture_baseline` saves a live response as the documented example and adds assertions. `beacon_set_example_response` writes the example from your handler code before the API is up.
+- **One tool set for MCP and the app**: The MCP server now exposes the same 15 tools as the built-in agent.
+
+### Improved
+
+- **Notifications**: Toasts show an icon and a close button, support a warning type, merge repeats, and never stack more than four.
+- **Animations**: The agent drawer opens from the mascot like a macOS panel, chat bubbles slide in from their side, and the mascot animates more smoothly. All of it respects reduced motion.
+
+### Fixed
+
+- **Runs that never finished**: Load runs now report completion, so the UI no longer stays on "running".
+- **Ignored test modes**: Starting a run in any mode other than Load used to run a plain load test instead.
+- **Overflowing dialogs**: Dialogs, including Export, now fit the window and scroll inside.
+- **Missing animations**: Dialog and toast animations did nothing because a styling plugin was missing. It is now installed.
+
+[Compare 0.10.0 → 0.11.0](https://github.com/nannndev/beacon/compare/v0.10.0...v0.11.0)
+
 ## [0.10.0] - 2026-11-02
 
 ### Added
@@ -583,3 +610,5 @@ tags and installers published in [GitHub Releases](https://github.com/nannndev/b
 
 - Initial React, FastAPI, and Tauri application.
 - Projects, environments, nested endpoint collections, import/export, dynamic variables, and concurrent API test execution.
+
+:::

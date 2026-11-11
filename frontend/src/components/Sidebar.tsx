@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo, Activity, Database, Layers3, Sparkles, Plug, History, GripVertical, Radio, SquareTerminal } from 'lucide-react'
+import { Plus, Settings, Globe, PanelLeftClose, PanelLeftOpen, FileStack, ListVideo, Activity, Database, Layers3, Sparkles, Plug, History, GripVertical, Radio, SquareTerminal, Bot } from 'lucide-react'
 import { Project, TestConfig } from '../types'
 import { BrandMark } from './BrandMark'
 import { useAppVersion } from '../hooks/useAppVersion'
@@ -29,6 +29,7 @@ interface Props {
   runAllDisabled?: boolean
   onOpenMcp?: () => void
   onOpenCli?: () => void
+  onOpenGateway?: () => void
   onOpenHistory: () => void
   activeView?: 'workspace' | 'history' | 'mcp' | 'cli'
 }
@@ -38,7 +39,7 @@ export function Sidebar({
   onReorderProjects,
   onSwitchProject, onNewProject, onJoinProject, onAddSampleProject, sampleProjectExists, sampleProjectBusy,
   onSwitchEnv, onManageEnv, onGlobalVars, onNewEndpoint, onRunAll, runAllDisabled,
-  onOpenMcp, onOpenCli, onOpenHistory, activeView = 'workspace',
+  onOpenMcp, onOpenCli, onOpenGateway, onOpenHistory, activeView = 'workspace',
 }: Props) {
   const envs = currentProject?.environments || []
   const version = useAppVersion()
@@ -178,6 +179,11 @@ export function Sidebar({
         {onOpenCli && (
           <Button size="icon" variant={activeView === 'cli' ? 'secondary' : 'ghost'} className="h-8 w-8" title="Beacon CLI" onClick={onOpenCli}>
             <SquareTerminal className="h-4 w-4" />
+          </Button>
+        )}
+        {onOpenGateway && (
+          <Button size="icon" variant={activeView === 'gateway' ? 'secondary' : 'ghost'} className="h-8 w-8" title="AI Gateway" onClick={onOpenGateway}>
+            <Bot className="h-4 w-4" />
           </Button>
         )}
         </div>
@@ -340,6 +346,16 @@ export function Sidebar({
             <SquareTerminal className="h-3 w-3" />
             <span className="font-medium">Beacon CLI</span>
             <span className="ml-auto text-[9px]">CI and terminal</span>
+          </button>
+        )}
+        {onOpenGateway && (
+          <button
+            onClick={onOpenGateway}
+            className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Bot className="h-3 w-3" />
+            <span className="font-medium">AI Gateway</span>
+            <span className="ml-auto text-[9px]">LLM proxy</span>
           </button>
         )}
         <div className="pt-0.5 text-center text-[9px] text-muted-foreground/70">

@@ -20,8 +20,8 @@ const frontendPackage = JSON.parse(
 const tauriConfig = JSON.parse(
   await readFile(new URL("../frontend/src-tauri/tauri.conf.json", import.meta.url), "utf8"),
 );
-const backendBuild = await readFile(
-  new URL("../backend/build_backend.py", import.meta.url),
+const prepareDesktop = await readFile(
+  new URL("../frontend/scripts/prepare-desktop.cjs", import.meta.url),
   "utf8",
 );
 
@@ -50,7 +50,7 @@ test("desktop release builds and publishes Linux packages", () => {
 
 test("desktop release bundles and publishes the headless CLI", () => {
   assert.ok(tauriConfig.bundle.externalBin.includes("beacon_cli"));
-  assert.match(backendBuild, /"--name", "beacon_cli"/);
+  assert.match(prepareDesktop, /beacon-cli/);
   assert.match(mainRs, /fn cli_path\(state: State<CliPath>\)/);
   assert.match(releaseWorkflow, /beacon-windows-x64\.exe/);
   assert.match(releaseWorkflow, /beacon-macos-arm64/);

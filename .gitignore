@@ -35,18 +35,13 @@ ENV/
 # Local configs and artifacts (per-app)
 # tests.json holds operational state and may contain REAL tokens/credentials.
 # Keep it local; commit config/tests.example.json instead.
-config/tests.json
-config/*.local.json
-config/history.db*
-config/workspace.db*
-config/sharing-identity/
-
-# Backend (FastAPI) also stores operational state relative to its cwd
-backend/config/tests.json
-backend/config/*.local.json
-backend/config/history.db*
-backend/config/workspace.db*
-backend/config/sharing-identity/
+**/config/tests.json
+**/config/*.local.json
+**/config/history.db*
+**/config/workspace.db*
+**/config/sharing-identity/
+**/config/gateway.db*
+**/config/gateway.key
 *.log
 results/
 
@@ -98,3 +93,6 @@ backend/backend.spec
 # Tauri updater signing keys (NEVER commit the private key)
 frontend/src-tauri/.updater-private.key
 frontend/src-tauri/.updater-private.key.pub
+
+# HyperFrames showcase video project (renders, captures, snapshots)
+video/

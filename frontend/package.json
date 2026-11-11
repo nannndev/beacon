@@ -1,7 +1,7 @@
 {
   "name": "security-tools-frontend",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -48,6 +48,7 @@
     "jsdom": "25.0.1",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.5.3",
     "vite": "^5.4.0",
     "vitest": "2.1.9"

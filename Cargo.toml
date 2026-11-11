@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/beacon-core",
+    "crates/beacon-server",
+    "crates/beacon-gateway",
+    "crates/beacon-agent",
+    "crates/beacon-mcp",
+    "crates/beacon-cli",
+]
+exclude = [
+    "frontend/src-tauri",
+]
+

@@ -1,0 +1,20 @@
+[package]
+name = "beacon-mcp"
+version = "0.11.0"
+edition = "2021"
+
+[[bin]]
+name = "mcp_server"
+path = "src/main.rs"
+
+[dependencies]
+beacon-core = { path = "../beacon-core" }
+beacon-server = { path = "../beacon-server" }
+beacon-agent = { path = "../beacon-agent" }
+parking_lot = "0.12"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+uuid = { version = "1.8", features = ["v4"] }
+

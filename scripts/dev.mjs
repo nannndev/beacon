@@ -1,6 +1,6 @@
 // Beacon unified dev runner.
 //
-// Launches the FastAPI backend, the React/Vite frontend, and the VitePress
+// Launches the Rust backend (Axum), the React/Vite frontend, and the VitePress
 // docs together, reading every port from the single root `.env` so nothing
 // can drift out of sync. Cross-platform (uses `concurrently`, already a dep).
 //
@@ -9,7 +9,6 @@
 //   node scripts/dev.mjs frontend docs  # a subset
 //
 import { readFileSync, existsSync, copyFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import concurrently from 'concurrently'
@@ -45,28 +44,15 @@ const FRONTEND_PORT = env.FRONTEND_PORT || '5173'
 const DOCS_PORT = env.DOCS_PORT || '5174'
 const LANDING_PORT = env.LANDING_PORT || '5175'
 
-// --- resolve a working Python launcher -----------------------------------
-function resolvePython() {
-  const candidates = process.platform === 'win32'
-    ? ['py', 'python', 'python3']
-    : ['python3', 'python']
-  for (const cmd of candidates) {
-    const r = spawnSync(cmd, ['--version'], { stdio: 'ignore', shell: true })
-    if (r.status === 0) return cmd
-  }
-  console.error(pc.red('[dev] No Python found (tried: ' + candidates.join(', ') + ').'))
-  process.exit(1)
-}
-
 // --- child env passed to every process (so they can read ports too) ------
-const childEnv = { ...process.env, BACKEND_PORT, FRONTEND_PORT, DOCS_PORT, LANDING_PORT }
+const childEnv = { ...process.env, PORT: BACKEND_PORT, BACKEND_PORT, FRONTEND_PORT, DOCS_PORT, LANDING_PORT }
 
 const SERVICES = {
   backend: {
     name: 'BACKEND',
     prefixColor: 'blue',
-    // command filled in after Python is resolved
-    cwd: resolve(ROOT, 'backend'),
+    command: `cargo run -p beacon-server`,
+    cwd: ROOT,
   },
   frontend: {
     name: 'FRONTEND',
@@ -97,12 +83,6 @@ if (unknown.length) {
   process.exit(1)
 }
 const selected = requested.length ? requested : Object.keys(SERVICES)
-
-if (selected.includes('backend')) {
-  const py = resolvePython()
-  SERVICES.backend.command =
-    `${py} -m uvicorn app.main:app --reload --host 127.0.0.1 --port ${BACKEND_PORT}`
-}
 
 // --- banner --------------------------------------------------------------
 console.log(pc.bold('\n  Beacon dev — starting: ') + pc.bold(selected.join(', ')))
