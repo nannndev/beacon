@@ -64,8 +64,12 @@ async fn handle_agent_models(State(state): State<AgentState>) -> Json<Value> {
         }
     }
 
-    let default_model = if accounts.iter().any(|a| a.provider == "codex") {
-        Some("cx/gpt-5.6-terra".to_string())
+    let default_model = if let Some(codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
+        if codex_acc.is_free() {
+            Some("cx/gpt-5-mini".to_string())
+        } else {
+            Some("cx/gpt-5.6-terra".to_string())
+        }
     } else if let Some(first_sub) = subscriptions.first() {
         first_sub.get("models").and_then(|m| m.as_array()).and_then(|a| a.get(1)).and_then(|v| v.as_str()).map(String::from)
     } else {
@@ -86,10 +90,22 @@ async fn handle_agent_context(State(state): State<AgentState>) -> Json<Value> {
     let accounts = state.orchestrator.gateway.store.list_accounts();
     let has_gw = !accounts.is_empty();
 
+    let default_model = if let Some(codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
+        if codex_acc.is_free() {
+            Some("cx/gpt-5-mini")
+        } else {
+            Some("cx/gpt-5.6-terra")
+        }
+    } else if has_gw {
+        Some("cx/gpt-5-mini")
+    } else {
+        None
+    };
+
     Json(json!({
         "base_url": config.base_url,
         "endpoints_count": config.tests.len(),
         "has_gateway_model": has_gw,
-        "default_model": if has_gw { Some("cx/gpt-5.6-terra") } else { None },
+        "default_model": default_model,
     }))
 }

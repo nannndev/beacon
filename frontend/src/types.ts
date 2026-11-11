@@ -424,6 +424,8 @@ export interface OAuthAccount {
   provider: OAuthProviderId
   label: string | null
   email: string | null
+  plan?: string | null
+  is_free?: boolean
   connected_at: number
   refreshed_at: number | null
   expires_at: number | null

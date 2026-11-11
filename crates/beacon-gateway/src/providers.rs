@@ -234,7 +234,9 @@ pub struct OAuthProviderMeta {
     pub flow: &'static str,
     pub family: &'static str,
     pub default_model: &'static str,
+    pub default_model_free: &'static str,
     pub preferred_auto: &'static [&'static str],
+    pub preferred_auto_free: &'static [&'static str],
     pub seed_models: &'static [&'static str],
 }
 
@@ -247,12 +249,14 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "anthropic",
         default_model: "claude-sonnet-5-5",
+        default_model_free: "claude-3-5-haiku-20241022",
         preferred_auto: &["claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001", "claude-opus-5-5"],
+        preferred_auto_free: &["claude-3-5-haiku-20241022", "claude-haiku-4-5"],
         seed_models: &[
             "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
             "claude-opus-5", "claude-sonnet-5", "claude-opus-4-6",
             "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-haiku-4-5",
-            "claude-3-7-sonnet-20250219",
+            "claude-3-7-sonnet-20250219", "claude-3-5-haiku-20241022",
         ],
     },
     OAuthProviderMeta {
@@ -263,13 +267,18 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "codex",
         default_model: "gpt-5.6-terra",
+        default_model_free: "gpt-5-mini",
         preferred_auto: &[
             "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol",
             "gpt-6-sol", "gpt-6.1-terra", "gpt-6.1-sol",
         ],
+        preferred_auto_free: &[
+            "gpt-5-mini", "gpt-4o-mini", "gpt-4o",
+        ],
         seed_models: &[
             "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-sol",
             "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-5-mini", "gpt-4o", "gpt-4o-mini",
         ],
     },
     OAuthProviderMeta {
@@ -280,7 +289,9 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "device",
         family: "openai",
         default_model: "gpt-4.1",
+        default_model_free: "gpt-4o-mini",
         preferred_auto: &["gpt-4.1", "gpt-4o", "gpt-4o-mini", "gpt-5-mini", "gpt-5.5"],
+        preferred_auto_free: &["gpt-4o-mini", "gpt-4o"],
         seed_models: &[
             "gpt-5.5", "gpt-5.4", "gpt-5-mini", "gpt-4.1", "gpt-4o",
             "o3-mini", "claude-sonnet-5.5", "claude-opus-5.5",
@@ -295,7 +306,9 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "gemini",
         default_model: "gemini-2.5-flash",
+        default_model_free: "gemini-2.5-flash-lite",
         preferred_auto: &["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-flash-preview"],
+        preferred_auto_free: &["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"],
         seed_models: &[
             "gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3-flash-preview",
             "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash",
@@ -309,7 +322,9 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "device",
         family: "openai",
         default_model: "kimi-for-coding",
+        default_model_free: "kimi-for-coding",
         preferred_auto: &["kimi-for-coding", "kimi-for-coding-highspeed", "k3"],
+        preferred_auto_free: &["kimi-for-coding"],
         seed_models: &["kimi-for-coding", "kimi-for-coding-highspeed", "k3"],
     },
     OAuthProviderMeta {
@@ -320,7 +335,9 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "device",
         family: "openai",
         default_model: "muse-spark-1.3",
+        default_model_free: "muse-spark-1.1",
         preferred_auto: &["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1"],
+        preferred_auto_free: &["muse-spark-1.1", "muse-spark-1.2"],
         seed_models: &["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1"],
     },
     OAuthProviderMeta {
@@ -331,7 +348,9 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "device",
         family: "openai",
         default_model: "meituan/longcat-2.0:free",
+        default_model_free: "meituan/longcat-2.0:free",
         preferred_auto: &["meituan/longcat-2.0:free", "stepfun/step-5-preview:free"],
+        preferred_auto_free: &["meituan/longcat-2.0:free", "stepfun/step-5-preview:free"],
         seed_models: &[
             "meituan/longcat-2.0:free", "stepfun/step-5-preview:free",
             "upstage/solar-mini4:free", "poolside/laguna-s-2.1:free",
@@ -345,9 +364,14 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "device",
         family: "openai",
         default_model: "openrouter/free",
+        default_model_free: "openrouter/free",
         preferred_auto: &[
             "openrouter/free",
             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "cohere/north-mini-code:free",
+        ],
+        preferred_auto_free: &[
+            "openrouter/free",
             "cohere/north-mini-code:free",
         ],
         seed_models: &[

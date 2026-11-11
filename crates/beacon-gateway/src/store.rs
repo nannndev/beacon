@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 pub const KEY_PREFIX: &str = "gw-sk-";
 
-fn now() -> f64 {
+pub fn now() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
@@ -37,6 +37,60 @@ pub struct AccountRecord {
     pub last_error: Option<String>,
     pub sort_order: i64,
     pub cred: Value,
+}
+
+impl AccountRecord {
+    pub fn detect_plan(&self) -> String {
+        if self.provider == "codex" {
+            if let Some(token) = self.cred.get("access_token").and_then(|t| t.as_str()) {
+                let parts: Vec<&str> = token.split('.').collect();
+                if parts.len() >= 2 {
+                    if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, parts[1]) {
+                        if let Ok(claims) = serde_json::from_slice::<Value>(&decoded) {
+                            if let Some(plan) = claims
+                                .get("https://api.openai.com/auth")
+                                .and_then(|a| a.get("chatgpt_plan_type"))
+                                .and_then(|p| p.as_str())
+                            {
+                                return plan.to_lowercase();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(p) = self.cred.get("plan").and_then(|v| v.as_str()) {
+            return p.to_lowercase();
+        }
+        "free".to_string()
+    }
+
+    pub fn is_free(&self) -> bool {
+        let plan = self.detect_plan();
+        plan == "free" || plan == "none" || plan.is_empty()
+    }
+
+    pub fn display_plan(&self) -> String {
+        match self.detect_plan().as_str() {
+            "free" => "Free".to_string(),
+            "plus" => "Plus".to_string(),
+            "pro" => "Pro".to_string(),
+            "team" => "Team".to_string(),
+            "business" => "Business".to_string(),
+            "enterprise" => "Enterprise".to_string(),
+            other => {
+                if other.is_empty() {
+                    "Free".to_string()
+                } else {
+                    let mut c = other.chars();
+                    match c.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

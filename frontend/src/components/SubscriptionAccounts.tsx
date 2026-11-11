@@ -656,9 +656,9 @@ export function SubscriptionAccounts({ onChanged }: Props) {
                             <span className="truncate font-medium" title={acct.email || acct.id}>
                               {acct.email || acct.id}
                             </span>
-                            {usage?.plan && (
+                            {(usage?.plan || acct.plan) && (
                               <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400">
-                                {usage.plan}
+                                {usage?.plan || acct.plan}
                               </span>
                             )}
                             {acct.last_error ? (

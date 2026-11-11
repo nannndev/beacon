@@ -53,15 +53,39 @@ impl GatewayEngine {
         if req.ends_with("/auto") {
             let prefix = req.strip_suffix("/auto").unwrap();
             if let Some(op) = find_oauth_by_alias(prefix).or_else(|| find_oauth_by_id(prefix)) {
-                return op
-                    .preferred_auto
-                    .iter()
-                    .map(|m| Target {
-                        provider: op.id.to_string(),
-                        model: m.to_string(),
-                        kind: "oauth".to_string(),
-                    })
-                    .collect();
+                let accounts = self.store.list_accounts();
+                let matching: Vec<_> = accounts.iter().filter(|a| a.provider == op.id).collect();
+                let is_all_free = matching.is_empty() || matching.iter().all(|a| a.is_free());
+
+                let mut out = Vec::new();
+                if is_all_free {
+                    for m in op.preferred_auto_free {
+                        out.push(Target {
+                            provider: op.id.to_string(),
+                            model: m.to_string(),
+                            kind: "oauth".to_string(),
+                        });
+                    }
+                } else {
+                    for m in op.preferred_auto {
+                        out.push(Target {
+                            provider: op.id.to_string(),
+                            model: m.to_string(),
+                            kind: "oauth".to_string(),
+                        });
+                    }
+                    for m in op.preferred_auto_free {
+                        let t = Target {
+                            provider: op.id.to_string(),
+                            model: m.to_string(),
+                            kind: "oauth".to_string(),
+                        };
+                        if !out.contains(&t) {
+                            out.push(t);
+                        }
+                    }
+                }
+                return out;
             }
         }
 
@@ -78,17 +102,39 @@ impl GatewayEngine {
                             });
                         }
                     }
+                    for m in op.preferred_auto_free {
+                        let candidate = Target {
+                            provider: op.id.to_string(),
+                            model: m.to_string(),
+                            kind: "oauth".to_string(),
+                        };
+                        if !out.contains(&candidate) {
+                            out.push(candidate);
+                        }
+                    }
                 }
             }
             return out;
         }
 
-        // Auto resolution: try connected OAuth accounts first with their preferred auto chains
+        // Auto resolution: try connected OAuth accounts first with their plan-aware chains
         let mut out = Vec::new();
         let accounts = self.store.list_accounts();
         for acc in &accounts {
             if let Some(op) = find_oauth_by_id(&acc.provider) {
-                for m in op.preferred_auto {
+                let is_free = acc.is_free();
+                let models: Vec<&str> = if is_free {
+                    op.preferred_auto_free.to_vec()
+                } else {
+                    let mut list = op.preferred_auto.to_vec();
+                    for fm in op.preferred_auto_free {
+                        if !list.contains(fm) {
+                            list.push(fm);
+                        }
+                    }
+                    list
+                };
+                for m in models {
                     let target = Target {
                         provider: op.id.to_string(),
                         model: m.to_string(),
@@ -125,9 +171,11 @@ impl GatewayEngine {
         }
 
         // Fallback default
+        let has_paid_codex = accounts.iter().any(|a| a.provider == "codex" && !a.is_free());
+        let default_codex_model = if has_paid_codex { "gpt-5.6-terra" } else { "gpt-5-mini" };
         vec![Target {
             provider: "codex".to_string(),
-            model: "gpt-5.6-terra".to_string(),
+            model: default_codex_model.to_string(),
             kind: "oauth".to_string(),
         }]
     }
@@ -314,6 +362,8 @@ pub fn get_oauth_accounts_state(store: &GatewayStore) -> Value {
         .into_iter()
         .map(|a| {
             let expires_at = a.cred.get("expires_at").and_then(|v| v.as_f64());
+            let plan = a.display_plan();
+            let is_free = a.is_free();
             json!({
                 "id": a.id,
                 "provider": a.provider,
@@ -323,6 +373,8 @@ pub fn get_oauth_accounts_state(store: &GatewayStore) -> Value {
                 "refreshed_at": a.refreshed_at,
                 "expires_at": expires_at,
                 "last_error": a.last_error,
+                "plan": plan,
+                "is_free": is_free,
             })
         })
         .collect();
@@ -549,9 +601,23 @@ async fn handle_reorder_accounts(
     Json(get_oauth_accounts_state(&engine.store))
 }
 
-async fn handle_accounts_usage() -> Json<Value> {
+async fn handle_accounts_usage(State(engine): State<GatewayEngine>) -> Json<Value> {
+    let accounts = engine.store.list_accounts();
+    let mut usage = Vec::new();
+    for a in &accounts {
+        usage.push(json!({
+            "provider": a.provider,
+            "account_id": a.id,
+            "email": a.email,
+            "last_error": a.last_error,
+            "plan": a.display_plan(),
+            "windows": [],
+            "limit_reached": false,
+            "fetched_at": crate::store::now(),
+        }));
+    }
     Json(json!({
-        "usage": [],
+        "usage": usage,
         "summary": {}
     }))
 }
