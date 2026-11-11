@@ -172,7 +172,7 @@ impl GatewayEngine {
 
         // Fallback default
         let has_paid_codex = accounts.iter().any(|a| a.provider == "codex" && !a.is_free());
-        let default_codex_model = if has_paid_codex { "gpt-5.6-terra" } else { "gpt-5-mini" };
+        let default_codex_model = if has_paid_codex { "gpt-5.6-terra" } else { "chatgpt-4o-latest" };
         vec![Target {
             provider: "codex".to_string(),
             model: default_codex_model.to_string(),
@@ -243,6 +243,7 @@ impl GatewayEngine {
                             let status = upstream_resp.status();
                             if !status.is_success() {
                                 let err_text = upstream_resp.text().await.unwrap_or_default();
+                                eprintln!("[GATEWAY CHAT] target={} acc={} status={} err={}", target.model, acc.email.as_deref().unwrap_or("?"), status, err_text);
                                 // If plan error or rate limit, fallback to next candidate model
                                 if err_text.contains("not in plan")
                                     || err_text.contains("not supported")

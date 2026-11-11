@@ -134,12 +134,12 @@ function uid(prefix: string) {
 
 function TypingDots() {
   return (
-    <div className="flex gap-1 py-1" aria-label="typing">
+    <div className="flex items-center gap-1.5 py-1 px-1" aria-label="typing">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce"
-          style={{ animationDelay: `${i * 120}ms` }}
+          className="w-1.5 h-1.5 rounded-full bg-emerald-500/80 animate-pulse"
+          style={{ animationDelay: `${i * 160}ms`, animationDuration: '1.2s' }}
         />
       ))}
     </div>
@@ -420,7 +420,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
   onActionReady,
   origin,
 }) => {
-  // Smooth Dock-style mount/shown animation matching 7Server
+  // Smooth panel mount/shown animation
   const [mounted, setMounted] = useState(open)
   const [shown, setShown] = useState(false)
 
@@ -433,7 +433,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       return () => window.cancelAnimationFrame(raf)
     }
     setShown(false)
-    const tm = window.setTimeout(() => setMounted(false), 360)
+    const tm = window.setTimeout(() => setMounted(false), 320)
     return () => window.clearTimeout(tm)
   }, [open])
 
@@ -519,22 +519,37 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
     }
   }, [open])
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const isAtBottomRef = useRef(true)
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = messagesContainerRef.current
     if (!el) return
+    isAtBottomRef.current = true
     el.scrollTo({ top: el.scrollHeight, behavior })
   }, [])
-
-  useEffect(() => {
-    if (!open || showSettings) return
-    scrollToBottom('auto')
-  }, [open, showSettings, messages.length, scrollToBottom])
 
   const handleMessagesScroll = () => {
     const el = messagesContainerRef.current
     if (!el) return
-    setShowScrollBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 80)
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const atBottom = distanceFromBottom < 50
+    isAtBottomRef.current = atBottom
+    setShowScrollBottom(!atBottom && distanceFromBottom > 90)
   }
+
+  // Smoothly keep pinned to bottom as text deltas or tools stream in
+  useEffect(() => {
+    if (!open || showSettings) return
+    if (!isAtBottomRef.current) return
+    const el = messagesContainerRef.current
+    if (!el) return
+    const raf = window.requestAnimationFrame(() => {
+      if (messagesContainerRef.current && isAtBottomRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [open, showSettings, messages, streaming])
 
   // Flat model options & combos map for 7Server AgentModelPicker
   const { modelOptions, combosMap } = useMemo(() => {
@@ -1067,23 +1082,11 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
   if (!mounted) return null
 
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-  const drawerW = vw < 640 ? vw : wide ? Math.min(860, vw * 0.92) : 490
-  const drawerCenterX = vw - drawerW / 2
-  const drawerCenterY = vh / 2
-  const targetX = origin?.x ?? vw - 60
-  const targetY = origin?.y ?? vh - 60
-  const drawerOriginStyle = {
-    '--copilot-dx': `${Math.round(targetX - drawerCenterX)}px`,
-    '--copilot-dy': `${Math.round(targetY - drawerCenterY)}px`,
-  } as React.CSSProperties
-
   const drawerNode = (
     <>
       <div
         onClick={() => onOpenChange(false)}
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity duration-300 sm:hidden ${
+        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 sm:hidden ${
           shown ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         aria-hidden
@@ -1091,7 +1094,6 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
       <aside
         aria-label="Beacon AI Copilot"
-        style={drawerOriginStyle}
         className={`fixed top-0 right-0 z-50 h-full w-full ${
           wide ? 'sm:w-[min(860px,92vw)]' : 'sm:w-[490px]'
         } bg-card border-l border-border shadow-2xl flex flex-col copilot-drawer ${shown ? 'is-open' : ''}`}
@@ -1362,13 +1364,13 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                         type="button"
                         disabled={streaming}
                         onClick={() => void handleSend(action.prompt)}
-                        className="w-full p-2.5 rounded-xl border border-border bg-card hover:border-ring hover:bg-foreground/[0.03] text-left text-xs transition flex items-center justify-between group"
+                        className="w-full p-2.5 rounded-xl border border-border bg-card hover:border-emerald-500/40 hover:bg-emerald-500/[0.03] text-left text-xs transition-all duration-200 flex items-center justify-between group cursor-pointer active:scale-[0.99]"
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <span className="text-sm">{action.icon}</span>
+                          <span className="text-sm transition-transform duration-200 group-hover:scale-110">{action.icon}</span>
                           <span className="font-medium text-foreground truncate">{action.label}</span>
                         </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 shrink-0" />
+                        <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-emerald-500 transition-all duration-200 group-hover:translate-x-1 shrink-0" />
                       </button>
                     ))}
                   </div>
@@ -1378,7 +1380,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   msg.kind === 'compact' ? (
                     <details
                       key={msg.id}
-                      className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground"
+                      className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground transition-all duration-200"
                     >
                       <summary className="cursor-pointer select-none flex items-center justify-between gap-2 font-medium text-foreground list-none">
                         <span className="flex items-center gap-1.5">
@@ -1397,20 +1399,24 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                       className={`copilot-msg group/msg flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       {msg.role === 'assistant' && (
-                        <div className="w-6 h-6 rounded-lg btn-metal flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">
+                        <div className="w-6 h-6 rounded-lg btn-metal flex items-center justify-center shrink-0 text-xs font-bold mt-0.5 shadow-sm">
                           <Bot className="w-3.5 h-3.5" />
                         </div>
                       )}
                       <div className={`max-w-[88%] space-y-1.5 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                         {/* Tool Execution Pills */}
                         {msg.role === 'assistant' && msg.toolExecutions && msg.toolExecutions.length > 0 && (
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             {msg.toolExecutions.map((tool) => {
                               const isOpen = !!expandedTools[tool.call_id]
                               return (
                                 <div
                                   key={tool.call_id}
-                                  className="overflow-hidden rounded-xl border border-border bg-background/70 text-[11px]"
+                                  className={`overflow-hidden rounded-xl border transition-all duration-200 text-[11px] ${
+                                    tool.status === 'running'
+                                      ? 'border-emerald-500/40 bg-emerald-500/[0.04] shadow-sm shadow-emerald-500/10'
+                                      : 'border-border bg-background/70'
+                                  }`}
                                 >
                                   <button
                                     type="button"
@@ -1420,7 +1426,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                                         [tool.call_id]: !prev[tool.call_id],
                                       }))
                                     }
-                                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left hover:bg-muted/40"
+                                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left hover:bg-muted/40 transition-colors cursor-pointer"
                                   >
                                     {tool.status === 'running' ? (
                                       <Loader2 className="w-3 h-3 shrink-0 animate-spin text-emerald-500" />
@@ -1434,36 +1440,42 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                                       {tool.summary || tool.name}
                                     </span>
                                     {tool.mutated && (
-                                      <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-500/30 text-emerald-500">
+                                      <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-500/30 text-emerald-500 animate-in fade-in duration-200">
                                         saved
                                       </Badge>
                                     )}
-                                    {isOpen ? (
-                                      <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
-                                    ) : (
-                                      <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
-                                    )}
+                                    <ChevronRight
+                                      className={`w-3 h-3 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                                        isOpen ? 'rotate-90' : 'rotate-0'
+                                      }`}
+                                    />
                                   </button>
-                                  {isOpen && (
-                                    <div className="space-y-1.5 border-t border-border bg-zinc-950 p-2.5 font-mono text-[10px] text-zinc-200">
-                                      {tool.arguments && (
-                                        <div>
-                                          <div className="text-zinc-400">args ({tool.name}):</div>
-                                          <pre className="max-h-32 overflow-auto">
-                                            {JSON.stringify(tool.arguments, null, 2)}
-                                          </pre>
-                                        </div>
-                                      )}
-                                      {tool.result && (
-                                        <div>
-                                          <div className="text-zinc-400">result:</div>
-                                          <pre className="max-h-44 overflow-auto">
-                                            {JSON.stringify(tool.result, null, 2)}
-                                          </pre>
-                                        </div>
-                                      )}
+                                  <div
+                                    className={`grid transition-[grid-template-rows,opacity] duration-240 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                                    }`}
+                                  >
+                                    <div className="overflow-hidden">
+                                      <div className="space-y-1.5 border-t border-border bg-zinc-950 p-2.5 font-mono text-[10px] text-zinc-200">
+                                        {tool.arguments && (
+                                          <div>
+                                            <div className="text-zinc-400">args ({tool.name}):</div>
+                                            <pre className="max-h-32 overflow-auto">
+                                              {JSON.stringify(tool.arguments, null, 2)}
+                                            </pre>
+                                          </div>
+                                        )}
+                                        {tool.result && (
+                                          <div>
+                                            <div className="text-zinc-400">result:</div>
+                                            <pre className="max-h-44 overflow-auto">
+                                              {JSON.stringify(tool.result, null, 2)}
+                                            </pre>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               )
                             })}
@@ -1473,7 +1485,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                         {/* Message Bubble */}
                         {(msg.role === 'user' || msg.content || (!msg.error && !msg.pendingApproval && streaming && !msg.toolExecutions?.length)) && (
                           <div
-                            className={`rounded-2xl px-3.5 py-2.5 ${
+                            className={`rounded-2xl px-3.5 py-2.5 transition-all duration-200 ${
                               msg.role === 'user'
                                 ? 'btn-metal rounded-tr-sm shadow-sm'
                                 : 'bg-muted/50 border border-border text-foreground rounded-tl-sm'
@@ -1482,7 +1494,12 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                             {msg.role === 'user' ? (
                               <div className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.content}</div>
                             ) : msg.content ? (
-                              <RichMarkdown text={msg.content} />
+                              <div className="relative">
+                                <RichMarkdown text={msg.content} />
+                                {streaming && messages[messages.length - 1]?.id === msg.id && (
+                                  <span className="inline-block w-1.5 h-3.5 ml-1 bg-emerald-500 rounded-sm animate-pulse align-middle" />
+                                )}
+                              </div>
                             ) : (
                               <TypingDots />
                             )}
@@ -1606,10 +1623,10 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
               <button
                 type="button"
                 onClick={() => scrollToBottom('smooth')}
-                className="absolute bottom-24 right-5 z-20 px-2.5 py-1.5 rounded-full bg-card/95 border border-border shadow-lg backdrop-blur-md text-xs font-medium text-foreground hover:bg-muted flex items-center gap-1.5 transition-all cursor-pointer"
+                className="absolute bottom-24 right-5 z-20 px-2.5 py-1.5 rounded-full bg-card/95 border border-border shadow-xl backdrop-blur-md text-xs font-medium text-foreground hover:bg-muted flex items-center gap-1.5 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer animate-in fade-in-0 zoom-in-95 duration-150"
                 title="Scroll to bottom"
               >
-                <ArrowDown className="w-3.5 h-3.5 text-emerald-500" />
+                <ArrowDown className="w-3.5 h-3.5 text-emerald-500 animate-bounce" />
                 <span className="text-[11px] font-mono">↓</span>
               </button>
             )}

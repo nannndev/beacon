@@ -267,18 +267,18 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "codex",
         default_model: "gpt-5.6-terra",
-        default_model_free: "gpt-5-mini",
+        default_model_free: "chatgpt-4o-latest",
         preferred_auto: &[
-            "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol",
-            "gpt-6-sol", "gpt-6.1-terra", "gpt-6.1-sol",
+            "gpt-5.6-terra", "gpt-5.6-luna", "chatgpt-4o-latest",
+            "gpt-5.6-sol", "gpt-6-sol", "gpt-6.1-terra", "gpt-6.1-sol",
         ],
         preferred_auto_free: &[
-            "gpt-5-mini", "gpt-4o-mini", "gpt-4o",
+            "chatgpt-4o-latest", "gpt-5.6-terra", "gpt-5.6-luna",
         ],
         seed_models: &[
-            "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-sol",
-            "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-            "gpt-5-mini", "gpt-4o", "gpt-4o-mini",
+            "gpt-5.6-terra", "gpt-5.6-luna", "chatgpt-4o-latest",
+            "gpt-5.6-sol", "gpt-6-sol", "gpt-6.1-terra", "gpt-6.1-sol",
+            "gpt-6-astra", "text-davinci-002-render-sha",
         ],
     },
     OAuthProviderMeta {

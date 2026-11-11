@@ -7,6 +7,19 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_system_info() {
+    if let Ok(gw) = beacon_gateway::GatewayStore::new("config") {
+        let accounts = gw.list_accounts();
+        for a in &accounts {
+            println!("ACCOUNT ID: {}, KEYS: {:?}", a.id, a.cred.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+            if let Some(obj) = a.cred.as_object() {
+                for (k, v) in obj {
+                    if k != "access_token" && k != "refresh_token" && k != "id_token" {
+                        println!("  {} = {:?}", k, v);
+                    }
+                }
+            }
+        }
+    }
     let state = AppState::new();
     let app = app_router(state);
 

@@ -66,7 +66,7 @@ async fn handle_agent_models(State(state): State<AgentState>) -> Json<Value> {
 
     let default_model = if let Some(codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
         if codex_acc.is_free() {
-            Some("cx/gpt-5-mini".to_string())
+            Some("cx/chatgpt-4o-latest".to_string())
         } else {
             Some("cx/gpt-5.6-terra".to_string())
         }
@@ -92,12 +92,12 @@ async fn handle_agent_context(State(state): State<AgentState>) -> Json<Value> {
 
     let default_model = if let Some(codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
         if codex_acc.is_free() {
-            Some("cx/gpt-5-mini")
+            Some("cx/chatgpt-4o-latest")
         } else {
             Some("cx/gpt-5.6-terra")
         }
     } else if has_gw {
-        Some("cx/gpt-5-mini")
+        Some("cx/chatgpt-4o-latest")
     } else {
         None
     };

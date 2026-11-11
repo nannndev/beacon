@@ -29,6 +29,9 @@ impl AgentOrchestrator {
         let chosen_model = model.unwrap_or_else(|| "auto".to_string());
 
         stream! {
+            let model_evt = json!({ "type": "model", "model": chosen_model });
+            yield Ok(Event::default().data(serde_json::to_string(&model_evt).unwrap()));
+
             let has_system = messages.iter().any(|m| m.get("role").and_then(|r| r.as_str()) == Some("system"));
             if !has_system {
                 messages.insert(0, json!({
@@ -73,9 +76,9 @@ impl AgentOrchestrator {
                                                     if let Some(delta) = first.get("delta") {
                                                         if let Some(txt) = delta.get("content").and_then(|c| c.as_str()) {
                                                             if !txt.is_empty() {
-                                                                assistant_text.push_str(txt);
-                                                                let evt_json = json!({ "_kind": "delta", "delta": txt });
-                                                                yield Ok(Event::default().data(serde_json::to_string(&evt_json).unwrap()));
+                                                                 assistant_text.push_str(txt);
+                                                                 let evt_json = json!({ "type": "delta", "delta": txt });
+                                                                 yield Ok(Event::default().data(serde_json::to_string(&evt_json).unwrap()));
                                                             }
                                                         }
                                                         if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
@@ -116,7 +119,7 @@ impl AgentOrchestrator {
                                 "role": "assistant",
                                 "content": assistant_text
                             }));
-                            let done_evt = json!({ "_kind": "done" });
+                            let done_evt = json!({ "type": "delta", "delta": "" });
                             yield Ok(Event::default().data(serde_json::to_string(&done_evt).unwrap()));
                             break;
                         }
@@ -135,19 +138,22 @@ impl AgentOrchestrator {
                                 let fn_args: Value = serde_json::from_str(fn_args_str).unwrap_or(json!({}));
 
                                 let start_evt = json!({
-                                    "_kind": "call_start",
+                                    "type": "tool_start",
                                     "call_id": call_id,
                                     "name": fn_name,
-                                    "args": fn_args
+                                    "summary": format!("Running {}", fn_name),
+                                    "arguments": fn_args
                                 });
                                 yield Ok(Event::default().data(serde_json::to_string(&start_evt).unwrap()));
 
                                 let tool_res = execute_tool(fn_name, &fn_args, &config).await;
 
                                 let finish_evt = json!({
-                                    "_kind": "call_finish",
+                                    "type": "tool_result",
                                     "call_id": call_id,
                                     "name": fn_name,
+                                    "ok": true,
+                                    "summary": format!("Executed {}", fn_name),
                                     "result": tool_res
                                 });
                                 yield Ok(Event::default().data(serde_json::to_string(&finish_evt).unwrap()));
@@ -165,9 +171,14 @@ impl AgentOrchestrator {
                     }
                     Err((status, err_json)) => {
                         let err_evt = json!({
-                            "_kind": "error",
-                            "status": status.as_u16(),
-                            "error": err_json.0
+                            "type": "error",
+                            "error": {
+                                "title": "Gateway Error",
+                                "items": [{
+                                    "provider": "gateway",
+                                    "reason": format!("HTTP {}: {:?}", status.as_u16(), err_json.0)
+                                }]
+                            }
                         });
                         yield Ok(Event::default().data(serde_json::to_string(&err_evt).unwrap()));
                         break;

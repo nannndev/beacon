@@ -418,52 +418,60 @@
 .btn-metal:disabled { filter: saturate(0.6) brightness(0.9); }
 
 @keyframes agent-pop-in {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
+
 @keyframes agent-expand-in {
-  from { opacity: 0; transform: translateY(-3px); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
 @keyframes copilot-msg-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.99); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .copilot-msg {
-  animation: copilot-msg-in 320ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: copilot-msg-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
 }
 
 .copilot-drawer {
-  transform-origin: center center;
-  transform: translate3d(var(--copilot-dx, 0px), var(--copilot-dy, 120px), 0) scale(0.05, 0.08);
-  border-radius: 36px;
-  overflow: hidden;
+  transform: translate3d(100%, 0, 0);
   opacity: 0;
   pointer-events: none;
   transition:
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-radius 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease,
-    width 260ms cubic-bezier(0.32, 0.72, 0, 1);
-  will-change: transform, opacity, border-radius;
+    transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+  box-shadow: -12px 0 40px -4px rgba(0, 0, 0, 0.3), -1px 0 0 rgba(255, 255, 255, 0.05);
 }
+
 .copilot-drawer.is-open {
-  transform: translate3d(0, 0, 0) scale(1);
-  border-radius: 0;
+  transform: translate3d(0, 0, 0);
   opacity: 1;
   pointer-events: auto;
 }
-.copilot-drawer > * {
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 220ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.copilot-drawer.is-open > * { opacity: 1; transform: none; }
-.copilot-drawer.is-open > :nth-child(1) { transition-delay: 90ms; }
-.copilot-drawer.is-open > :nth-child(2) { transition-delay: 130ms; }
-.copilot-drawer.is-open > :nth-child(3) { transition-delay: 170ms; }
-.copilot-drawer.is-open > :nth-child(4) { transition-delay: 210ms; }
 
 .no-scrollbar {
   scrollbar-width: none;
