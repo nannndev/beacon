@@ -107,7 +107,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
     try {
       const next = await api.gatewayAccounts()
       setState(next)
-      if (next.settings.gemini_oauth_client_id && !geminiClientId) {
+      if (next?.settings?.gemini_oauth_client_id && !geminiClientId) {
         setGeminiClientId(next.settings.gemini_oauth_client_id)
       }
       return next
@@ -382,7 +382,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {state && (
+          {state?.settings && (
             <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-[11px]">
               <button
                 type="button"
@@ -466,7 +466,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
               <KeyRound className="h-3.5 w-3.5 text-cyan-500" />
               Google OAuth Client (Gemini CLI)
             </div>
-            {state?.settings.gemini_oauth_configured && (
+            {state?.settings?.gemini_oauth_configured && (
               <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
                 Configured {state.settings.gemini_oauth_client_secret_masked ? `(${state.settings.gemini_oauth_client_secret_masked})` : ''}
               </span>

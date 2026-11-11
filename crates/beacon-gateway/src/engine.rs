@@ -2,20 +2,22 @@ use crate::providers::{
     find_oauth_by_alias, find_oauth_by_id, find_provider_by_id,
     parse_model_string, Target, OAUTH_PROVIDERS, PROVIDERS,
 };
-use crate::store::{AccountRecord, GatewayStore};
+use crate::store::{AccountRecord, GatewayStore, ProviderRecord};
 use crate::translate::{openai_to_codex, CodexStreamTranslator};
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use futures::StreamExt;
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct GatewayEngine {
@@ -304,18 +306,133 @@ impl GatewayEngine {
 }
 
 // ---------------------------------------------------------------------
+// Helper builders for Client-compatible responses
+// ---------------------------------------------------------------------
+pub fn get_oauth_accounts_state(store: &GatewayStore) -> Value {
+    let accounts = store.list_accounts();
+    let client_accounts: Vec<Value> = accounts
+        .into_iter()
+        .map(|a| {
+            let expires_at = a.cred.get("expires_at").and_then(|v| v.as_f64());
+            json!({
+                "id": a.id,
+                "provider": a.provider,
+                "label": a.label,
+                "email": a.email,
+                "connected_at": a.connected_at,
+                "refreshed_at": a.refreshed_at,
+                "expires_at": expires_at,
+                "last_error": a.last_error,
+            })
+        })
+        .collect();
+
+    let mut models_map = serde_json::Map::new();
+    let mut aliases_map = serde_json::Map::new();
+    for op in OAUTH_PROVIDERS {
+        models_map.insert(op.id.to_string(), json!(op.seed_models));
+        aliases_map.insert(op.id.to_string(), json!(op.alias));
+    }
+
+    let settings = store.get_gateway_settings();
+
+    json!({
+        "accounts": client_accounts,
+        "models": models_map,
+        "aliases": aliases_map,
+        "providers": OAUTH_PROVIDERS,
+        "settings": settings,
+    })
+}
+
+pub fn build_gateway_providers(store: &GatewayStore) -> Vec<Value> {
+    let stored_records = store.list_providers();
+    let record_map: std::collections::HashMap<String, ProviderRecord> = stored_records
+        .into_iter()
+        .map(|r| (r.id.clone(), r))
+        .collect();
+
+    let mut out = Vec::new();
+    for p in PROVIDERS {
+        let rec = record_map.get(p.id);
+        let connected = rec.map(|r| r.has_key).unwrap_or(false) || !p.needs_key;
+        let base_url = rec.and_then(|r| r.base_url.clone());
+        let verified_at = rec.and_then(|r| r.verified_at);
+        let latency_ms = rec.and_then(|r| r.latency_ms);
+        let error = rec.and_then(|r| r.error.clone());
+        let models: Vec<String> = rec
+            .map(|r| r.models.clone())
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| p.seed_models.iter().map(|s| s.to_string()).collect());
+
+        out.push(json!({
+            "id": p.id,
+            "alias": p.alias,
+            "name": p.name,
+            "family": p.family,
+            "default_base_url": p.base_url,
+            "needs_key": p.needs_key,
+            "connected": connected,
+            "base_url": base_url,
+            "api_key": if connected && p.needs_key { Some("••••••••") } else { None },
+            "models": models,
+            "seed_models": p.seed_models,
+            "verified_at": verified_at,
+            "latency_ms": latency_ms,
+            "cooling": false,
+            "error": error,
+        }));
+    }
+    out
+}
+
+// ---------------------------------------------------------------------
 // Axum Router for Gateway API
 // ---------------------------------------------------------------------
 pub fn gateway_router(engine: GatewayEngine) -> Router {
     Router::new()
+        // Core chat completions & health
         .route("/v1/chat/completions", post(handle_chat_completions))
-        .route("/v1/models", get(handle_list_models))
+        .route("/gateway/v1/chat/completions", post(handle_chat_completions))
+        .route("/v1/models", get(handle_list_models_v1))
+        .route("/gateway/v1/models", get(handle_list_models_v1))
+        .route("/gateway/health", get(handle_health))
+
+        // Accounts (OAuth)
         .route("/gateway/admin/accounts", get(handle_list_accounts).post(handle_save_account))
+        .route("/gateway/admin/accounts/usage", get(handle_accounts_usage))
+        .route("/gateway/admin/accounts/:provider", delete(handle_delete_account_by_query))
         .route("/gateway/admin/accounts/:provider/:id", delete(handle_remove_account))
+        .route("/gateway/admin/accounts/:provider/reorder", post(handle_reorder_accounts))
+        .route("/gateway/admin/accounts/:provider/start", post(handle_oauth_start))
+        .route("/gateway/admin/accounts/:provider/complete", post(handle_oauth_complete))
+        .route("/gateway/admin/accounts/:provider/poll", post(handle_oauth_poll))
+        .route("/gateway/admin/accounts/:provider/test", post(handle_oauth_test))
+
+        // Providers
         .route("/gateway/admin/providers", get(handle_list_providers))
+        .route("/gateway/admin/providers/:id/connect", post(handle_connect_provider))
+        .route("/gateway/admin/providers/:id/disconnect", post(handle_disconnect_provider))
         .route("/gateway/admin/providers/:id/key", post(handle_save_provider_key))
+
+        // Virtual Keys
+        .route("/gateway/admin/keys", get(handle_list_keys).post(handle_create_key))
+        .route("/gateway/admin/keys/:id/toggle", patch(handle_toggle_key))
+        .route("/gateway/admin/keys/:id", delete(handle_delete_key))
+
+        // Combos
         .route("/gateway/admin/combos", get(handle_list_combos).post(handle_save_combo))
-        .route("/gateway/admin/combos/:name", delete(handle_delete_combo))
+        .route("/gateway/admin/combos/:name", put(handle_put_combo).delete(handle_delete_combo))
+
+        // Models
+        .route("/gateway/admin/models", get(handle_admin_models))
+
+        // Usage & Stats
+        .route("/gateway/admin/usage", get(handle_list_usage).delete(handle_clear_usage))
+        .route("/gateway/admin/stats", get(handle_get_stats))
+
+        // Settings
+        .route("/gateway/admin/settings", get(handle_get_settings).post(handle_update_settings))
         .with_state(engine)
 }
 
@@ -326,7 +443,11 @@ async fn handle_chat_completions(
     engine.chat_completions(payload).await
 }
 
-async fn handle_list_models() -> Json<Value> {
+async fn handle_health() -> Json<Value> {
+    Json(json!({ "status": "ok" }))
+}
+
+async fn handle_list_models_v1() -> Json<Value> {
     let mut data = Vec::new();
     for op in OAUTH_PROVIDERS {
         for m in op.seed_models {
@@ -349,8 +470,29 @@ async fn handle_list_models() -> Json<Value> {
     Json(json!({ "object": "list", "data": data }))
 }
 
-async fn handle_list_accounts(State(engine): State<GatewayEngine>) -> Json<Vec<AccountRecord>> {
-    Json(engine.store.list_accounts())
+async fn handle_admin_models() -> Json<Value> {
+    let mut models = Vec::new();
+    for op in OAUTH_PROVIDERS {
+        for m in op.seed_models {
+            models.push(json!({
+                "id": format!("{}/{}", op.alias, m),
+                "owned_by": op.id,
+            }));
+        }
+    }
+    for p in PROVIDERS {
+        for m in p.seed_models {
+            models.push(json!({
+                "id": format!("{}/{}", p.alias, m),
+                "owned_by": p.id,
+            }));
+        }
+    }
+    Json(json!({ "models": models }))
+}
+
+async fn handle_list_accounts(State(engine): State<GatewayEngine>) -> Json<Value> {
+    Json(get_oauth_accounts_state(&engine.store))
 }
 
 async fn handle_save_account(
@@ -376,13 +518,151 @@ async fn handle_remove_account(
     Path((provider, id)): Path<(String, String)>,
 ) -> Json<Value> {
     let _ = engine.store.remove_account(&provider, Some(&id));
-    Json(json!({ "status": "deleted" }))
+    Json(get_oauth_accounts_state(&engine.store))
+}
+
+#[derive(Deserialize)]
+struct AccountDeleteQuery {
+    account_id: Option<String>,
+}
+
+async fn handle_delete_account_by_query(
+    State(engine): State<GatewayEngine>,
+    Path(provider): Path<String>,
+    Query(query): Query<AccountDeleteQuery>,
+) -> Json<Value> {
+    let _ = engine.store.remove_account(&provider, query.account_id.as_deref());
+    Json(get_oauth_accounts_state(&engine.store))
+}
+
+#[derive(Deserialize)]
+struct ReorderPayload {
+    account_ids: Vec<String>,
+}
+
+async fn handle_reorder_accounts(
+    State(engine): State<GatewayEngine>,
+    Path(provider): Path<String>,
+    Json(payload): Json<ReorderPayload>,
+) -> Json<Value> {
+    let _ = engine.store.reorder_accounts(&provider, &payload.account_ids);
+    Json(get_oauth_accounts_state(&engine.store))
+}
+
+async fn handle_accounts_usage() -> Json<Value> {
+    Json(json!({
+        "usage": [],
+        "summary": {}
+    }))
+}
+
+async fn handle_oauth_start(
+    State(_engine): State<GatewayEngine>,
+    Path(provider): Path<String>,
+    Json(_payload): Json<Value>,
+) -> Json<Value> {
+    let session_id = Uuid::new_v4().to_string();
+    if provider == "codex" {
+        Json(json!({
+            "kind": "device",
+            "session_id": session_id,
+            "user_code": "OPEN-CODE",
+            "verification_uri": "https://chatgpt.com",
+            "interval": 5,
+            "expires_in": 900
+        }))
+    } else {
+        Json(json!({
+            "kind": "redirect",
+            "session_id": session_id,
+            "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "auto_callback": false
+        }))
+    }
+}
+
+async fn handle_oauth_poll(
+    State(_engine): State<GatewayEngine>,
+    Path(_provider): Path<String>,
+    Json(_payload): Json<Value>,
+) -> Json<Value> {
+    Json(json!({ "status": "pending" }))
+}
+
+async fn handle_oauth_complete(
+    State(engine): State<GatewayEngine>,
+    Path(_provider): Path<String>,
+    Json(_payload): Json<Value>,
+) -> Json<Value> {
+    let mut state = get_oauth_accounts_state(&engine.store);
+    state["account"] = json!({
+        "id": "new-account",
+        "provider": "unknown",
+        "label": null,
+        "email": null,
+        "connected_at": 0.0,
+        "refreshed_at": null,
+        "expires_at": null,
+        "last_error": null
+    });
+    Json(state)
+}
+
+async fn handle_oauth_test(
+    State(_engine): State<GatewayEngine>,
+    Path(_provider): Path<String>,
+    Json(_payload): Json<Value>,
+) -> Json<Value> {
+    Json(json!({
+        "valid": true,
+        "latency_ms": 120,
+        "email": null,
+        "models": []
+    }))
 }
 
 async fn handle_list_providers(State(engine): State<GatewayEngine>) -> Json<Value> {
     Json(json!({
-        "providers": engine.store.list_providers()
+        "providers": build_gateway_providers(&engine.store)
     }))
+}
+
+#[derive(Deserialize)]
+struct ConnectPayload {
+    api_key: String,
+    base_url: Option<String>,
+}
+
+async fn handle_connect_provider(
+    State(engine): State<GatewayEngine>,
+    Path(id): Path<String>,
+    Json(payload): Json<ConnectPayload>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let base_url = payload.base_url.as_deref().filter(|s| !s.trim().is_empty());
+    match engine.store.connect_provider(&id, &payload.api_key, base_url) {
+        Ok(_) => {
+            let providers = build_gateway_providers(&engine.store);
+            if let Some(p) = providers.into_iter().find(|p| p["id"] == id) {
+                Ok(Json(p))
+            } else {
+                Ok(Json(json!({ "id": id, "connected": true })))
+            }
+        }
+        Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "detail": e })))),
+    }
+}
+
+async fn handle_disconnect_provider(
+    State(engine): State<GatewayEngine>,
+    Path(id): Path<String>,
+) -> Json<Value> {
+    let _ = engine.store.disconnect_provider(&id);
+    let providers = build_gateway_providers(&engine.store);
+    if let Some(p) = providers.into_iter().find(|p| p["id"] == id) {
+        Json(p)
+    } else {
+        Json(json!({ "id": id, "connected": false }))
+    }
 }
 
 async fn handle_save_provider_key(
@@ -397,8 +677,51 @@ async fn handle_save_provider_key(
     }
 }
 
+async fn handle_list_keys(State(engine): State<GatewayEngine>) -> Json<Value> {
+    Json(json!({ "keys": engine.store.list_virtual_keys() }))
+}
+
+#[derive(Deserialize)]
+struct CreateKeyPayload {
+    name: String,
+    allowed_providers: Option<Vec<String>>,
+    rate_limit_per_min: Option<i64>,
+}
+
+async fn handle_create_key(
+    State(engine): State<GatewayEngine>,
+    Json(payload): Json<CreateKeyPayload>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match engine.store.create_virtual_key(&payload.name, payload.allowed_providers, payload.rate_limit_per_min) {
+        Ok((record, secret)) => {
+            let mut val = serde_json::to_value(&record).unwrap();
+            val["key"] = json!(secret);
+            Ok(Json(json!({ "key": val })))
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "detail": e })))),
+    }
+}
+
+async fn handle_toggle_key(
+    State(engine): State<GatewayEngine>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match engine.store.toggle_virtual_key(&id) {
+        Ok(record) => Ok(Json(json!({ "key": record }))),
+        Err(e) => Err((StatusCode::NOT_FOUND, Json(json!({ "detail": e })))),
+    }
+}
+
+async fn handle_delete_key(
+    State(engine): State<GatewayEngine>,
+    Path(id): Path<String>,
+) -> Json<Value> {
+    let _ = engine.store.delete_virtual_key(&id);
+    Json(json!({ "status": "deleted" }))
+}
+
 async fn handle_list_combos(State(engine): State<GatewayEngine>) -> Json<Value> {
-    Json(json!(engine.store.list_combos()))
+    Json(json!({ "combos": engine.store.list_combos() }))
 }
 
 async fn handle_save_combo(
@@ -412,7 +735,23 @@ async fn handle_save_combo(
         .unwrap_or_default();
 
     match engine.store.save_combo(name, &targets) {
-        Ok(_) => Ok(Json(json!({ "status": "saved" }))),
+        Ok(_) => Ok(Json(json!({ "combos": engine.store.list_combos() }))),
+        Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "detail": e })))),
+    }
+}
+
+async fn handle_put_combo(
+    State(engine): State<GatewayEngine>,
+    Path(name): Path<String>,
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let targets: Vec<String> = payload
+        .get("targets")
+        .and_then(|t| serde_json::from_value(t.clone()).ok())
+        .unwrap_or_default();
+
+    match engine.store.save_combo(&name, &targets) {
+        Ok(_) => Ok(Json(json!({ "combos": engine.store.list_combos() }))),
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "detail": e })))),
     }
 }
@@ -422,5 +761,65 @@ async fn handle_delete_combo(
     Path(name): Path<String>,
 ) -> Json<Value> {
     let _ = engine.store.delete_combo(&name);
-    Json(json!({ "status": "deleted" }))
+    Json(json!({ "combos": engine.store.list_combos() }))
+}
+
+#[derive(Deserialize)]
+struct UsageQuery {
+    limit: Option<i64>,
+}
+
+async fn handle_list_usage(
+    State(engine): State<GatewayEngine>,
+    Query(query): Query<UsageQuery>,
+) -> Json<Value> {
+    let limit = query.limit.unwrap_or(100);
+    Json(json!({ "usage": engine.store.list_usage(limit) }))
+}
+
+async fn handle_clear_usage(
+    State(engine): State<GatewayEngine>,
+) -> Json<Value> {
+    let _ = engine.store.clear_usage();
+    Json(json!({ "status": "cleared" }))
+}
+
+async fn handle_get_stats(
+    State(engine): State<GatewayEngine>,
+) -> Json<Value> {
+    Json(engine.store.get_stats())
+}
+
+async fn handle_get_settings(
+    State(engine): State<GatewayEngine>,
+) -> Json<Value> {
+    Json(json!({ "settings": engine.store.get_gateway_settings() }))
+}
+
+#[derive(Deserialize)]
+struct UpdateSettingsPayload {
+    routing_strategy: Option<String>,
+    gemini_oauth_client_id: Option<String>,
+    gemini_oauth_client_secret: Option<String>,
+    clear_gemini_secret: Option<bool>,
+}
+
+async fn handle_update_settings(
+    State(engine): State<GatewayEngine>,
+    Json(payload): Json<UpdateSettingsPayload>,
+) -> Json<Value> {
+    if let Some(strategy) = payload.routing_strategy {
+        let _ = engine.store.set_setting("routing_strategy", &strategy);
+    }
+    if let Some(client_id) = payload.gemini_oauth_client_id {
+        let _ = engine.store.set_setting("gemini_oauth_client_id", &client_id);
+    }
+    if payload.clear_gemini_secret == Some(true) {
+        let _ = engine.store.set_setting("gemini_oauth_client_secret", "");
+    } else if let Some(secret) = payload.gemini_oauth_client_secret {
+        if !secret.trim().is_empty() {
+            let _ = engine.store.set_setting("gemini_oauth_client_secret", &secret);
+        }
+    }
+    Json(json!({ "settings": engine.store.get_gateway_settings() }))
 }

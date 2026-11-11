@@ -67,6 +67,14 @@ pub struct VirtualKeyRecord {
     pub total_output_tokens: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GatewaySettings {
+    pub routing_strategy: String,
+    pub gemini_oauth_client_id: String,
+    pub gemini_oauth_client_secret_masked: Option<String>,
+    pub gemini_oauth_configured: bool,
+}
+
 pub struct GatewayStore {
     conn: Arc<Mutex<Connection>>,
     pub cipher: Cipher,
@@ -300,5 +308,243 @@ impl GatewayStore {
             .execute("DELETE FROM combos WHERE name = ?1", params![name])
             .map_err(|e| e.to_string())?;
         Ok(count > 0)
+    }
+
+    // ---- Account Reordering ----------------------------------------
+    pub fn reorder_accounts(&self, provider: &str, account_ids: &[String]) -> Result<(), String> {
+        let conn = self.conn.lock();
+        for (i, id) in account_ids.iter().enumerate() {
+            let _ = conn.execute(
+                "UPDATE accounts SET sort_order = ?1 WHERE provider = ?2 AND id = ?3",
+                params![i as i64, provider, id],
+            );
+        }
+        Ok(())
+    }
+
+    // ---- Provider Connect / Disconnect -----------------------------
+    pub fn connect_provider(&self, provider_id: &str, api_key: &str, base_url: Option<&str>) -> Result<(), String> {
+        let encrypted = self.cipher.encrypt(api_key)?;
+        let conn = self.conn.lock();
+        conn.execute(
+            r#"
+            INSERT INTO providers (id, api_key, base_url, enabled, verified_at)
+            VALUES (?1, ?2, ?3, 1, ?4)
+            ON CONFLICT(id) DO UPDATE SET api_key = ?2, base_url = coalesce(?3, base_url), enabled = 1, verified_at = ?4
+            "#,
+            params![provider_id, encrypted, base_url, now()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn disconnect_provider(&self, provider_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "UPDATE providers SET api_key = NULL, enabled = 0 WHERE id = ?1",
+            params![provider_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ---- Virtual Keys ----------------------------------------------
+    pub fn list_virtual_keys(&self) -> Vec<VirtualKeyRecord> {
+        let conn = self.conn.lock();
+        let mut stmt = conn
+            .prepare("SELECT id, name, key_prefix, enabled, allowed_providers, rate_limit_per_min, created_at, last_used_at, total_requests, total_input_tokens, total_output_tokens FROM keys ORDER BY created_at DESC")
+            .unwrap();
+        let rows = stmt
+            .query_map([], |r| {
+                let allowed_providers_json: Option<String> = r.get(4)?;
+                let allowed_providers = allowed_providers_json.and_then(|j| serde_json::from_str(&j).ok());
+                Ok(VirtualKeyRecord {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    key_prefix: r.get(2)?,
+                    enabled: r.get::<_, i64>(3)? != 0,
+                    allowed_providers,
+                    rate_limit_per_min: r.get(5)?,
+                    created_at: r.get(6)?,
+                    last_used_at: r.get(7)?,
+                    total_requests: r.get(8)?,
+                    total_input_tokens: r.get(9)?,
+                    total_output_tokens: r.get(10)?,
+                })
+            })
+            .unwrap();
+        rows.flatten().collect()
+    }
+
+    pub fn create_virtual_key(
+        &self,
+        name: &str,
+        allowed_providers: Option<Vec<String>>,
+        rate_limit_per_min: Option<i64>,
+    ) -> Result<(VirtualKeyRecord, String), String> {
+        let id = Uuid::new_v4().to_string();
+        let random_hex: String = (0..32).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect();
+        let secret = format!("{}{}", KEY_PREFIX, random_hex);
+        let key_hash = hash_key(&secret);
+        let key_prefix = format!("{}...", &secret[..std::cmp::min(12, secret.len())]);
+        let created_at = now();
+        let allowed_json = allowed_providers.as_ref().and_then(|p| serde_json::to_string(p).ok());
+
+        let conn = self.conn.lock();
+        conn.execute(
+            r#"
+            INSERT INTO keys (id, name, key_hash, key_prefix, enabled, allowed_providers, rate_limit_per_min, created_at)
+            VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7)
+            "#,
+            params![id, name, key_hash, key_prefix, allowed_json, rate_limit_per_min, created_at],
+        )
+        .map_err(|e| e.to_string())?;
+
+        let record = VirtualKeyRecord {
+            id,
+            name: name.to_string(),
+            key_prefix,
+            enabled: true,
+            allowed_providers,
+            rate_limit_per_min,
+            created_at,
+            last_used_at: None,
+            total_requests: 0,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+        };
+        Ok((record, secret))
+    }
+
+    pub fn toggle_virtual_key(&self, id: &str) -> Result<VirtualKeyRecord, String> {
+        let conn = self.conn.lock();
+        conn.execute("UPDATE keys SET enabled = 1 - enabled WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        drop(conn);
+        self.list_virtual_keys()
+            .into_iter()
+            .find(|k| k.id == id)
+            .ok_or_else(|| "Key not found".to_string())
+    }
+
+    pub fn delete_virtual_key(&self, id: &str) -> Result<bool, String> {
+        let conn = self.conn.lock();
+        let rows = conn.execute("DELETE FROM keys WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+        Ok(rows > 0)
+    }
+
+    // ---- Settings --------------------------------------------------
+    pub fn get_setting(&self, key: &str) -> Option<String> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1").ok()?;
+        stmt.query_row(params![key], |r| r.get(0)).ok()
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_gateway_settings(&self) -> GatewaySettings {
+        let strategy = self.get_setting("routing_strategy").unwrap_or_else(|| "ordered".to_string());
+        let client_id = self.get_setting("gemini_oauth_client_id").unwrap_or_default();
+        let client_secret = self.get_setting("gemini_oauth_client_secret");
+        let secret_masked = client_secret.as_ref().filter(|s| !s.is_empty()).map(|s| {
+            if s.len() > 4 {
+                format!("••••{}", &s[s.len() - 4..])
+            } else {
+                "••••".to_string()
+            }
+        });
+        let configured = !client_id.is_empty() && client_secret.is_some();
+        GatewaySettings {
+            routing_strategy: if strategy == "round_robin" { "round_robin".to_string() } else { "ordered".to_string() },
+            gemini_oauth_client_id: client_id,
+            gemini_oauth_client_secret_masked: secret_masked,
+            gemini_oauth_configured: configured,
+        }
+    }
+
+    // ---- Usage & Stats ---------------------------------------------
+    pub fn list_usage(&self, limit: i64) -> Vec<Value> {
+        let conn = self.conn.lock();
+        let mut stmt = conn
+            .prepare("SELECT id, ts, key_id, key_name, provider, model, input_tokens, output_tokens, duration_ms, status, status_code, error, streaming FROM usage ORDER BY ts DESC LIMIT ?1")
+            .unwrap();
+        let rows = stmt
+            .query_map(params![limit], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "ts": r.get::<_, f64>(1)?,
+                    "key_id": r.get::<_, Option<String>>(2)?,
+                    "key_name": r.get::<_, Option<String>>(3)?,
+                    "provider": r.get::<_, Option<String>>(4)?,
+                    "model": r.get::<_, Option<String>>(5)?,
+                    "input_tokens": r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                    "output_tokens": r.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                    "duration_ms": r.get::<_, Option<i64>>(8)?.unwrap_or(0),
+                    "status": r.get::<_, Option<String>>(9)?.unwrap_or_else(|| "ok".to_string()),
+                    "status_code": r.get::<_, Option<i64>>(10)?.unwrap_or(200),
+                    "error": r.get::<_, Option<String>>(11)?,
+                    "streaming": r.get::<_, Option<i64>>(12)?.unwrap_or(0) != 0,
+                }))
+            })
+            .unwrap();
+        rows.flatten().collect()
+    }
+
+    pub fn clear_usage(&self) -> Result<(), String> {
+        let conn = self.conn.lock();
+        conn.execute("DELETE FROM usage", []).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_stats(&self) -> Value {
+        let conn = self.conn.lock();
+        let mut stats = json!({
+            "requests": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "errors": 0,
+            "active_keys": 0,
+            "connected_providers": 0,
+        });
+
+        let _ = conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(CASE WHEN status != 'ok' OR status_code >= 400 THEN 1 ELSE 0 END), 0) FROM usage",
+            [],
+            |r| {
+                stats["requests"] = json!(r.get::<_, i64>(0)?);
+                stats["input_tokens"] = json!(r.get::<_, i64>(1)?);
+                stats["output_tokens"] = json!(r.get::<_, i64>(2)?);
+                stats["errors"] = json!(r.get::<_, i64>(3)?);
+                Ok(())
+            },
+        );
+
+        let active_keys: i64 = conn
+            .query_row("SELECT COUNT(*) FROM keys WHERE enabled = 1", [], |r| r.get(0))
+            .unwrap_or(0);
+        stats["active_keys"] = json!(active_keys);
+
+        let mut connected_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT id) FROM providers WHERE api_key IS NOT NULL AND api_key != '' AND enabled = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let accounts_count: i64 = conn
+            .query_row("SELECT COUNT(DISTINCT provider) FROM accounts", [], |r| r.get(0))
+            .unwrap_or(0);
+        connected_count += accounts_count;
+        stats["connected_providers"] = json!(connected_count);
+
+        stats
     }
 }

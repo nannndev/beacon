@@ -7,5 +7,5 @@ pub mod translate;
 pub use cipher::Cipher;
 pub use engine::{gateway_router, GatewayEngine};
 pub use providers::{OAuthProviderMeta, Provider, Target, OAUTH_PROVIDERS, PROVIDERS};
-pub use store::{AccountRecord, GatewayStore, ProviderRecord, VirtualKeyRecord};
+pub use store::{AccountRecord, GatewaySettings, GatewayStore, ProviderRecord, VirtualKeyRecord};
 
