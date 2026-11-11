@@ -4,7 +4,7 @@ pub mod tools;
 
 pub use orchestrator::AgentOrchestrator;
 pub use prompt::BEACON_AGENT_SYSTEM_PROMPT;
-pub use tools::{agent_tool_definitions, execute_tool};
+pub use tools::{agent_tool_definitions, execute_tool, ConfigWorkspace, WorkspaceOps};
 
 use axum::{
     extract::State,
@@ -13,14 +13,13 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use beacon_core::TestConfig;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AgentState {
     pub orchestrator: Arc<AgentOrchestrator>,
-    pub get_config: Arc<dyn Fn() -> TestConfig + Send + Sync>,
+    pub workspace: Arc<dyn WorkspaceOps>,
 }
 
 pub fn agent_router(state: AgentState) -> Router {
@@ -40,9 +39,9 @@ async fn handle_agent_chat(
         .and_then(|m| serde_json::from_value(m.clone()).ok())
         .unwrap_or_default();
     let model = payload.get("model").and_then(|m| m.as_str()).map(String::from);
-    let config = (state.get_config)();
+    let workspace = Arc::clone(&state.workspace);
 
-    let stream = state.orchestrator.run_stream(messages, model, config);
+    let stream = state.orchestrator.run_stream(messages, model, workspace);
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
@@ -86,7 +85,7 @@ async fn handle_agent_models(State(state): State<AgentState>) -> Json<Value> {
 }
 
 async fn handle_agent_context(State(state): State<AgentState>) -> Json<Value> {
-    let config = (state.get_config)();
+    let config = state.workspace.get_config();
     let accounts = state.orchestrator.gateway.store.list_accounts();
     let has_gw = !accounts.is_empty();
 
@@ -103,9 +102,11 @@ async fn handle_agent_context(State(state): State<AgentState>) -> Json<Value> {
     };
 
     Json(json!({
-        "base_url": config.base_url,
+        "status": "ready",
+        "has_gateway": has_gw,
+        "accounts_connected": accounts.len(),
         "endpoints_count": config.tests.len(),
-        "has_gateway_model": has_gw,
         "default_model": default_model,
+        "base_url": config.base_url,
     }))
 }

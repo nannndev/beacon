@@ -357,4 +357,125 @@ impl Store {
 
         Ok(())
     }
+
+    pub fn get_endpoint(&self, id_or_name: &str) -> Option<EndpointTest> {
+        let needle = id_or_name.trim();
+        self.current_config
+            .tests
+            .iter()
+            .find(|t| t.id == needle || t.name.eq_ignore_ascii_case(needle))
+            .cloned()
+    }
+
+    pub fn list_endpoints(&self) -> Vec<EndpointTest> {
+        self.current_config.tests.clone()
+    }
+
+    pub fn create_endpoint(&mut self, mut test: EndpointTest) -> Result<EndpointTest, String> {
+        if test.id.is_empty() {
+            test.id = format!("ep_{}", Uuid::new_v4().simple());
+        }
+        self.current_config.tests.push(test.clone());
+        self.save()?;
+        Ok(test)
+    }
+
+    pub fn update_endpoint(&mut self, id_or_name: &str, patch: Value) -> Result<EndpointTest, String> {
+        let needle = id_or_name.trim();
+        let idx = self
+            .current_config
+            .tests
+            .iter()
+            .position(|t| t.id == needle || t.name.eq_ignore_ascii_case(needle))
+            .ok_or_else(|| format!("Endpoint '{}' not found", needle))?;
+
+        let mut current_val = serde_json::to_value(&self.current_config.tests[idx])
+            .map_err(|e| format!("Failed to serialize current endpoint: {}", e))?;
+
+        if let (Some(dest), Some(src)) = (current_val.as_object_mut(), patch.as_object()) {
+            for (k, v) in src {
+                if k != "id" && !v.is_null() {
+                    dest.insert(k.clone(), v.clone());
+                }
+            }
+        }
+
+        let updated: EndpointTest = serde_json::from_value(current_val)
+            .map_err(|e| format!("Failed to parse updated endpoint: {}", e))?;
+
+        self.current_config.tests[idx] = updated.clone();
+        self.save()?;
+        Ok(updated)
+    }
+
+    pub fn delete_endpoint(&mut self, id_or_name: &str) -> Result<String, String> {
+        let needle = id_or_name.trim();
+        let before_len = self.current_config.tests.len();
+        self.current_config
+            .tests
+            .retain(|t| t.id != needle && !t.name.eq_ignore_ascii_case(needle));
+        if self.current_config.tests.len() == before_len {
+            return Err(format!("Endpoint '{}' not found", needle));
+        }
+        self.save()?;
+        Ok(format!("Deleted endpoint '{}'", needle))
+    }
+
+    pub fn duplicate_endpoint(&mut self, id_or_name: &str) -> Result<EndpointTest, String> {
+        let orig = self.get_endpoint(id_or_name)
+            .ok_or_else(|| format!("Endpoint '{}' not found", id_or_name))?;
+        let mut copy = orig;
+        copy.id = format!("ep_{}", Uuid::new_v4().simple());
+        copy.name = format!("{} (copy)", copy.name);
+        self.current_config.tests.push(copy.clone());
+        self.save()?;
+        Ok(copy)
+    }
+
+    pub fn set_variable(&mut self, name: &str, value: &str) -> Result<(), String> {
+        self.current_config
+            .variables
+            .write()
+            .insert(name.to_string(), value.to_string());
+        self.save()
+    }
+
+    pub fn save_extracted_variables(&mut self, vars: HashMap<String, String>) -> Result<(), String> {
+        {
+            let mut vlock = self.current_config.variables.write();
+            for (k, v) in vars {
+                vlock.insert(k, v);
+            }
+        }
+        self.save()
+    }
+}
+
+pub struct ServerWorkspace(pub std::sync::Arc<parking_lot::RwLock<Store>>);
+
+impl beacon_agent::WorkspaceOps for ServerWorkspace {
+    fn get_config(&self) -> TestConfig {
+        self.0.read().current_config.clone()
+    }
+    fn get_endpoint(&self, id_or_name: &str) -> Option<EndpointTest> {
+        self.0.read().get_endpoint(id_or_name)
+    }
+    fn list_endpoints(&self) -> Vec<EndpointTest> {
+        self.0.read().list_endpoints()
+    }
+    fn create_endpoint(&self, test: EndpointTest) -> Result<EndpointTest, String> {
+        self.0.write().create_endpoint(test)
+    }
+    fn update_endpoint(&self, id_or_name: &str, patch: Value) -> Result<EndpointTest, String> {
+        self.0.write().update_endpoint(id_or_name, patch)
+    }
+    fn delete_endpoint(&self, id_or_name: &str) -> Result<String, String> {
+        self.0.write().delete_endpoint(id_or_name)
+    }
+    fn set_variable(&self, name: &str, value: &str) -> Result<(), String> {
+        self.0.write().set_variable(name, value)
+    }
+    fn save_extracted_variables(&self, vars: HashMap<String, String>) -> Result<(), String> {
+        self.0.write().save_extracted_variables(vars)
+    }
 }

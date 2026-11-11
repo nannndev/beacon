@@ -18,10 +18,7 @@ pub fn app_router(state: AppState) -> Router {
 
     let agent_state = beacon_agent::AgentState {
         orchestrator: Arc::new(beacon_agent::AgentOrchestrator::new(state.gateway.clone())),
-        get_config: {
-            let store_clone = Arc::clone(&state.store);
-            Arc::new(move || store_clone.read().current_config.clone())
-        },
+        workspace: Arc::new(store::ServerWorkspace(Arc::clone(&state.store))),
     };
     let agent_router = beacon_agent::agent_router(agent_state);
 

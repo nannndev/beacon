@@ -1,12 +1,12 @@
 use crate::prompt::BEACON_AGENT_SYSTEM_PROMPT;
-use crate::tools::{agent_tool_definitions, execute_tool};
+use crate::tools::{agent_tool_definitions, execute_tool, WorkspaceOps};
 use async_stream::stream;
 use axum::response::sse::Event;
-use beacon_core::TestConfig;
 use beacon_gateway::GatewayEngine;
 use futures::{Stream, StreamExt};
 use serde_json::{json, Value};
 use std::convert::Infallible;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct AgentOrchestrator {
@@ -22,7 +22,7 @@ impl AgentOrchestrator {
         &self,
         mut messages: Vec<Value>,
         model: Option<String>,
-        config: TestConfig,
+        workspace: Arc<dyn WorkspaceOps>,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         let gateway = self.gateway.clone();
         let tools = agent_tool_definitions();
@@ -41,7 +41,7 @@ impl AgentOrchestrator {
             }
 
             let mut turn = 0;
-            const MAX_TURNS: usize = 5;
+            const MAX_TURNS: usize = 8;
 
             while turn < MAX_TURNS {
                 turn += 1;
@@ -73,35 +73,34 @@ impl AgentOrchestrator {
                                         if let Ok(val) = serde_json::from_str::<Value>(payload) {
                                             if let Some(choices) = val.get("choices").and_then(|c| c.as_array()) {
                                                 if let Some(first) = choices.first() {
-                                                    if let Some(delta) = first.get("delta") {
-                                                        if let Some(txt) = delta.get("content").and_then(|c| c.as_str()) {
-                                                            if !txt.is_empty() {
-                                                                 assistant_text.push_str(txt);
-                                                                 let evt_json = json!({ "type": "delta", "delta": txt });
-                                                                 yield Ok(Event::default().data(serde_json::to_string(&evt_json).unwrap()));
-                                                            }
+                                                    let delta = first.get("delta").cloned().unwrap_or(json!({}));
+                                                    if let Some(txt) = delta.get("content").and_then(|c| c.as_str()) {
+                                                        if !txt.is_empty() {
+                                                            assistant_text.push_str(txt);
+                                                            let evt_json = json!({ "type": "delta", "delta": txt });
+                                                            yield Ok(Event::default().data(serde_json::to_string(&evt_json).unwrap()));
                                                         }
-                                                        if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
-                                                            for tc in tcs {
-                                                                let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-                                                                while tool_calls.len() <= idx {
-                                                                    tool_calls.push(json!({
-                                                                        "id": format!("call_{}", Uuid::new_v4().simple()),
-                                                                        "type": "function",
-                                                                        "function": { "name": "", "arguments": "" }
-                                                                    }));
+                                                    }
+                                                    if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+                                                        for tc in tcs {
+                                                            let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+                                                            while tool_calls.len() <= idx {
+                                                                tool_calls.push(json!({
+                                                                    "id": format!("call_{}", Uuid::new_v4().simple()),
+                                                                    "type": "function",
+                                                                    "function": { "name": "", "arguments": "" }
+                                                                }));
+                                                            }
+                                                            let slot = &mut tool_calls[idx];
+                                                            if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
+                                                                slot["id"] = json!(id);
+                                                            }
+                                                            if let Some(fn_obj) = tc.get("function") {
+                                                                if let Some(name) = fn_obj.get("name").and_then(|n| n.as_str()) {
+                                                                    slot["function"]["name"] = json!(format!("{}{}", slot["function"]["name"].as_str().unwrap_or(""), name));
                                                                 }
-                                                                let slot = &mut tool_calls[idx];
-                                                                if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
-                                                                    slot["id"] = json!(id);
-                                                                }
-                                                                if let Some(fn_obj) = tc.get("function") {
-                                                                    if let Some(name) = fn_obj.get("name").and_then(|n| n.as_str()) {
-                                                                        slot["function"]["name"] = json!(format!("{}{}", slot["function"]["name"].as_str().unwrap_or(""), name));
-                                                                    }
-                                                                    if let Some(args) = fn_obj.get("arguments").and_then(|a| a.as_str()) {
-                                                                        slot["function"]["arguments"] = json!(format!("{}{}", slot["function"]["arguments"].as_str().unwrap_or(""), args));
-                                                                    }
+                                                                if let Some(args) = fn_obj.get("arguments").and_then(|a| a.as_str()) {
+                                                                    slot["function"]["arguments"] = json!(format!("{}{}", slot["function"]["arguments"].as_str().unwrap_or(""), args));
                                                                 }
                                                             }
                                                         }
@@ -137,26 +136,75 @@ impl AgentOrchestrator {
                                 let fn_args_str = tc.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()).unwrap_or("{}");
                                 let fn_args: Value = serde_json::from_str(fn_args_str).unwrap_or(json!({}));
 
+                                let start_summary = match fn_name {
+                                    "beacon_create_endpoint" => {
+                                        let ep_name = fn_args.get("name").and_then(|n| n.as_str()).unwrap_or("endpoint");
+                                        format!("Creating endpoint '{}'", ep_name)
+                                    }
+                                    "beacon_update_endpoint" => {
+                                        let ep_id = fn_args.get("id").and_then(|i| i.as_str()).unwrap_or("endpoint");
+                                        format!("Updating endpoint '{}'", ep_id)
+                                    }
+                                    "beacon_delete_endpoint" => {
+                                        let ep_id = fn_args.get("id").and_then(|i| i.as_str()).unwrap_or("endpoint");
+                                        format!("Deleting endpoint '{}'", ep_id)
+                                    }
+                                    "beacon_run_collection" => "Running collection test sequence with variable chaining".to_string(),
+                                    "beacon_run_load_test" => {
+                                        let c = fn_args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5);
+                                        let n = fn_args.get("max_requests").and_then(|v| v.as_u64()).unwrap_or(50);
+                                        format!("Running load test ({} workers, {} requests)", c, n)
+                                    }
+                                    "beacon_probe_endpoint" => "Probing endpoint".to_string(),
+                                    "beacon_get_endpoint" => "Inspecting endpoint metadata".to_string(),
+                                    "beacon_list_endpoints" => "Scanning project endpoints".to_string(),
+                                    "beacon_set_variable" => {
+                                        let k = fn_args.get("name").and_then(|v| v.as_str()).unwrap_or("variable");
+                                        format!("Setting variable '{}'", k)
+                                    }
+                                    other => format!("Executing {}", other),
+                                };
+
                                 let start_evt = json!({
                                     "type": "tool_start",
                                     "call_id": call_id,
                                     "name": fn_name,
-                                    "summary": format!("Running {}", fn_name),
+                                    "summary": start_summary,
                                     "arguments": fn_args
                                 });
                                 yield Ok(Event::default().data(serde_json::to_string(&start_evt).unwrap()));
 
-                                let tool_res = execute_tool(fn_name, &fn_args, &config).await;
+                                let tool_res = execute_tool(fn_name, &fn_args, &*workspace).await;
+
+                                let is_mutation = tool_res
+                                    .get("mutated")
+                                    .and_then(|m| m.as_bool())
+                                    .unwrap_or(false);
+
+                                let finish_summary = if let Some(sum) = tool_res.get("summary").and_then(|s| s.as_str()) {
+                                    sum.to_string()
+                                } else {
+                                    format!("Executed {}", fn_name)
+                                };
 
                                 let finish_evt = json!({
                                     "type": "tool_result",
                                     "call_id": call_id,
                                     "name": fn_name,
-                                    "ok": true,
-                                    "summary": format!("Executed {}", fn_name),
+                                    "ok": tool_res.get("error").is_none(),
+                                    "mutated": is_mutation,
+                                    "summary": finish_summary,
                                     "result": tool_res
                                 });
                                 yield Ok(Event::default().data(serde_json::to_string(&finish_evt).unwrap()));
+
+                                if is_mutation {
+                                    let ws_evt = json!({
+                                        "type": "workspace_changed",
+                                        "action": fn_name
+                                    });
+                                    yield Ok(Event::default().data(serde_json::to_string(&ws_evt).unwrap()));
+                                }
 
                                 messages.push(json!({
                                     "role": "tool",
