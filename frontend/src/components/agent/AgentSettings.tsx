@@ -41,6 +41,25 @@ const Seg = <T extends string>({
   </div>
 )
 
+type CharacterId = NonNullable<AgentPreferences['character']>
+
+const CHARACTER_PRESETS: Array<{
+  id: CharacterId
+  emoji: string
+  name: string
+  tagline: string
+  tone: AgentPreferences['tone']
+  emotion: AgentPreferences['emotion']
+  style?: AgentPreferences['style']
+}> = [
+  { id: 'default', emoji: '🤝', name: 'Teammate', tagline: 'Friendly & natural', tone: 'friendly', emotion: 'warm' },
+  { id: 'chill', emoji: '😎', name: 'Chill Partner', tagline: 'Santai, akrab, ringan', tone: 'casual', emotion: 'warm' },
+  { id: 'hype', emoji: '🔥', name: 'Expressive', tagline: 'Antusias & suportif', tone: 'casual', emotion: 'expressive' },
+  { id: 'empathetic', emoji: '💛', name: 'Empathetic', tagline: 'Sabar & menenangkan', tone: 'friendly', emotion: 'empathetic' },
+  { id: 'auditor', emoji: '🛡️', name: 'Strict Auditor', tagline: 'Tegas, fokus QA', tone: 'formal', emotion: 'calm' },
+  { id: 'mentor', emoji: '🧠', name: 'Sharp Mentor', tagline: 'Membimbing detail', tone: 'friendly', emotion: 'warm', style: 'detailed' },
+]
+
 export function AgentSettings({ value, projectId, projectName, onSave, onClose }: Props) {
   const [draft, setDraft] = useState<AgentPreferences>({ ...value, skills: value.skills || [] })
   const [addingSkill, setAddingSkill] = useState(false)
@@ -120,6 +139,42 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
         </div>
 
         <section className="space-y-2.5">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Character &amp; Vibe</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {CHARACTER_PRESETS.map((c) => {
+              const active = (draft.character || 'default') === c.id
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() =>
+                    set({
+                      character: c.id,
+                      tone: c.tone,
+                      emotion: c.emotion,
+                      ...(c.style ? { style: c.style } : {}),
+                    })
+                  }
+                  className={`flex items-start gap-2 rounded-xl border p-2 text-left transition-all cursor-pointer ${
+                    active
+                      ? 'border-emerald-500/60 bg-emerald-500/10 shadow-sm'
+                      : 'border-border bg-background/60 hover:bg-muted/60 hover:border-border'
+                  }`}
+                >
+                  <span className="text-base leading-none mt-0.5 shrink-0">{c.emoji}</span>
+                  <div className="min-w-0">
+                    <div className={`text-[11px] font-semibold truncate ${active ? 'text-emerald-400' : 'text-foreground'}`}>
+                      {c.name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground truncate">{c.tagline}</div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-2.5">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Style &amp; Execution</div>
           <div className="space-y-2">
             <div className="grid grid-cols-[76px_1fr] items-center gap-2.5">
@@ -132,6 +187,33 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
                   ['auto', 'Auto'],
                   ['id', 'Indonesia'],
                   ['en', 'English'],
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-[76px_1fr] items-center gap-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground">Tone</span>
+              <Seg
+                label="Tone"
+                value={draft.tone}
+                onChange={(tone) => set({ tone })}
+                options={[
+                  ['formal', 'Formal'],
+                  ['friendly', 'Friendly'],
+                  ['casual', 'Casual'],
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-[76px_1fr] items-center gap-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground">Emotion</span>
+              <Seg
+                label="Emotion"
+                value={draft.emotion}
+                onChange={(emotion) => set({ emotion })}
+                options={[
+                  ['calm', 'Calm'],
+                  ['warm', 'Warm'],
+                  ['expressive', 'Expressive'],
+                  ['empathetic', 'Empathetic'],
                 ]}
               />
             </div>

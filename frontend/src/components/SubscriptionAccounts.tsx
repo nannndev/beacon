@@ -19,6 +19,7 @@ import { Card } from './ui/card'
 import { Input } from './ui/input'
 import { toast } from './ui/toast'
 import { api } from '../lib/api'
+import { openExternalUrl } from '../lib/platform'
 import { ProviderLogo } from './gateway/ProviderLogo'
 import type {
   OAuthAccount,
@@ -171,6 +172,10 @@ export function SubscriptionAccounts({ onChanged }: Props) {
             toast.success(`${pending.providerName} connected`)
             void syncUsage(true)
             await onChanged?.()
+          } else if (out.status === 'expired') {
+            stopPolling()
+            setPending(null)
+            toast.error(out.error || `${pending.providerName} login timed out`)
           }
         } catch (e: any) {
           stopPolling()
@@ -178,7 +183,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
           setPending(null)
         }
       }, ms)
-    } else if (pending.start.auto_callback) {
+    } else if (pending.start.auto_callback || pending.start.kind === 'redirect') {
       pollTimerRef.current = window.setInterval(async () => {
         try {
           const next = await api.gatewayAccounts()
@@ -204,7 +209,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
         } catch {
           // ignore transient poll errors
         }
-      }, 2000)
+      }, 1500)
     }
 
     return () => stopPolling()
@@ -234,7 +239,15 @@ export function SubscriptionAccounts({ onChanged }: Props) {
         previousRefreshed,
       })
       if (start.kind === 'redirect' && start.auth_url) {
-        window.open(start.auth_url, '_blank', 'noopener,noreferrer')
+        void openExternalUrl(start.auth_url)
+      } else if (start.kind === 'device' && start.verification_uri) {
+        if (start.user_code) {
+          try {
+            await navigator.clipboard.writeText(start.user_code)
+            toast.success(`Copied code ${start.user_code} to clipboard`)
+          } catch {}
+        }
+        void openExternalUrl(start.verification_uri)
       }
     } catch (e: any) {
       toast.error(e?.message || `Could not start ${meta.name} login`)
@@ -533,7 +546,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
                     size="sm"
                     variant="outline"
                     className="h-8 gap-1.5 text-xs"
-                    onClick={() => window.open(pending.start.auth_url, '_blank', 'noopener,noreferrer')}
+                    onClick={() => void openExternalUrl(pending.start.auth_url!)}
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Open Login Page
@@ -594,7 +607,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
                   size="sm"
                   variant="outline"
                   className="h-8 gap-1.5 text-xs"
-                  onClick={() => window.open(pending.start.verification_uri, '_blank', 'noopener,noreferrer')}
+                  onClick={() => void openExternalUrl(pending.start.verification_uri!)}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open Verification Page

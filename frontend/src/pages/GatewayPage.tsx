@@ -4,7 +4,11 @@ import {
   ArrowLeft,
   Bot,
   Check,
+  CheckCircle2,
   Copy,
+  ExternalLink,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   Play,
@@ -13,17 +17,21 @@ import {
   RefreshCw,
   Search,
   Shuffle,
+  Sparkles,
   Terminal,
   Trash2,
   Unplug,
   X,
+  XCircle,
   Zap,
 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { toast } from '../components/ui/toast'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { api, getBase } from '../lib/api'
+import { openExternalUrl } from '../lib/platform'
 import { SubscriptionAccounts } from '../components/SubscriptionAccounts'
 import { GatewayCombos } from '../components/gateway/GatewayCombos'
 import { GatewayQuickstart } from '../components/gateway/GatewayQuickstart'
@@ -375,6 +383,139 @@ export function GatewayPage({ onBack, onCreateTestRequest }: Props) {
   )
 }
 
+const PROVIDER_DOCS: Record<string, { docsUrl: string; placeholder: string; tagline: string }> = {
+  anthropic: {
+    docsUrl: 'https://console.anthropic.com/settings/keys',
+    placeholder: 'sk-ant-api03-...',
+    tagline: 'Claude 3.7 Sonnet, Opus 4.6, Haiku 4.5',
+  },
+  openai: {
+    docsUrl: 'https://platform.openai.com/api-keys',
+    placeholder: 'sk-proj-...',
+    tagline: 'GPT-5.5, GPT-4o, o3, o4-mini',
+  },
+  deepseek: {
+    docsUrl: 'https://platform.deepseek.com/api_keys',
+    placeholder: 'sk-...',
+    tagline: 'DeepSeek-V4 Pro, Flash, Reasoner',
+  },
+  openrouter: {
+    docsUrl: 'https://openrouter.ai/keys',
+    placeholder: 'sk-or-v1-...',
+    tagline: 'Unified router across 300+ open and proprietary models',
+  },
+  gemini: {
+    docsUrl: 'https://aistudio.google.com/app/apikey',
+    placeholder: 'AIzaSy...',
+    tagline: 'Gemini 2.5 Pro, Flash, Flash-Lite',
+  },
+  ollama: {
+    docsUrl: 'https://ollama.com',
+    placeholder: 'No API key needed for local Ollama',
+    tagline: 'Local LLMs running on your machine (Llama, Qwen, DeepSeek)',
+  },
+  groq: {
+    docsUrl: 'https://console.groq.com/keys',
+    placeholder: 'gsk_...',
+    tagline: 'Ultra-low latency LPU inference',
+  },
+  mistral: {
+    docsUrl: 'https://console.mistral.ai/api-keys',
+    placeholder: '...',
+    tagline: 'Mistral Large, Codestral, Small',
+  },
+  xai: {
+    docsUrl: 'https://console.x.ai',
+    placeholder: 'xai-...',
+    tagline: 'xAI Grok 4, Grok 3 Mini',
+  },
+  together: {
+    docsUrl: 'https://api.together.ai/settings/api-keys',
+    placeholder: '...',
+    tagline: 'Fast open-source model inference',
+  },
+  fireworks: {
+    docsUrl: 'https://fireworks.ai/account/api-keys',
+    placeholder: 'fw_...',
+    tagline: 'Compound AI systems and production LLM serving',
+  },
+  cerebras: {
+    docsUrl: 'https://cloud.cerebras.ai',
+    placeholder: 'csk-...',
+    tagline: 'Wafer-scale world-record inference speeds',
+  },
+  perplexity: {
+    docsUrl: 'https://www.perplexity.ai/settings/api',
+    placeholder: 'pplx-...',
+    tagline: 'Online search-augmented reasoning models',
+  },
+  moonshot: {
+    docsUrl: 'https://platform.moonshot.ai/console/api-keys',
+    placeholder: 'sk-...',
+    tagline: 'Kimi K3, Kimi for Coding, 200k context',
+  },
+  dashscope: {
+    docsUrl: 'https://bailian.console.alibabacloud.com',
+    placeholder: 'sk-...',
+    tagline: 'Alibaba Cloud Qwen 3.5 Plus, Coder Next',
+  },
+  zai: {
+    docsUrl: 'https://z.ai/manage-apikey/apikey-list',
+    placeholder: '...',
+    tagline: 'GLM 5.3, GLM 5 Turbo, GLM 4.7',
+  },
+  minimax: {
+    docsUrl: 'https://www.minimax.io/platform',
+    placeholder: '...',
+    tagline: 'MiniMax M3, M2.5, Speech 2.8',
+  },
+  nvidia: {
+    docsUrl: 'https://build.nvidia.com',
+    placeholder: 'nvapi-...',
+    tagline: 'NVIDIA NIM microservices & Nemotron reasoning',
+  },
+  deepinfra: {
+    docsUrl: 'https://deepinfra.com/dash/api_keys',
+    placeholder: '...',
+    tagline: 'Serverless model hosting at scale',
+  },
+  sambanova: {
+    docsUrl: 'https://cloud.sambanova.ai/apis',
+    placeholder: '...',
+    tagline: 'DataScale SN40L accelerator inference',
+  },
+  cohere: {
+    docsUrl: 'https://dashboard.cohere.com/api-keys',
+    placeholder: '...',
+    tagline: 'Command R+, Command R, Embed',
+  },
+  hyperbolic: {
+    docsUrl: 'https://hyperbolic.xyz',
+    placeholder: '...',
+    tagline: 'Decentralized high-throughput compute',
+  },
+  novita: {
+    docsUrl: 'https://novita.ai/settings/key-management',
+    placeholder: '...',
+    tagline: 'Cost-effective serverless LLM APIs',
+  },
+  siliconflow: {
+    docsUrl: 'https://cloud.siliconflow.cn/account/ak',
+    placeholder: 'sk-...',
+    tagline: 'SiliconFlow Cloud AI inference',
+  },
+  github: {
+    docsUrl: 'https://github.com/marketplace/models',
+    placeholder: 'ghp_... or gho_...',
+    tagline: 'Azure AI Models with GitHub Personal Access Token',
+  },
+  custom: {
+    docsUrl: 'https://platform.openai.com/docs/api-reference/chat',
+    placeholder: 'sk-... (optional)',
+    tagline: 'Any OpenAI-compatible endpoint (LiteLLM, vLLM, LM Studio)',
+  },
+}
+
 function providerCatalog(p: GatewayProvider): string[] {
   const live = p.models || []
   const seed = p.seed_models || []
@@ -393,20 +534,29 @@ function ProvidersSection({
   onChanged: () => void
   onTryModel: (modelId: string) => void
 }) {
-  const [editing, setEditing] = useState<string | null>(null)
-  const [apiKey, setApiKey] = useState('')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [connectingProvider, setConnectingProvider] = useState<GatewayProvider | null>(null)
+  const [connectApiKey, setConnectApiKey] = useState('')
+  const [connectBaseUrl, setConnectBaseUrl] = useState('')
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [revealedKey, setRevealedKey] = useState(false)
+  const [verificationResult, setVerificationResult] = useState<{
+    valid: boolean
+    latencyMs?: number
+    error?: string
+  } | null>(null)
+
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'connected'>('all')
   const [catalogProvider, setCatalogProvider] = useState<GatewayProvider | null>(null)
   const [catalogFilter, setCatalogFilter] = useState('')
   const [copiedModel, setCopiedModel] = useState<string | null>(null)
 
-  const open = (p: GatewayProvider) => {
-    setEditing(p.id)
-    setApiKey('')
-    setBaseUrl(p.base_url || '')
+  const openConnectModal = (p: GatewayProvider) => {
+    setConnectingProvider(p)
+    setConnectApiKey('')
+    setConnectBaseUrl(p.base_url || p.default_base_url || '')
+    setVerificationResult(null)
+    setRevealedKey(false)
   }
 
   const copyModelId = async (fullModel: string) => {
@@ -420,17 +570,34 @@ function ProvidersSection({
     }
   }
 
-  const connect = async (p: GatewayProvider) => {
-    setBusy(true)
+  const handleVerifyAndConnect = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!connectingProvider) return
+    setIsVerifying(true)
+    setVerificationResult(null)
     try {
-      await api.gatewayConnect(p.id, apiKey.trim(), baseUrl.trim())
-      toast.success(`${p.name} connected`)
-      setEditing(null)
+      const res = await api.gatewayConnect(
+        connectingProvider.id,
+        connectApiKey.trim(),
+        connectBaseUrl.trim()
+      )
+      setVerificationResult({
+        valid: true,
+        latencyMs: res.latency_ms || 120,
+      })
+      toast.success(`${connectingProvider.name} verified and connected!`)
       onChanged()
-    } catch (e: any) {
-      toast.error(e?.message || 'Verification failed')
+      setTimeout(() => {
+        setConnectingProvider(null)
+      }, 1000)
+    } catch (err: any) {
+      setVerificationResult({
+        valid: false,
+        error: err?.message || 'Verification failed. Please check the API key and Base URL.',
+      })
+      toast.error(err?.message || 'Verification failed')
     } finally {
-      setBusy(false)
+      setIsVerifying(false)
     }
   }
 
@@ -581,37 +748,13 @@ function ProvidersSection({
                 )}
               </div>
 
-              {editing === p.id ? (
-                <div className="space-y-2">
-                  <Input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    data-no-token-complete
-                    placeholder={p.connected ? 'Leave empty to keep saved key' : p.needs_key ? 'API key' : 'API key (optional)'}
-                    className="h-8 font-mono text-xs"
-                    aria-label={`${p.name} API key`}
-                  />
-                  <Input
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    data-no-token-complete
-                    placeholder={p.default_base_url || 'https://your-host/v1'}
-                    className="h-8 font-mono text-xs"
-                    aria-label={`${p.name} base URL`}
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" className="h-8" disabled={busy} onClick={() => void connect(p)}>
-                      {busy && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}Verify & save
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditing(null)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
                 <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-                  <Button size="sm" variant="outline" className="h-8" onClick={() => open(p)}>
+                  <Button
+                    size="sm"
+                    variant={p.connected ? 'outline' : 'default'}
+                    className={`h-8 ${p.connected ? '' : 'bg-cyan-600 hover:bg-cyan-500 text-white'}`}
+                    onClick={() => openConnectModal(p)}
+                  >
                     {p.connected ? 'Edit' : 'Connect'}
                   </Button>
                   {p.connected && catalog[0] && (
@@ -632,18 +775,170 @@ function ProvidersSection({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="ml-auto h-8 gap-1.5 text-red-500"
+                      className="ml-auto h-8 gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10"
                       onClick={() => void disconnect(p)}
                     >
                       <Unplug className="h-3.5 w-3.5" /> Disconnect
                     </Button>
                   )}
                 </div>
-              )}
-            </Card>
-          )
-        })}
-      </div>
+              </Card>
+            )
+          })}
+        </div>
+
+        {connectingProvider && (
+          <Dialog open={!!connectingProvider} onOpenChange={(open) => !open && setConnectingProvider(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <div className="flex items-center gap-2.5">
+                  <ProviderLogo provider={connectingProvider.id} size="md" badge />
+                  <div>
+                    <DialogTitle className="text-base font-semibold">
+                      {connectingProvider.connected ? `Edit ${connectingProvider.name}` : `Connect ${connectingProvider.name}`}
+                    </DialogTitle>
+                    <p className="text-[11px] text-muted-foreground">
+                      {PROVIDER_DOCS[connectingProvider.id]?.tagline || `Configure API key and endpoint for ${connectingProvider.name}`}
+                    </p>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <form onSubmit={handleVerifyAndConnect} className="space-y-4 pt-1">
+                <div className="p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/20 text-xs space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-cyan-400">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Live API Verification
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Beacon will verify this key directly with upstream servers to check model accessibility and measure latency.
+                  </p>
+                </div>
+
+                {connectingProvider.needs_key && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <label className="font-medium text-foreground">API Key</label>
+                      {PROVIDER_DOCS[connectingProvider.id]?.docsUrl && (
+                        <button
+                          type="button"
+                          onClick={() => void openExternalUrl(PROVIDER_DOCS[connectingProvider.id].docsUrl)}
+                          className="text-[11px] text-cyan-500 hover:underline flex items-center gap-1"
+                        >
+                          Get API key <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Input
+                        type={revealedKey ? 'text' : 'password'}
+                        value={connectApiKey}
+                        onChange={(e) => setConnectApiKey(e.target.value)}
+                        placeholder={
+                          connectingProvider.connected
+                            ? 'Leave empty to keep saved key'
+                            : PROVIDER_DOCS[connectingProvider.id]?.placeholder || 'Enter API key'
+                        }
+                        className="font-mono text-xs pr-8"
+                        data-no-token-complete
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRevealedKey(!revealedKey)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {revealedKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-foreground">
+                    Base URL {connectingProvider.default_base_url ? '(optional override)' : '(required)'}
+                  </label>
+                  <Input
+                    value={connectBaseUrl}
+                    onChange={(e) => setConnectBaseUrl(e.target.value)}
+                    placeholder={connectingProvider.default_base_url || 'https://your-endpoint/v1'}
+                    className="font-mono text-xs"
+                    data-no-token-complete
+                    required={!connectingProvider.default_base_url}
+                  />
+                </div>
+
+                {verificationResult && (
+                  <div
+                    className={`p-3 rounded-lg text-xs border ${
+                      verificationResult.valid
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                        : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    }`}
+                  >
+                    {verificationResult.valid ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Verified successfully in {verificationResult.latencyMs} ms</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 font-semibold">
+                          <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                          <span>Verification failed</span>
+                        </div>
+                        <div className="text-[11px] opacity-90 pl-6">
+                          {verificationResult.error}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <DialogFooter className="flex items-center justify-between pt-2">
+                  {connectingProvider.connected ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                      disabled={isVerifying}
+                      onClick={async () => {
+                        await disconnect(connectingProvider)
+                        setConnectingProvider(null)
+                      }}
+                    >
+                      <Unplug className="w-3.5 h-3.5" /> Disconnect
+                    </Button>
+                  ) : (
+                    <div />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs"
+                      disabled={isVerifying}
+                      onClick={() => setConnectingProvider(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white"
+                      disabled={isVerifying}
+                    >
+                      {isVerifying && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      {isVerifying ? 'Verifying...' : 'Verify & Connect'}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
 
       {catalogProvider && (
         <div

@@ -258,6 +258,123 @@ export function ProviderLogo({ provider, size = 'sm', className = '', badge = fa
       }
     }
 
+    // NVIDIA NIM
+    if (norm === 'nvidia' || norm === 'nim') {
+      return {
+        bg: 'bg-lime-500/10 text-lime-500 border-lime-500/20',
+        color: '#76B900',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M8.938 9.539c-.046-.037-.48-.372-.942-.716C6.732 7.87 5.767 7.02 5.099 6.284 3.738 4.779 3.018 3.398 2.802 2.052c-.08-.501-.07-.74.032-.782.164-.067.842.17 1.488.519 2.507 1.354 4.593 3.655 5.86 6.463.308.683.565 1.385.57 1.558.006.223-.19.467-.406.467-.09 0-.256-.107-.408-.238zm6.124 4.922c-1.332-1.332-3.136-2.13-5.062-2.13-1.926 0-3.73.798-5.062 2.13C3.606 15.793 2.808 17.597 2.808 19.523H0c0-2.673 1.107-5.176 2.94-6.994 1.833-1.833 4.336-2.94 6.994-2.94 2.673 0 5.176 1.107 6.994 2.94 1.833 1.818 2.94 4.321 2.94 6.994h-2.808c0-1.926-.798-3.73-2.13-5.062z" />
+          </svg>
+        ),
+      }
+    }
+
+    // Alibaba Qwen / DashScope
+    if (norm === 'dashscope' || norm === 'qwen' || norm === 'qw' || norm.includes('alibaba')) {
+      return {
+        bg: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+        color: '#FF6A00',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M12 2L2 7l10 5 10-5-10-5zm0 8L4.5 6.25 12 2.5l7.5 3.75L12 10zm-8 4l8 4 8-4v3l-8 4-8-4v-3zm0-4l8 4 8-4v2.5l-8 4-8-4V10z" />
+          </svg>
+        ),
+      }
+    }
+
+    // Z.ai GLM
+    if (norm === 'zai' || norm === 'glm') {
+      return {
+        bg: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+        color: '#38BDF8',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M4 4h16v3.2L9.4 16.8H20V20H4v-3.2L14.6 7.2H4V4z" />
+          </svg>
+        ),
+      }
+    }
+
+    // MiniMax
+    if (norm === 'minimax' || norm === 'mm') {
+      return {
+        bg: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+        color: '#F43F5E',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M4 18V6h3l5 6 5-6h3v12h-3v-7l-5 6-5-6v7H4z" />
+          </svg>
+        ),
+      }
+    }
+
+    // DeepInfra
+    if (norm === 'deepinfra' || norm === 'di') {
+      return {
+        bg: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
+        color: '#14B8A6',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M4 4h8a8 8 0 1 1 0 16H4V4zm3.5 3.5v9H12a4.5 4.5 0 1 0 0-9H7.5z" />
+          </svg>
+        ),
+      }
+    }
+
+    // Cerebras
+    if (norm === 'cerebras' || norm === 'cb') {
+      return {
+        bg: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+        color: '#F97316',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M12 2L2 19.5h20L12 2zm0 5.2l5.6 9.8H6.4L12 7.2z" />
+          </svg>
+        ),
+      }
+    }
+
+    // Fireworks
+    if (norm === 'fireworks' || norm === 'fw') {
+      return {
+        bg: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+        color: '#A855F7',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2zm7 13l1.1 2.9L23 19l-2.9 1.1L19 23l-1.1-2.9L15 19l2.9-1.1L19 15z" />
+          </svg>
+        ),
+      }
+    }
+
+    // SambaNova
+    if (norm === 'sambanova' || norm === 'sn') {
+      return {
+        bg: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+        color: '#FB7185',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.8h-2v-4.2h2zm2.5-6.3h-7V7.9h7z" />
+          </svg>
+        ),
+      }
+    }
+
+    // Custom OpenAI endpoint
+    if (norm === 'custom') {
+      return {
+        bg: 'bg-zinc-500/10 text-muted-foreground border-border',
+        color: 'currentColor',
+        svg: (
+          <svg viewBox="0 0 24 24" width={px} height={px} fill="currentColor">
+            <path d="M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h16v3H4v-3z" />
+          </svg>
+        ),
+      }
+    }
+
     // Fallback AI icon
     return {
       bg: 'bg-muted text-muted-foreground border-border',

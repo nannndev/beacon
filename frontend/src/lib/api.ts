@@ -77,7 +77,9 @@ async function req<T = any>(url: string, init?: RequestInit): Promise<T> {
     let detail = `HTTP ${res.status}`
     try {
       const body = await res.json()
-      if (body?.detail) detail = body.detail
+      // routers use `detail`; the AI gateway uses `message` / `error`
+      const msg = body?.detail ?? body?.message ?? body?.error
+      if (typeof msg === 'string' && msg) detail = msg
     } catch {
       /* ignore */
     }
@@ -399,7 +401,8 @@ export const api = {
     provider: string,
     body: { session_id: string; account_id?: string; label?: string },
   ) => req<
-    | { status: 'pending' }
+    | { status: 'pending'; interval?: number }
+    | { status: 'expired'; error?: string }
     | ({ status: 'done'; account: OAuthAccount } & OAuthAccountsState)
   >(`/gateway/admin/accounts/${encodeURIComponent(provider)}/poll`, jsonInit('POST', body)),
   gatewayAccountTest: (provider: string, account_id?: string) =>

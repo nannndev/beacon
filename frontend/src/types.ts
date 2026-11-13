@@ -564,6 +564,12 @@ export interface AgentCustomSkill {
 export interface AgentPreferences {
   language: 'auto' | 'id' | 'en'
   style: 'concise' | 'balanced' | 'detailed'
+  /** Personality character preset. */
+  character?: 'default' | 'chill' | 'hype' | 'empathetic' | 'auditor' | 'mentor'
+  /** How the agent talks: formal, friendly, or casual. */
+  tone: 'formal' | 'friendly' | 'casual'
+  /** How much feeling it shows: calm, warm, expressive, or empathetic. */
+  emotion: 'calm' | 'warm' | 'expressive' | 'empathetic'
   guides: string[]
   skills: AgentCustomSkill[]
   custom: string

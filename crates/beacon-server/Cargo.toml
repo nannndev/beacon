@@ -2,6 +2,7 @@
 name = "beacon-server"
 version = "0.11.0"
 edition = "2021"
+default-run = "beacon-server"
 
 [dependencies]
 beacon-core = { path = "../beacon-core" }

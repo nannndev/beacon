@@ -421,6 +421,26 @@ impl Store {
         Ok(format!("Deleted endpoint '{}'", needle))
     }
 
+    /// Active project's tree; legacy flat projects are presented as a flat list of requests.
+    pub fn get_collection(&mut self) -> Vec<Value> {
+        self.save_active_project();
+        let Some(proj) = self.get_active_project() else { return Vec::new() };
+        if let Some(items) = &proj.items {
+            return items.clone();
+        }
+        proj.tests.clone().unwrap_or_default().into_iter().map(|mut t| { t["type"] = json!("request"); t }).collect()
+    }
+
+    pub fn set_collection(&mut self, items: Vec<Value>) -> Result<(), String> {
+        // Flush in-memory endpoint edits into the tree before replacing it.
+        self.save_active_project();
+        let proj = self.get_active_project_mut().ok_or("No active project")?;
+        proj.items = Some(items);
+        proj.tests = None;
+        self.sync_current_config();
+        self.save()
+    }
+
     pub fn duplicate_endpoint(&mut self, id_or_name: &str) -> Result<EndpointTest, String> {
         let orig = self.get_endpoint(id_or_name)
             .ok_or_else(|| format!("Endpoint '{}' not found", id_or_name))?;
@@ -605,5 +625,11 @@ impl beacon_agent::WorkspaceOps for ServerWorkspace {
     }
     fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String> {
         self.0.write().create_project(name, base_url)
+    }
+    fn get_collection(&self) -> Vec<Value> {
+        self.0.write().get_collection()
+    }
+    fn set_collection(&self, items: Vec<Value>) -> Result<(), String> {
+        self.0.write().set_collection(items)
     }
 }

@@ -18,6 +18,14 @@ pub trait WorkspaceOps: Send + Sync {
     fn list_projects(&self) -> Vec<Value>;
     fn switch_project(&self, id_or_name: &str) -> Result<Value, String>;
     fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String>;
+    /// The active project's collection tree (folders + requests).
+    fn get_collection(&self) -> Vec<Value> {
+        self.list_endpoints().into_iter().filter_map(|t| serde_json::to_value(t).ok()).map(|mut v| { v["type"] = json!("request"); v }).collect()
+    }
+    /// Replaces the active project's collection tree.
+    fn set_collection(&self, _items: Vec<Value>) -> Result<(), String> {
+        Err("Folders are not supported in this workspace".into())
+    }
 }
 
 /// Fallback read-only workspace adapter wrapping a TestConfig clone.
@@ -129,6 +137,7 @@ pub fn agent_tool_definitions() -> Vec<Value> {
                             "type": "object",
                             "description": "Variable extractors from response: { variable_name: 'body.access_token' | 'header.set-cookie' }"
                         },
+                        "folder": { "type": "string", "description": "Optional folder (name, id, or 'Parent/Child' path) to place the endpoint in. Created if missing." },
                         "assertions": {
                             "type": "array",
                             "description": "Response assertions to enforce status code, latency, headers, or body values",
@@ -306,6 +315,46 @@ pub fn agent_tool_definitions() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "beacon_get_collection",
+                "description": "Show the ACTIVE project's collection tree: folders and the endpoints inside them, in display order. Call this before organizing so you use real ids and names.",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_organize_collection",
+                "description": "Organize the ACTIVE project's collection: create, rename, or delete folders (nested allowed), move endpoints or folders between folders, and reorder items. Pass ALL steps in one call; they apply atomically in order (if one fails, nothing is saved). Endpoints are never lost: deleting a folder keeps its contents unless delete_contents is true. Folders and items are referenced by id, name, or 'Parent/Child' path.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "operations": {
+                            "type": "array",
+                            "description": "Ordered steps. Examples: {op:'create_folder', name:'Discount', parent?:'Admin'} | {op:'rename_folder', folder:'Disc', name:'Discount'} | {op:'delete_folder', folder:'Old', delete_contents?:false} | {op:'move', items:['Add Discount','ep_123'], to:'Discount' (or null for top level), index?:0} | {op:'reorder', parent?:'Discount' (omit for top level), order:['List Discount','Add Discount']}",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "op": { "type": "string", "enum": ["create_folder", "rename_folder", "delete_folder", "move", "reorder"] },
+                                    "name": { "type": "string" },
+                                    "parent": { "type": "string" },
+                                    "folder": { "type": "string" },
+                                    "items": { "type": "array", "items": { "type": "string" } },
+                                    "to": { "type": ["string", "null"] },
+                                    "index": { "type": "integer" },
+                                    "order": { "type": "array", "items": { "type": "string" } },
+                                    "delete_contents": { "type": "boolean" }
+                                },
+                                "required": ["op"]
+                            }
+                        }
+                    },
+                    "required": ["operations"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "beacon_list_projects",
                 "description": "List all projects configured in the user's Beacon workspace, indicating which project is currently active/in-focus, its base URL, environment, and endpoint count.",
                 "parameters": {
@@ -465,11 +514,26 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
             }
 
             match workspace.create_endpoint(test) {
-                Ok(created) => json!({
-                    "status": "created",
-                    "mutated": true,
-                    "endpoint": created,
-                }),
+                Ok(created) => {
+                    let mut out = json!({ "status": "created", "mutated": true, "endpoint": created });
+                    if let Some(folder) = args.get("folder").and_then(|v| v.as_str()).filter(|f| !f.trim().is_empty()) {
+                        let mut ops = Vec::new();
+                        // Create each missing level of a "Parent/Child" path.
+                        let mut parent: Option<String> = None;
+                        for part in folder.split('/').map(str::trim).filter(|p| !p.is_empty()) {
+                            ops.push(json!({ "op": "create_folder", "name": part, "parent": parent }));
+                            parent = Some(parent.map(|p| format!("{p}/{part}")).unwrap_or_else(|| part.to_string()));
+                        }
+                        ops.push(json!({ "op": "move", "items": [created.id], "to": folder }));
+                        out["folder"] = match crate::collection::apply_all(&workspace.get_collection(), &ops)
+                            .and_then(|(tree, _)| workspace.set_collection(tree))
+                        {
+                            Ok(()) => json!(folder),
+                            Err(e) => json!({ "error": format!("Endpoint created at the top level; folder placement failed: {e}") }),
+                        };
+                    }
+                    out
+                }
                 Err(err) => json!({ "error": err }),
             }
         }
@@ -863,6 +927,31 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
             }
         }
 
+        "beacon_get_collection" => {
+            let tree = workspace.get_collection();
+            json!({ "tree": crate::collection::summarize(&tree) })
+        }
+
+        "beacon_organize_collection" => {
+            let ops = match args.get("operations").and_then(|o| o.as_array()) {
+                Some(o) if !o.is_empty() => o.clone(),
+                _ => return json!({ "error": "'operations' must be a non-empty array" }),
+            };
+            match crate::collection::apply_all(&workspace.get_collection(), &ops) {
+                Ok((tree, log)) => match workspace.set_collection(tree.clone()) {
+                    Ok(()) => json!({
+                        "status": "organized",
+                        "mutated": true,
+                        "summary": log.join("; "),
+                        "changes": log,
+                        "tree": crate::collection::summarize(&tree),
+                    }),
+                    Err(e) => json!({ "error": e }),
+                },
+                Err(e) => json!({ "error": e }),
+            }
+        }
+
         "beacon_list_projects" => {
             let list = workspace.list_projects();
             json!({ "projects": list, "count": list.len() })
@@ -911,6 +1000,7 @@ mod tests {
     struct InMemoryWorkspace {
         config: TestConfig,
         endpoints: Arc<RwLock<Vec<EndpointTest>>>,
+        tree: Arc<RwLock<Option<Vec<Value>>>>,
     }
 
     impl InMemoryWorkspace {
@@ -934,11 +1024,24 @@ mod tests {
             Self {
                 config,
                 endpoints: Arc::new(RwLock::new(vec![ep1])),
+                tree: Arc::new(RwLock::new(None)),
             }
         }
     }
 
     impl WorkspaceOps for InMemoryWorkspace {
+        fn get_collection(&self) -> Vec<Value> {
+            // Like the real store: tree order wins, endpoints missing from it are appended.
+            let eps: Vec<Value> = self.endpoints.read().unwrap().iter().map(|e| { let mut v = serde_json::to_value(e).unwrap(); v["type"] = json!("request"); v }).collect();
+            let mut tree = self.tree.read().unwrap().clone().unwrap_or_default();
+            let flat = serde_json::to_string(&tree).unwrap();
+            for e in eps { if !flat.contains(e["id"].as_str().unwrap()) { tree.push(e); } }
+            tree
+        }
+        fn set_collection(&self, items: Vec<Value>) -> Result<(), String> {
+            *self.tree.write().unwrap() = Some(items);
+            Ok(())
+        }
         fn get_config(&self) -> TestConfig {
             let mut cfg = self.config.clone();
             cfg.tests = self.endpoints.read().unwrap().clone();
@@ -1105,6 +1208,26 @@ mod tests {
         let collection_res = execute_tool("beacon_run_collection", &json!({}), &ws).await;
         assert_eq!(collection_res["total_steps"], 1);
         assert!(collection_res["steps"].as_array().unwrap().len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_agent_collection_tools() {
+        let ws = InMemoryWorkspace::new();
+        let created = execute_tool("beacon_create_endpoint", &json!({ "name": "Add Discount", "url": "/discounts", "method": "POST", "folder": "Promo/Discount" }), &ws).await;
+        assert_eq!(created["folder"], "Promo/Discount", "{created}");
+        let res = execute_tool("beacon_organize_collection", &json!({ "operations": [
+            { "op": "create_folder", "name": "Posts" },
+            { "op": "move", "items": ["Get Posts"], "to": "Posts" },
+            { "op": "reorder", "order": ["Posts", "Promo"] }
+        ] }), &ws).await;
+        assert_eq!(res["mutated"], true, "{res}");
+        let tree = execute_tool("beacon_get_collection", &json!({}), &ws).await["tree"].clone();
+        assert_eq!(tree[0]["name"], "Posts");
+        assert_eq!(tree[0]["items"][0]["name"], "Get Posts");
+        assert_eq!(tree[1]["items"][0]["name"], "Discount");
+        assert_eq!(tree[1]["items"][0]["items"][0]["name"], "Add Discount");
+        let bad = execute_tool("beacon_organize_collection", &json!({ "operations": [{ "op": "move", "items": ["nope"], "to": "Posts" }] }), &ws).await;
+        assert!(bad["error"].as_str().unwrap().contains("not found"));
     }
 
     #[tokio::test]

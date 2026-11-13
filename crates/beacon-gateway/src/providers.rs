@@ -223,6 +223,99 @@ pub static PROVIDERS: &[Provider] = &[
         needs_key: true,
         seed_models: &["anthropic.claude-3-5-sonnet-20241022-v2:0"],
     },
+    Provider {
+        id: "moonshot",
+        alias: "moonshot",
+        name: "Moonshot Kimi",
+        family: OPENAI,
+        base_url: "https://api.moonshot.ai/v1",
+        needs_key: true,
+        seed_models: &[
+            "kimi-k3", "k3", "kimi-for-coding", "kimi-for-coding-highspeed",
+            "kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5", "kimi-k2.5-thinking",
+            "kimi-k2-0711-preview", "kimi-latest",
+        ],
+    },
+    Provider {
+        id: "dashscope",
+        alias: "dashscope",
+        name: "Alibaba Qwen (DashScope)",
+        family: OPENAI,
+        base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        needs_key: true,
+        seed_models: &[
+            "qwen3.5-plus", "kimi-k2.5", "glm-5", "MiniMax-M2.5",
+            "qwen3-coder-next", "qwen3-coder-plus", "glm-4.7", "qwen-plus",
+        ],
+    },
+    Provider {
+        id: "zai",
+        alias: "zai",
+        name: "Z.ai GLM",
+        family: OPENAI,
+        base_url: "https://api.z.ai/api/paas/v4",
+        needs_key: true,
+        seed_models: &[
+            "glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1",
+            "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.6v", "glm-4.5", "glm-4.5-air",
+        ],
+    },
+    Provider {
+        id: "minimax",
+        alias: "minimax",
+        name: "MiniMax",
+        family: OPENAI,
+        base_url: "https://api.minimax.io/v1",
+        needs_key: true,
+        seed_models: &[
+            "MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1",
+            "MiniMax-M1", "speech-2.8-hd", "speech-2.8-turbo",
+        ],
+    },
+    Provider {
+        id: "nvidia",
+        alias: "nvidia",
+        name: "NVIDIA NIM",
+        family: OPENAI,
+        base_url: "https://integrate.api.nvidia.com/v1",
+        needs_key: true,
+        seed_models: &[
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "nvidia/nemotron-3.5-super-vl-120b-a12b",
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "deepseek-ai/deepseek-v4.1-flash",
+            "deepseek-ai/deepseek-v4-pro",
+            "deepseek-ai/deepseek-r1",
+            "deepseek-ai/deepseek-v3",
+            "meta/llama-3.3-70b-instruct",
+            "mistralai/mistral-large-2-instruct",
+            "qwen/qwen2.5-72b-instruct",
+            "qwen/qwen2.5-coder-32b-instruct",
+        ],
+    },
+    Provider {
+        id: "deepinfra",
+        alias: "deepinfra",
+        name: "DeepInfra",
+        family: OPENAI,
+        base_url: "https://api.deepinfra.com/v1/openai",
+        needs_key: true,
+        seed_models: &[
+            "meta-llama/Llama-3.3-70B-Instruct",
+            "deepseek-ai/DeepSeek-R1",
+            "Qwen/Qwen2.5-Coder-32B-Instruct",
+            "mistralai/Mistral-Small-24B-Instruct-2501",
+        ],
+    },
+    Provider {
+        id: "custom",
+        alias: "custom",
+        name: "Custom (OpenAI-compatible)",
+        family: OPENAI,
+        base_url: "",
+        needs_key: false,
+        seed_models: &["custom/<model-name>"],
+    },
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -249,15 +342,10 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "anthropic",
         default_model: "claude-sonnet-5-5",
-        default_model_free: "claude-3-5-haiku-20241022",
+        default_model_free: "claude-haiku-4-5-20251001",
         preferred_auto: &["claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001", "claude-opus-5-5"],
-        preferred_auto_free: &["claude-3-5-haiku-20241022", "claude-haiku-4-5"],
-        seed_models: &[
-            "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
-            "claude-opus-5", "claude-sonnet-5", "claude-opus-4-6",
-            "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-haiku-4-5",
-            "claude-3-7-sonnet-20250219", "claude-3-5-haiku-20241022",
-        ],
+        preferred_auto_free: &["claude-sonnet-5-5", "claude-haiku-4-5-20251001"],
+        seed_models: &["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
     },
     OAuthProviderMeta {
         id: "codex",
@@ -267,18 +355,15 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "codex",
         default_model: "gpt-5.6-terra",
-        default_model_free: "chatgpt-4o-latest",
+        default_model_free: "gpt-5.6-terra",
         preferred_auto: &[
-            "gpt-5.6-terra", "gpt-5.6-luna", "chatgpt-4o-latest",
-            "gpt-5.6-sol", "gpt-6-sol", "gpt-6.1-terra", "gpt-6.1-sol",
+            "gpt-5.6-terra", "gpt-5.6-luna",
         ],
         preferred_auto_free: &[
-            "chatgpt-4o-latest", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-5.6-terra", "gpt-5.6-luna",
         ],
         seed_models: &[
-            "gpt-5.6-terra", "gpt-5.6-luna", "chatgpt-4o-latest",
-            "gpt-5.6-sol", "gpt-6-sol", "gpt-6.1-terra", "gpt-6.1-sol",
-            "gpt-6-astra", "text-davinci-002-render-sha",
+            "gpt-5.6-terra", "gpt-5.6-luna",
         ],
     },
     OAuthProviderMeta {
@@ -291,12 +376,8 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         default_model: "gpt-4.1",
         default_model_free: "gpt-4o-mini",
         preferred_auto: &["gpt-4.1", "gpt-4o", "gpt-4o-mini", "gpt-5-mini", "gpt-5.5"],
-        preferred_auto_free: &["gpt-4o-mini", "gpt-4o"],
-        seed_models: &[
-            "gpt-5.5", "gpt-5.4", "gpt-5-mini", "gpt-4.1", "gpt-4o",
-            "o3-mini", "claude-sonnet-5.5", "claude-opus-5.5",
-            "claude-haiku-5.5", "gemini-3.8-flash",
-        ],
+        preferred_auto_free: &["gpt-4o-mini", "gpt-4.1"],
+        seed_models: &["gpt-5.5", "gpt-5.4", "gpt-5-mini", "gpt-4.1", "claude-sonnet-5.5", "claude-opus-5.5", "claude-haiku-5.5", "gemini-3.8-flash"],
     },
     OAuthProviderMeta {
         id: "gemini-cli",
@@ -306,13 +387,10 @@ pub static OAUTH_PROVIDERS: &[OAuthProviderMeta] = &[
         flow: "redirect",
         family: "gemini",
         default_model: "gemini-2.5-flash",
-        default_model_free: "gemini-2.5-flash-lite",
+        default_model_free: "gemini-2.5-flash",
         preferred_auto: &["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-flash-preview"],
-        preferred_auto_free: &["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"],
-        seed_models: &[
-            "gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3-flash-preview",
-            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash",
-        ],
+        preferred_auto_free: &["gemini-2.5-flash"],
+        seed_models: &["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
     },
     OAuthProviderMeta {
         id: "kimi",
@@ -387,7 +465,18 @@ pub fn find_provider_by_id(id: &str) -> Option<&'static Provider> {
 }
 
 pub fn find_provider_by_alias(alias: &str) -> Option<&'static Provider> {
-    PROVIDERS.iter().find(|p| p.alias == alias)
+    if let Some(p) = PROVIDERS.iter().find(|p| p.alias == alias || p.id == alias) {
+        return Some(p);
+    }
+    match alias {
+        "km" | "km_api" => find_provider_by_id("moonshot"),
+        "qw" | "ds_api" => find_provider_by_id("dashscope"),
+        "nim" | "nv_nim" => find_provider_by_id("nvidia"),
+        "di" => find_provider_by_id("deepinfra"),
+        "mm" => find_provider_by_id("minimax"),
+        "glm" => find_provider_by_id("zai"),
+        _ => None,
+    }
 }
 
 pub fn find_oauth_by_id(id: &str) -> Option<&'static OAuthProviderMeta> {

@@ -8,3 +8,18 @@ export function isDesktop(): boolean {
   // fallbacks for existing installs/dev tooling.
   return !!w.isTauri || !!w.__TAURI_INTERNALS__ || !!w.__TAURI__ || !!w.process?.versions?.electron
 }
+
+export async function openExternalUrl(url: string): Promise<void> {
+  if (!url) return
+  if (isDesktop()) {
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell')
+      await open(url)
+      return
+    } catch (e) {
+      console.warn('[beacon] failed to open external URL with tauri plugin-shell, falling back to window.open', e)
+    }
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
