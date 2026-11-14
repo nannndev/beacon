@@ -335,6 +335,10 @@ impl Store {
 
     pub fn save(&mut self) -> Result<(), String> {
         self.save_active_project();
+        // Linked folders are the readable project source; write them before the cache.
+        for project in &mut self.projects {
+            crate::file_sync::sync_before_save(project);
+        }
 
         let persisted = PersistedData {
             current_project_id: self.current_project_id.clone(),

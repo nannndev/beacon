@@ -1,5 +1,7 @@
 pub mod importer;
 pub mod history;
+pub mod file_sync;
+pub mod git;
 pub mod routes;
 pub mod state;
 pub mod store;
@@ -68,6 +70,24 @@ pub fn app_router(state: AppState) -> Router {
             "/projects/samples/jsonplaceholder",
             post(routes::projects::sample_jsonplaceholder),
         )
+        .route("/projects/:id/git", get(routes::git_sync::git_status))
+        .route("/projects/:id/git/branches", get(routes::git_sync::git_branches).post(routes::git_sync::git_create_branch))
+        .route("/projects/:id/git/diff", get(routes::git_sync::git_diff))
+        .route("/projects/:id/git/commit", post(routes::git_sync::git_commit))
+        .route("/projects/:id/git/compare", post(routes::git_sync::git_compare))
+        .route("/projects/:id/git/fetch", post(routes::git_sync::git_fetch))
+        .route("/projects/:id/git/init", post(routes::git_sync::git_init))
+        .route("/projects/:id/git/pull", post(routes::git_sync::git_pull))
+        .route("/projects/:id/git/push", post(routes::git_sync::git_push))
+        .route("/projects/:id/git/switch", post(routes::git_sync::git_switch))
+        .route("/projects/:id/git/remote", put(routes::git_sync::git_set_remote))
+        .route("/projects/:id/file-sync", get(routes::git_sync::file_sync_status).delete(routes::git_sync::file_sync_unlink))
+        .route("/projects/:id/file-sync/link", post(routes::git_sync::file_sync_link))
+        .route("/projects/:id/file-sync/reload", post(routes::git_sync::file_sync_reload))
+        .route("/projects/file-sync/clone", post(routes::git_sync::file_sync_clone))
+        .route("/projects/file-sync/import-candidate", post(routes::git_sync::file_sync_import_candidate))
+        .route("/projects/file-sync/initialize", post(routes::git_sync::file_sync_initialize))
+        .route("/projects/file-sync/open", post(routes::git_sync::file_sync_open))
         .route(
             "/projects/:id/environments",
             post(routes::environments::create_environment),
