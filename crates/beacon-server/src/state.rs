@@ -1,3 +1,4 @@
+use crate::sharing::SharingService;
 use crate::store::Store;
 use beacon_core::EndpointTest;
 use beacon_gateway::{GatewayEngine, GatewayStore};
@@ -70,6 +71,7 @@ pub struct AppState {
     pub runs: Arc<RwLock<HashMap<String, Arc<ActiveRun>>>>,
     pub ws_broadcast: broadcast::Sender<Value>,
     pub gateway: GatewayEngine,
+    pub sharing: Arc<SharingService>,
 }
 
 impl AppState {
@@ -79,12 +81,14 @@ impl AppState {
         let data_dir = store.file_path.parent().unwrap_or(Path::new("config"));
         let gw_store = GatewayStore::new(data_dir).unwrap_or_else(|_| GatewayStore::new("config").unwrap());
         let gateway = GatewayEngine::new(gw_store);
+        let sharing = Arc::new(SharingService::new(data_dir));
 
         Self {
             store: Arc::new(RwLock::new(store)),
             runs: Arc::new(RwLock::new(HashMap::new())),
             ws_broadcast: tx,
             gateway,
+            sharing,
         }
     }
 
