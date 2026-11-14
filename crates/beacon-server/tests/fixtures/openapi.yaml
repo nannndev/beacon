@@ -1,0 +1,43 @@
+openapi: 3.0.0
+info:
+  title: Pets
+servers:
+  - url: https://pets.example.com/{version}
+    variables:
+      version:
+        default: v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Pet:
+      type: object
+      properties:
+        name: { type: string, example: Rex }
+        age: { type: integer }
+security:
+  - bearerAuth: []
+paths:
+  /pets/{id}:
+    get:
+      summary: Get pet
+      tags: [pets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: verbose
+          in: query
+          schema: { type: boolean, default: true }
+  /pets:
+    post:
+      operationId: createPet
+      tags: [pets]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'

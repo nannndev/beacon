@@ -99,6 +99,8 @@ pub async fn send_single(
         "assertions": output.assertions,
         "extracted": output.extracted,
         "rate_limited": output.rate_limited,
+        // Non-fatal pre-request script failure; the request still ran.
+        "error": output.error,
         "passed": all_passed,
         "attempts": 1,
     });

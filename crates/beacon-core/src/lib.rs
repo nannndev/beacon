@@ -3,6 +3,7 @@ pub mod extractors;
 pub mod importer;
 pub mod metrics;
 pub mod models;
+pub mod scripting;
 pub mod templating;
 pub mod tester;
 pub mod transport;

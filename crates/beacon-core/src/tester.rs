@@ -121,7 +121,35 @@ impl APITester {
             resolved_headers.insert(k.clone(), val_str);
         }
 
-        let resolved_payload = self.templates.resolve(&self.test.payload, None);
+        let mut resolved_payload = self.templates.resolve(&self.test.payload, None);
+        let mut target_url = target_url;
+
+        // Pre-request script: after templating, before dispatch. A failing script
+        // never blocks the request; its message is reported in `error`.
+        let mut script_error = None;
+        let mut script_vars = Vec::new();
+        if !self.test.pre_request_script.trim().is_empty() {
+            let vars = self.config.snapshot_variables();
+            match crate::scripting::run_pre_request(
+                &self.test.pre_request_script,
+                &target_url,
+                &self.test.method,
+                &resolved_headers,
+                &resolved_payload,
+                &vars,
+            )
+            .await
+            {
+                Ok(r) => {
+                    target_url = r.url;
+                    resolved_headers = r.headers;
+                    resolved_payload = r.body;
+                    script_vars = r.changed_vars.keys().cloned().collect();
+                    self.config.variables.write().extend(r.changed_vars);
+                }
+                Err(e) => script_error = Some(format!("[pre-request script] {e}")),
+            }
+        }
 
         let res = self
             .transport
@@ -156,15 +184,15 @@ impl APITester {
                 };
                 let assertions = evaluate_assertions(&self.test.assertions, &eval_ctx);
 
-                let mut extracted = Vec::new();
+                let mut extracted = script_vars;
                 if (200..300).contains(&http_res.status) && !self.test.extractors.is_empty() {
                     let mut lock = self.config.variables.write();
-                    extracted = ResponseExtractor::apply(
+                    extracted.extend(ResponseExtractor::apply(
                         &self.test,
                         http_res.json.as_ref(),
                         &http_res.headers,
                         &mut lock,
-                    );
+                    ));
                 }
 
                 Ok(SingleExecutionOutput {
@@ -180,12 +208,15 @@ impl APITester {
                     assertions,
                     extracted,
                     rate_limited: is_rate_limited,
-                    error: None,
+                    error: script_error,
                 })
             }
             Err(err) => {
                 self.metrics.record_error();
-                Err(err.to_string())
+                Err(match script_error {
+                    Some(se) => format!("{err}\n{se}"),
+                    None => err.to_string(),
+                })
             }
         }
     }
