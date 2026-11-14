@@ -1,5 +1,6 @@
 pub mod assertions;
 pub mod extractors;
+pub mod importer;
 pub mod metrics;
 pub mod models;
 pub mod templating;
@@ -8,6 +9,7 @@ pub mod transport;
 
 pub use assertions::{compare, dig, evaluate_assertions, AssertionResult, ExecutionResponseContext};
 pub use extractors::ResponseExtractor;
+pub use importer::{normalize as normalize_import, NormalizedProject};
 pub use metrics::{percentile, LatencyPercentiles, MetricsSnapshot, RunMetrics};
 pub use models::{normalize_request_options, EndpointTest, RequestOptions, TestConfig};
 pub use templating::TemplateResolver;

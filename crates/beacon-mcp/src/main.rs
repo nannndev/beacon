@@ -25,7 +25,9 @@ fn mcp_tools() -> Vec<Value> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    let workspace = ServerWorkspace(Arc::new(RwLock::new(Store::new())));
+    // Arc-wrapped so a per-call `tokio::spawn` (see the panic isolation below) can
+    // hold its own handle without borrowing across the loop.
+    let workspace = Arc::new(ServerWorkspace(Arc::new(RwLock::new(Store::new()))));
 
     for line in stdin.lock().lines() {
         let line = match line {
@@ -58,20 +60,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "notifications/initialized" => continue,
             "tools/list" => json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": mcp_tools() } }),
             "tools/call" => {
-                let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
                 // Re-read the store so edits made in the desktop app since the last call are visible.
                 workspace.0.write().load();
-                let result = execute_tool(tool_name, &args, &workspace).await;
-                let is_error = result.get("error").is_some();
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap_or_default() }],
-                        "isError": is_error
+                // A bad tool call (malformed input, a store invariant broken by a concurrent
+                // desktop-app edit, etc.) must not take the whole stdio server down: run it
+                // on its own task so a panic surfaces as a JoinError we turn into a JSON-RPC
+                // error, instead of unwinding across this loop and killing the process.
+                let workspace_for_task = Arc::clone(&workspace);
+                let joined = tokio::spawn(async move { execute_tool(&tool_name, &args, &*workspace_for_task).await }).await;
+                match joined {
+                    Ok(result) => {
+                        let is_error = result.get("error").is_some();
+                        json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap_or_default() }],
+                                "isError": is_error
+                            }
+                        })
                     }
-                })
+                    Err(join_err) => {
+                        let message = join_err
+                            .try_into_panic()
+                            .ok()
+                            .and_then(|p| p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()))
+                            .unwrap_or_else(|| "tool panicked".to_string());
+                        json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "content": [{ "type": "text", "text": json!({ "error": format!("Tool panicked: {message}") }).to_string() }],
+                                "isError": true
+                            }
+                        })
+                    }
+                }
             }
             _ => json!({
                 "jsonrpc": "2.0",
