@@ -1,3 +1,5 @@
+use crate::history::{RunStart, StepStart};
+use crate::routes::history::{active_project, scalar_config};
 use crate::state::{ActiveRun, AppState};
 use axum::{
     extract::{Path, State},
@@ -163,6 +165,35 @@ pub async fn start_run(
         runs.insert(run_id.clone(), Arc::clone(&active_run));
     }
 
+    // Grouped runs (Run All / folder) join a history row created by /history/groups;
+    // standalone runs get their own row.
+    let grouped = payload.get("history_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
+    let history_id = grouped.clone().unwrap_or_else(|| run_id.clone());
+    let step_index = payload.get("history_step_index").and_then(|v| v.as_i64()).unwrap_or(0);
+    let history_persisted = if grouped.is_some() {
+        true
+    } else {
+        let mut snapshot = scalar_config(&payload);
+        snapshot.insert("mode".into(), json!(mode));
+        snapshot.insert("method".into(), json!(test.method));
+        snapshot.insert("url_template".into(), json!(test.url));
+        snapshot.insert("target_type".into(), json!(test.target_type));
+        let (project_id, project_name) = active_project(&state);
+        state.history.start(
+            RunStart {
+                id: history_id.clone(),
+                project_id,
+                project_name,
+                source_type: "endpoint".into(),
+                target_id: Some(test.id.clone()),
+                target_name: test.name.clone(),
+                mode: mode.clone(),
+                config_snapshot: Value::Object(snapshot),
+            },
+            vec![StepStart { sequence: step_index, endpoint_id: test.id.clone(), endpoint_name: test.name.clone(), method: test.method.clone(), url_template: test.url.clone() }],
+        )
+    };
+
     let config = {
         let store = state.store.read();
         store.current_config.clone()
@@ -173,6 +204,7 @@ pub async fn start_run(
     let run_id_clone = run_id.clone();
 
     let mode_clone = mode.clone();
+    let history_id_clone = history_id.clone();
     tokio::spawn(async move {
         let tester = APITester::new(
             test,
@@ -207,10 +239,12 @@ pub async fn start_run(
                 &params,
                 &mut |snap, maybe_output| {
                     let snap_val = serde_json::to_value(snap).unwrap_or(json!({}));
+                    state_clone.history.record_stats(&history_id_clone, step_index, [snap.attempts as i64, snap.success as i64, snap.rate_limited as i64, snap.errors as i64]);
                     *run_clone.stats.write() = snap_val.clone();
                     state_clone.broadcast_ws(json!({ "type": "stats", "run_id": run_id_clone, "stats": snap_val }));
 
                     if let Some(out) = maybe_output {
+                        state_clone.history.record_response(&history_id_clone, step_index, Some(out.status), Some(out.time_ms), out.rate_limited, false, out.error.as_deref());
                         let out_val = serde_json::to_value(out).unwrap_or(json!({}));
                         {
                             let mut resp_lock = run_clone.responses.write();
@@ -233,6 +267,11 @@ pub async fn start_run(
             .await;
 
         let stopped = run_clone.stop_flag.load(std::sync::atomic::Ordering::Relaxed);
+        let outcome = if stopped { "stopped" } else { "completed" };
+        state_clone.history.finish_step(&history_id_clone, step_index, outcome);
+        if grouped.is_none() {
+            state_clone.history.finish_run(&history_id_clone, outcome);
+        }
         let final_snap = serde_json::to_value(&snap).unwrap_or(json!({}));
         *run_clone.stats.write() = final_snap.clone();
         *run_clone.status.write() = if stopped { "stopped" } else { "finished" }.into();
@@ -250,7 +289,7 @@ pub async fn start_run(
     Ok(Json(json!({
         "run_id": run_id,
         "mode": mode,
-        "history_id": run_id
+        "history_id": if history_persisted { json!(history_id) } else { Value::Null }
     })))
 }
 
@@ -277,13 +316,14 @@ pub async fn get_status(
     let scenario_steps = run.scenario_steps.read().clone();
     let recent_events = run.recent_events.read().clone();
     let failure = run.failure.read().clone();
+    let result = run.result.read().clone();
 
     Ok(Json(json!({
         "status": status,
         "stats": stats,
         "logs": logs,
         "responses": responses,
-        "result": Value::Null,
+        "result": result,
         "progress": progress,
         "scenario_steps": scenario_steps,
         "recent_events": recent_events,
