@@ -1,4 +1,5 @@
 pub mod collection;
+pub mod curl;
 pub mod orchestrator;
 pub mod prompt;
 pub mod tools;

@@ -611,6 +611,9 @@ impl beacon_agent::WorkspaceOps for ServerWorkspace {
     fn delete_endpoint(&self, id_or_name: &str) -> Result<String, String> {
         self.0.write().delete_endpoint(id_or_name)
     }
+    fn duplicate_endpoint(&self, id_or_name: &str) -> Result<EndpointTest, String> {
+        self.0.write().duplicate_endpoint(id_or_name)
+    }
     fn set_variable(&self, name: &str, value: &str) -> Result<(), String> {
         self.0.write().set_variable(name, value)
     }

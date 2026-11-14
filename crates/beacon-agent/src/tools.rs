@@ -13,6 +13,17 @@ pub trait WorkspaceOps: Send + Sync {
     fn create_endpoint(&self, test: EndpointTest) -> Result<EndpointTest, String>;
     fn update_endpoint(&self, id_or_name: &str, patch: Value) -> Result<EndpointTest, String>;
     fn delete_endpoint(&self, id_or_name: &str) -> Result<String, String>;
+    /// Clones an endpoint (fresh id, name suffixed "(copy)"). Default impl is
+    /// get+create; a store-backed workspace may override with an atomic version.
+    fn duplicate_endpoint(&self, id_or_name: &str) -> Result<EndpointTest, String> {
+        let orig = self
+            .get_endpoint(id_or_name)
+            .ok_or_else(|| format!("Endpoint '{}' not found", id_or_name))?;
+        let mut copy = orig;
+        copy.id = format!("ep_{}", Uuid::new_v4().simple());
+        copy.name = format!("{} (copy)", copy.name);
+        self.create_endpoint(copy)
+    }
     fn set_variable(&self, name: &str, value: &str) -> Result<(), String>;
     fn save_extracted_variables(&self, vars: HashMap<String, String>) -> Result<(), String>;
     fn list_projects(&self) -> Vec<Value>;
@@ -25,6 +36,24 @@ pub trait WorkspaceOps: Send + Sync {
     /// Replaces the active project's collection tree.
     fn set_collection(&self, _items: Vec<Value>) -> Result<(), String> {
         Err("Folders are not supported in this workspace".into())
+    }
+    /// Imports a normalized collection's items into the active project, inside
+    /// `into_folder` (name, id, or "Parent/Child" path) if given, else a new
+    /// top-level folder named after the import. Returns the folder it landed in.
+    fn import_items(&self, items: Vec<Value>, folder_name: &str, into_folder: Option<&str>) -> Result<Value, String> {
+        let tree = self.get_collection();
+        let mut ops = Vec::new();
+        let target = if let Some(into) = into_folder.filter(|f| !f.trim().is_empty()) {
+            into.to_string()
+        } else {
+            ops.push(json!({ "op": "create_folder", "name": folder_name }));
+            folder_name.to_string()
+        };
+        let mut next_tree = if ops.is_empty() { tree } else { crate::collection::apply_all(&tree, &ops)?.0 };
+        crate::collection::insert_into_folder(&mut next_tree, &target, items)
+            .ok_or_else(|| format!("Folder '{target}' not found"))?;
+        self.set_collection(next_tree)?;
+        Ok(json!(target))
     }
 }
 
@@ -97,6 +126,21 @@ pub fn agent_tool_definitions() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "filter": { "type": "string", "description": "Optional keyword to filter endpoints by name, URL, or method" }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_search_endpoints",
+                "description": "Paginated, compact endpoint search for large projects so results don't flood context. Matches case-insensitively across id, name, method, and URL. Use beacon_get_endpoint for full details of one result.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Optional keyword to filter by" },
+                        "offset": { "type": "integer", "description": "0-based offset into the matching set (default 0)" },
+                        "limit": { "type": "integer", "description": "Max results to return, 1-200 (default 50)" }
                     }
                 }
             }
@@ -392,6 +436,76 @@ pub fn agent_tool_definitions() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_get_config",
+                "description": "Return the active project's base URL, environment name, variable NAMES (never values, since they may hold secrets/tokens), and endpoint count.",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_duplicate_endpoint",
+                "description": "Duplicate an endpoint (fresh id, name suffixed '(copy)'). The copy is added at the project root; use beacon_organize_collection to move it into a folder.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Endpoint ID or name to duplicate" }
+                    },
+                    "required": ["id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_run_endpoint",
+                "description": "Fire ONE saved endpoint repeatedly (optionally concurrently) and return load stats: attempts, success, rate_limited, errors, throughput, and latency percentiles. Alias of beacon_run_load_test scoped to a saved endpoint_id (use beacon_run_load_test directly for ad-hoc URLs).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Endpoint ID or name to run" },
+                        "concurrency": { "type": "integer", "description": "Concurrent workers (default 5, max 50)" },
+                        "max_requests": { "type": "integer", "description": "Total requests to execute (default 50)" },
+                        "delay_ms": { "type": "integer", "description": "Delay in ms between requests per worker (default 20)" }
+                    },
+                    "required": ["id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_add_endpoint_from_curl",
+                "description": "Create an endpoint by parsing a `curl` command string: -X/--request, -H/--header, -d/--data/--data-raw/--data-binary, -u/--user (becomes a Basic auth header), --url or a bare URL. Handles quotes and backslash line continuations.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "curl": { "type": "string", "description": "The full curl command" },
+                        "name": { "type": "string", "description": "Short human name for the endpoint (default: derived from the URL)" },
+                        "folder": { "type": "string", "description": "Optional folder (name, id, or 'Parent/Child' path) to place it in" }
+                    },
+                    "required": ["curl"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_import_collection",
+                "description": "Import a collection/spec into the active project: Beacon export, Postman v2, OpenAPI 3, Swagger 2 (JSON or YAML), Insomnia export, or HAR. Pass the parsed JSON directly, or {content, filename} for raw JSON/YAML text. Lands inside into_folder if given, else a new folder named after the source.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "data": { "description": "The collection/spec as a JSON object, or {content: string, filename?: string}" },
+                        "into_folder": { "type": "string", "description": "Optional existing folder (name, id, or 'Parent/Child' path) to import into" }
+                    },
+                    "required": ["data"]
+                }
+            }
+        }),
     ]
 }
 
@@ -517,20 +631,7 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
                 Ok(created) => {
                     let mut out = json!({ "status": "created", "mutated": true, "endpoint": created });
                     if let Some(folder) = args.get("folder").and_then(|v| v.as_str()).filter(|f| !f.trim().is_empty()) {
-                        let mut ops = Vec::new();
-                        // Create each missing level of a "Parent/Child" path.
-                        let mut parent: Option<String> = None;
-                        for part in folder.split('/').map(str::trim).filter(|p| !p.is_empty()) {
-                            ops.push(json!({ "op": "create_folder", "name": part, "parent": parent }));
-                            parent = Some(parent.map(|p| format!("{p}/{part}")).unwrap_or_else(|| part.to_string()));
-                        }
-                        ops.push(json!({ "op": "move", "items": [created.id], "to": folder }));
-                        out["folder"] = match crate::collection::apply_all(&workspace.get_collection(), &ops)
-                            .and_then(|(tree, _)| workspace.set_collection(tree))
-                        {
-                            Ok(()) => json!(folder),
-                            Err(e) => json!({ "error": format!("Endpoint created at the top level; folder placement failed: {e}") }),
-                        };
+                        out["folder"] = place_in_folder(workspace, &created.id, folder);
                     }
                     out
                 }
@@ -678,81 +779,23 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
             })
         }
 
-        "beacon_run_load_test" => {
-            let config = workspace.get_config();
-            let concurrency = args
-                .get("concurrency")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(5)
-                .min(50) as usize;
-            let max_requests = args
-                .get("max_requests")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(50)
-                .min(2000);
-            let delay_ms = args.get("delay_ms").and_then(|v| v.as_u64()).unwrap_or(20);
-            let mode = args
-                .get("mode")
-                .and_then(|v| v.as_str())
-                .unwrap_or("load")
-                .to_string();
+        "beacon_run_load_test" => run_load(args, workspace).await,
 
-            let target_endpoint: Option<EndpointTest> = if let Some(epid) = args.get("endpoint_id").and_then(|v| v.as_str()) {
-                workspace.get_endpoint(epid)
-            } else if let Some(url) = args.get("url").and_then(|v| v.as_str()) {
-                let method = args.get("method").and_then(|v| v.as_str()).unwrap_or("GET");
-                Some(EndpointTest::new(None, "Ad-hoc Load Test".into(), url.into(), Some(method.into())))
-            } else {
-                workspace.list_endpoints().first().cloned()
-            };
-
-            let endpoint = match target_endpoint {
-                Some(ep) => ep,
-                None => return json!({ "error": "No target endpoint specified or available in project" }),
-            };
-
-            let target_desc = format!("{} {}", endpoint.method, endpoint.url);
-            let tester = APITester::new(endpoint, config, concurrency, delay_ms, max_requests, None);
-
-            let snap = tester.run_load(|_, _| {}).await;
-
-            let success_pct = if snap.attempts > 0 {
-                (snap.success as f64 / snap.attempts as f64) * 100.0
-            } else {
-                0.0
-            };
-            let rate_limited_pct = if snap.attempts > 0 {
-                (snap.rate_limited as f64 / snap.attempts as f64) * 100.0
-            } else {
-                0.0
-            };
-
-            json!({
-                "mode": mode,
-                "target": target_desc,
-                "concurrency": concurrency,
-                "attempts": snap.attempts,
-                "success": snap.success,
-                "rate_limited": snap.rate_limited,
-                "errors": snap.errors,
-                "status_codes": snap.status_codes,
-                "throughput_rps": (snap.rps * 10.0).round() / 10.0,
-                "elapsed_s": (snap.elapsed_s * 100.0).round() / 100.0,
-                "latency_percentiles_ms": {
-                    "avg": snap.latency_ms.avg,
-                    "min": snap.latency_ms.min,
-                    "max": snap.latency_ms.max,
-                    "p50": snap.latency_ms.p50,
-                    "p75": snap.latency_ms.p75,
-                    "p90": snap.latency_ms.p90,
-                    "p95": snap.latency_ms.p95,
-                    "p99": snap.latency_ms.p99,
-                },
-                "summary": format!(
-                    "Completed {} requests (concurrency: {}). {} success ({:.1}%), {} rate limited ({:.1}%), {} errors. Throughput: {:.1} RPS. Latency: p50={}ms, p95={}ms, max={}ms.",
-                    snap.attempts, concurrency, snap.success, success_pct, snap.rate_limited, rate_limited_pct, snap.errors, snap.rps, snap.latency_ms.p50, snap.latency_ms.p95, snap.latency_ms.max
-                )
-            })
+        // Alias of beacon_run_load_test scoped to a saved endpoint (`id` -> `endpoint_id`),
+        // per the ported Python `run_endpoint` tool; same stats shape, no ad-hoc URL support.
+        "beacon_run_endpoint" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if id.is_empty() {
+                return json!({ "error": "Endpoint id is required" });
+            }
+            if workspace.get_endpoint(id).is_none() {
+                return json!({ "error": format!("Endpoint '{}' not found", id) });
+            }
+            let mut load_args = args.clone();
+            if let Some(obj) = load_args.as_object_mut() {
+                obj.insert("endpoint_id".into(), json!(id));
+            }
+            run_load(&load_args, workspace).await
         }
 
         "beacon_probe_endpoint" => {
@@ -988,8 +1031,184 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
             }
         }
 
+        "beacon_search_endpoints" => {
+            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("").trim().to_lowercase();
+            let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let limit = (args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize).clamp(1, 200);
+            let all = workspace.list_endpoints();
+            let matching: Vec<&EndpointTest> = all
+                .iter()
+                .filter(|t| {
+                    query.is_empty()
+                        || format!("{} {} {} {}", t.id, t.name, t.method, t.url).to_lowercase().contains(&query)
+                })
+                .collect();
+            let total = matching.len();
+            let page: Vec<Value> = matching
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .map(|t| json!({ "id": t.id, "name": t.name, "method": t.method, "url": t.url }))
+                .collect();
+            let has_more = offset + page.len() < total;
+            json!({ "items": page, "total": total, "offset": offset, "limit": limit, "has_more": has_more })
+        }
+
+        "beacon_get_config" => {
+            let config = workspace.get_config();
+            let mut names: Vec<String> = config.snapshot_variables().into_keys().collect();
+            names.sort();
+            json!({
+                "base_url": config.base_url,
+                "variables": names,
+                "endpoint_count": config.tests.len(),
+            })
+        }
+
+        "beacon_duplicate_endpoint" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if id.is_empty() {
+                return json!({ "error": "Endpoint id is required" });
+            }
+            match workspace.duplicate_endpoint(id) {
+                Ok(copy) => json!({ "status": "duplicated", "mutated": true, "endpoint": copy }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
+        "beacon_add_endpoint_from_curl" => {
+            let curl_str = args.get("curl").and_then(|v| v.as_str()).unwrap_or("");
+            let parsed = match crate::curl::parse_curl(curl_str) {
+                Ok(p) => p,
+                Err(err) => return json!({ "error": err }),
+            };
+            let name = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .filter(|n| !n.trim().is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| parsed.url.clone());
+            let mut test = EndpointTest::new(
+                Some(format!("ep_{}", Uuid::new_v4().simple())),
+                name,
+                parsed.url,
+                Some(parsed.method),
+            );
+            test.headers = parsed.headers.into_iter().map(|(k, v)| (k, json!(v))).collect();
+            test.payload = parsed.payload;
+            test.payload_type = parsed.payload_type;
+            match workspace.create_endpoint(test) {
+                Ok(created) => {
+                    let mut out = json!({ "status": "created", "mutated": true, "endpoint": created });
+                    if let Some(folder) = args.get("folder").and_then(|v| v.as_str()).filter(|f| !f.trim().is_empty()) {
+                        out["folder"] = place_in_folder(workspace, &created.id, folder);
+                    }
+                    out
+                }
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
+        "beacon_import_collection" => {
+            let Some(data) = args.get("data") else {
+                return json!({ "error": "'data' is required" });
+            };
+            let normalized = match beacon_core::normalize_import(data) {
+                Ok(n) => n,
+                Err(err) => return json!({ "error": err }),
+            };
+            let into_folder = args.get("into_folder").and_then(|v| v.as_str());
+            match workspace.import_items(normalized.items, &normalized.name, into_folder) {
+                Ok(folder) => json!({
+                    "status": "imported",
+                    "mutated": true,
+                    "format": normalized.format,
+                    "format_label": normalized.format_label,
+                    "imported": normalized.endpoints_count,
+                    "folders": normalized.folders_count,
+                    "into_folder": folder,
+                    "warnings": normalized.warnings,
+                }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
         _ => json!({ "error": format!("Unknown tool: {}", name) }),
     }
+}
+
+/// Moves an existing endpoint (by id) into `folder` (name or "Parent/Child" path),
+/// creating any missing levels of the path. Returns the folder path on success or
+/// an `{"error": ...}` value; the endpoint stays at the top level either way.
+fn place_in_folder(workspace: &dyn WorkspaceOps, endpoint_id: &str, folder: &str) -> Value {
+    let mut ops = Vec::new();
+    let mut parent: Option<String> = None;
+    for part in folder.split('/').map(str::trim).filter(|p| !p.is_empty()) {
+        ops.push(json!({ "op": "create_folder", "name": part, "parent": parent }));
+        parent = Some(parent.map(|p| format!("{p}/{part}")).unwrap_or_else(|| part.to_string()));
+    }
+    ops.push(json!({ "op": "move", "items": [endpoint_id], "to": folder }));
+    match crate::collection::apply_all(&workspace.get_collection(), &ops).and_then(|(tree, _)| workspace.set_collection(tree)) {
+        Ok(()) => json!(folder),
+        Err(e) => json!({ "error": format!("Endpoint created at the top level; folder placement failed: {e}") }),
+    }
+}
+
+async fn run_load(args: &Value, workspace: &dyn WorkspaceOps) -> Value {
+    let config = workspace.get_config();
+    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5).min(50) as usize;
+    let max_requests = args.get("max_requests").and_then(|v| v.as_u64()).unwrap_or(50).min(2000);
+    let delay_ms = args.get("delay_ms").and_then(|v| v.as_u64()).unwrap_or(20);
+    let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("load").to_string();
+
+    let target_endpoint: Option<EndpointTest> = if let Some(epid) = args.get("endpoint_id").and_then(|v| v.as_str()) {
+        workspace.get_endpoint(epid)
+    } else if let Some(url) = args.get("url").and_then(|v| v.as_str()) {
+        let method = args.get("method").and_then(|v| v.as_str()).unwrap_or("GET");
+        Some(EndpointTest::new(None, "Ad-hoc Load Test".into(), url.into(), Some(method.into())))
+    } else {
+        workspace.list_endpoints().first().cloned()
+    };
+
+    let endpoint = match target_endpoint {
+        Some(ep) => ep,
+        None => return json!({ "error": "No target endpoint specified or available in project" }),
+    };
+
+    let target_desc = format!("{} {}", endpoint.method, endpoint.url);
+    let tester = APITester::new(endpoint, config, concurrency, delay_ms, max_requests, None);
+
+    let snap = tester.run_load(|_, _| {}).await;
+
+    let success_pct = if snap.attempts > 0 { (snap.success as f64 / snap.attempts as f64) * 100.0 } else { 0.0 };
+    let rate_limited_pct = if snap.attempts > 0 { (snap.rate_limited as f64 / snap.attempts as f64) * 100.0 } else { 0.0 };
+
+    json!({
+        "mode": mode,
+        "target": target_desc,
+        "concurrency": concurrency,
+        "attempts": snap.attempts,
+        "success": snap.success,
+        "rate_limited": snap.rate_limited,
+        "errors": snap.errors,
+        "status_codes": snap.status_codes,
+        "throughput_rps": (snap.rps * 10.0).round() / 10.0,
+        "elapsed_s": (snap.elapsed_s * 100.0).round() / 100.0,
+        "latency_percentiles_ms": {
+            "avg": snap.latency_ms.avg,
+            "min": snap.latency_ms.min,
+            "max": snap.latency_ms.max,
+            "p50": snap.latency_ms.p50,
+            "p75": snap.latency_ms.p75,
+            "p90": snap.latency_ms.p90,
+            "p95": snap.latency_ms.p95,
+            "p99": snap.latency_ms.p99,
+        },
+        "summary": format!(
+            "Completed {} requests (concurrency: {}). {} success ({:.1}%), {} rate limited ({:.1}%), {} errors. Throughput: {:.1} RPS. Latency: p50={}ms, p95={}ms, max={}ms.",
+            snap.attempts, concurrency, snap.success, success_pct, snap.rate_limited, rate_limited_pct, snap.errors, snap.rps, snap.latency_ms.p50, snap.latency_ms.p95, snap.latency_ms.max
+        )
+    })
 }
 
 #[cfg(test)]
@@ -1249,5 +1468,142 @@ mod tests {
         .await;
         assert_eq!(create_res["status"], "created");
         assert_eq!(create_res["mutated"], true);
+    }
+
+    #[tokio::test]
+    async fn test_search_endpoints_pagination() {
+        let ws = InMemoryWorkspace::new();
+        execute_tool("beacon_create_endpoint", &json!({ "name": "List Users", "url": "/users" }), &ws).await;
+        execute_tool("beacon_create_endpoint", &json!({ "name": "Create User", "url": "/users" }), &ws).await;
+
+        let page1 = execute_tool("beacon_search_endpoints", &json!({ "query": "user", "limit": 1 }), &ws).await;
+        assert_eq!(page1["total"], 2);
+        assert_eq!(page1["items"].as_array().unwrap().len(), 1);
+        assert_eq!(page1["has_more"], true);
+
+        let page2 = execute_tool("beacon_search_endpoints", &json!({ "query": "user", "limit": 1, "offset": 1 }), &ws).await;
+        assert_eq!(page2["has_more"], false);
+        assert_eq!(page2["items"].as_array().unwrap().len(), 1);
+
+        let none = execute_tool("beacon_search_endpoints", &json!({ "query": "nonexistent" }), &ws).await;
+        assert_eq!(none["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_config_hides_variable_values() {
+        let ws = InMemoryWorkspace::new();
+        execute_tool("beacon_set_variable", &json!({ "name": "access_token", "value": "super-secret" }), &ws).await;
+        let cfg = execute_tool("beacon_get_config", &json!({}), &ws).await;
+        assert_eq!(cfg["endpoint_count"], 1);
+        let vars = cfg["variables"].as_array().unwrap();
+        assert!(vars.iter().any(|v| v == "access_token"));
+        // Only the name is exposed, never the value.
+        assert!(!cfg.to_string().contains("super-secret"));
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_endpoint() {
+        let ws = InMemoryWorkspace::new();
+        let res = execute_tool("beacon_duplicate_endpoint", &json!({ "id": "ep-1" }), &ws).await;
+        assert_eq!(res["status"], "duplicated");
+        assert_eq!(res["mutated"], true);
+        assert_eq!(res["endpoint"]["name"], "Get Posts (copy)");
+        assert_ne!(res["endpoint"]["id"], "ep-1");
+        assert_eq!(ws.list_endpoints().len(), 2);
+
+        let missing = execute_tool("beacon_duplicate_endpoint", &json!({ "id": "nope" }), &ws).await;
+        assert!(missing["error"].as_str().unwrap().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_run_endpoint_rejects_unknown_id_without_network() {
+        let ws = InMemoryWorkspace::new();
+        let res = execute_tool("beacon_run_endpoint", &json!({ "id": "does-not-exist" }), &ws).await;
+        assert!(res["error"].as_str().unwrap().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_add_endpoint_from_curl_basic() {
+        let ws = InMemoryWorkspace::new();
+        let curl = r#"curl -X POST "https://api.test/v1/login" -H "Content-Type: application/json" -d '{"user":"a"}'"#;
+        let res = execute_tool("beacon_add_endpoint_from_curl", &json!({ "curl": curl, "name": "Login" }), &ws).await;
+        assert_eq!(res["status"], "created");
+        assert_eq!(res["mutated"], true);
+        assert_eq!(res["endpoint"]["name"], "Login");
+        assert_eq!(res["endpoint"]["method"], "POST");
+        assert_eq!(res["endpoint"]["url"], "https://api.test/v1/login");
+        assert_eq!(res["endpoint"]["payload"]["user"], "a");
+
+        let bad = execute_tool("beacon_add_endpoint_from_curl", &json!({ "curl": "curl -X GET" }), &ws).await;
+        assert!(bad["error"].as_str().unwrap().contains("No URL"));
+    }
+
+    #[tokio::test]
+    async fn test_add_endpoint_from_curl_with_folder() {
+        let ws = InMemoryWorkspace::new();
+        let res = execute_tool(
+            "beacon_add_endpoint_from_curl",
+            &json!({ "curl": "curl https://api.test/ping", "name": "Ping", "folder": "Health" }),
+            &ws,
+        )
+        .await;
+        assert_eq!(res["folder"], "Health", "{res}");
+        let tree = execute_tool("beacon_get_collection", &json!({}), &ws).await["tree"].clone();
+        let folder = tree.as_array().unwrap().iter().find(|n| n["name"] == "Health").expect("Health folder present");
+        assert_eq!(folder["items"][0]["name"], "Ping");
+    }
+
+    #[tokio::test]
+    async fn test_import_collection_postman_into_new_folder() {
+        let ws = InMemoryWorkspace::new();
+        let data = json!({
+            "info": {"name": "Imported Demo"},
+            "item": [
+                {
+                    "name": "Ping",
+                    "request": {
+                        "method": "GET",
+                        "url": {"raw": "https://api.test/ping", "host": ["api", "test"], "path": ["ping"]}
+                    }
+                }
+            ]
+        });
+        let res = execute_tool("beacon_import_collection", &json!({ "data": data }), &ws).await;
+        assert_eq!(res["status"], "imported", "{res}");
+        assert_eq!(res["mutated"], true);
+        assert_eq!(res["format"], "postman");
+        assert_eq!(res["imported"], 1);
+        assert_eq!(res["into_folder"], "Imported Demo");
+
+        let tree = execute_tool("beacon_get_collection", &json!({}), &ws).await["tree"].clone();
+        let folder = tree.as_array().unwrap().iter().find(|n| n["name"] == "Imported Demo").expect("folder present");
+        assert_eq!(folder["items"][0]["name"], "Ping");
+    }
+
+    #[tokio::test]
+    async fn test_import_collection_into_existing_folder() {
+        let ws = InMemoryWorkspace::new();
+        execute_tool("beacon_organize_collection", &json!({ "operations": [{ "op": "create_folder", "name": "Existing" }] }), &ws).await;
+        let data = json!({
+            "name": "Legacy",
+            "base_url": "https://api.test",
+            "variables": {},
+            "tests": [{"name": "Get", "url": "/x", "method": "GET"}]
+        });
+        let res = execute_tool("beacon_import_collection", &json!({ "data": data, "into_folder": "Existing" }), &ws).await;
+        assert_eq!(res["status"], "imported", "{res}");
+        assert_eq!(res["format"], "legacy");
+        assert_eq!(res["into_folder"], "Existing");
+
+        let tree = execute_tool("beacon_get_collection", &json!({}), &ws).await["tree"].clone();
+        let folder = tree.as_array().unwrap().iter().find(|n| n["name"] == "Existing").expect("folder present");
+        assert_eq!(folder["items"][0]["name"], "Get");
+    }
+
+    #[tokio::test]
+    async fn test_import_collection_rejects_bad_format() {
+        let ws = InMemoryWorkspace::new();
+        let res = execute_tool("beacon_import_collection", &json!({ "data": {"foo": "bar"} }), &ws).await;
+        assert!(res["error"].as_str().unwrap().contains("not recognized"), "{res}");
     }
 }

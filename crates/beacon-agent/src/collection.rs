@@ -60,6 +60,17 @@ fn parent_path(tree: &[Value], spec: Option<&str>) -> Result<Vec<usize>, String>
     }
 }
 
+/// Appends already-materialized nodes (with ids) into the named folder (or top
+/// level, via the same spec `parent_path` accepts). Used by collection import,
+/// which has whole subtrees to place rather than single named items to `move`.
+/// Returns `None` if the folder doesn't exist.
+pub fn insert_into_folder(tree: &mut Vec<Value>, folder: &str, items: Vec<Value>) -> Option<()> {
+    let path = parent_path(tree, Some(folder)).ok()?;
+    let list = children_mut(tree, &path)?;
+    list.extend(items);
+    Some(())
+}
+
 /// Compact view for the model: folders with nested items, requests with method + url.
 pub fn summarize(nodes: &[Value]) -> Vec<Value> {
     nodes
