@@ -325,6 +325,7 @@ name = "beacon-server"
 version = "0.11.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "beacon-agent",
  "beacon-core",
  "beacon-gateway",
@@ -334,6 +335,7 @@ dependencies = [
  "http-body-util",
  "parking_lot",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "tokio",

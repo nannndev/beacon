@@ -1,3 +1,4 @@
+pub mod history;
 pub mod routes;
 pub mod state;
 pub mod store;
@@ -72,6 +73,22 @@ pub fn app_router(state: AppState) -> Router {
         .route("/status/:run_id", get(routes::runs::get_status))
         .route("/stop/:run_id", post(routes::runs::stop_run))
         .route("/proxy", post(routes::runs::proxy_request))
+        .route("/scenario", post(routes::scenario::run_scenario))
+        .route("/scenario/start", post(routes::scenario::start_scenario))
+        .route("/history", get(routes::history::list_history))
+        .route("/history/health", get(routes::history::history_health))
+        .route("/history/rebuild", post(routes::history::rebuild_history))
+        .route("/history/compare", post(routes::history::compare_history))
+        .route("/history/groups", post(routes::history::create_history_group))
+        .route(
+            "/history/:id",
+            get(routes::history::get_history)
+                .patch(routes::history::update_history)
+                .delete(routes::history::delete_history),
+        )
+        .route("/history/:id/finish", post(routes::history::finish_history_group))
+        .route("/history/:id/export", get(routes::history::export_history))
+        .route("/history/:id/report", get(routes::history::history_report))
         .route("/ws", get(routes::ws::ws_handler))
         .with_state(state);
 
