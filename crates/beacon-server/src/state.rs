@@ -1,4 +1,5 @@
 use crate::history::History;
+use crate::sharing::SharingService;
 use crate::store::Store;
 use beacon_core::EndpointTest;
 use beacon_gateway::{GatewayEngine, GatewayStore};
@@ -74,6 +75,7 @@ pub struct AppState {
     pub ws_broadcast: broadcast::Sender<Value>,
     pub gateway: GatewayEngine,
     pub history: Arc<History>,
+    pub sharing: Arc<SharingService>,
 }
 
 impl AppState {
@@ -84,6 +86,7 @@ impl AppState {
         let gw_store = GatewayStore::new(data_dir).unwrap_or_else(|_| GatewayStore::new("config").unwrap());
         let gateway = GatewayEngine::new(gw_store);
         let history = Arc::new(History::open(data_dir.join("history.db")));
+        let sharing = Arc::new(SharingService::new(data_dir));
 
         Self {
             store: Arc::new(RwLock::new(store)),
@@ -91,6 +94,7 @@ impl AppState {
             ws_broadcast: tx,
             gateway,
             history,
+            sharing,
         }
     }
 

@@ -3,11 +3,12 @@ pub mod history;
 pub mod file_sync;
 pub mod git;
 pub mod routes;
+pub mod sharing;
 pub mod state;
 pub mod store;
 
 use axum::{
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
     Router,
 };
 use state::AppState;
@@ -121,6 +122,20 @@ pub fn app_router(state: AppState) -> Router {
         .route("/history/:id/finish", post(routes::history::finish_history_group))
         .route("/history/:id/export", get(routes::history::export_history))
         .route("/history/:id/report", get(routes::history::history_report))
+        .route("/sharing/projects/:id", get(routes::sharing::sharing_status))
+        .route("/sharing/projects/:id/revisions", get(routes::sharing::project_revisions))
+        .route("/sharing/projects/:id/watch", get(routes::sharing::watch_shared_project))
+        .route("/sharing/projects/:id/enable", post(routes::sharing::enable_sharing))
+        .route("/sharing/projects/:id/disable", post(routes::sharing::disable_sharing))
+        .route("/sharing/projects/:id/pairing-code", post(routes::sharing::refresh_pairing_code))
+        .route("/sharing/projects/:id/requests/:request_id/decision", post(routes::sharing::decide_pairing))
+        .route("/sharing/projects/:id/sync", post(routes::sharing::sync_shared_project))
+        .route("/sharing/projects/:id/conflict/:conflict_id", post(routes::sharing::resolve_shared_project_conflict))
+        .route("/sharing/projects/:id/leave", post(routes::sharing::leave_shared_project))
+        .route("/sharing/projects/:id/duplicate-private", post(routes::sharing::duplicate_shared_project))
+        .route("/sharing/projects/:id/members/:member_id", patch(routes::sharing::update_member).delete(routes::sharing::remove_member))
+        .route("/sharing/join", post(routes::sharing::join_local_project))
+        .route("/sharing/join/status", post(routes::sharing::joined_project_status))
         .route("/ws", get(routes::ws::ws_handler))
         .with_state(state);
 
