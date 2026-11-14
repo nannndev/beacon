@@ -2,6 +2,7 @@ pub mod assertions;
 pub mod extractors;
 pub mod metrics;
 pub mod models;
+pub mod scripting;
 pub mod templating;
 pub mod tester;
 pub mod transport;

@@ -1,3 +1,4 @@
+pub mod importer;
 pub mod routes;
 pub mod state;
 pub mod store;
@@ -45,7 +46,18 @@ pub fn app_router(state: AppState) -> Router {
             "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),
         )
-        .route("/projects/:id", put(routes::projects::update_project))
+        .route(
+            "/projects/:id",
+            put(routes::projects::update_project).delete(routes::portable::delete_project),
+        )
+        .route("/projects/:id/export", get(routes::portable::export_project))
+        .route("/projects/template", get(routes::portable::project_template))
+        .route("/projects/import", post(routes::portable::import_project))
+        .route("/projects/import/preview", post(routes::portable::preview_import))
+        .route("/projects/:id/notifications/test", post(routes::portable::test_notification))
+        .route("/global", put(routes::portable::update_global))
+        .route("/datasets/preview", post(routes::portable::preview_dataset))
+        .route("/graphql/introspect", post(routes::portable::graphql_introspect))
         .route("/projects/reorder", put(routes::projects::reorder_projects))
         .route(
             "/projects/:id/switch",
