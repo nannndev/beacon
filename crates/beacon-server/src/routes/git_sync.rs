@@ -176,9 +176,10 @@ pub async fn file_sync_clone(State(state): State<AppState>, Json(payload): Json<
     Ok(Json(inspection))
 }
 
-pub async fn file_sync_import_candidate(Json(_payload): Json<Value>) -> Reply {
-    // The inspector never offers candidates (see file_sync::inspect), so the UI cannot reach this.
-    Err(bad("Importing API files from a repository is not supported by this backend yet. Initialize an empty Beacon project instead."))
+pub async fn file_sync_import_candidate(State(state): State<AppState>, Json(payload): Json<Value>) -> Reply {
+    let root = field(&payload, "path");
+    let report = fsync::load_candidate(&root, &field(&payload, "candidate")).map_err(bad)?;
+    crate::routes::portable::persist_import(&state, &report, Some(&root))
 }
 
 pub async fn file_sync_initialize(State(state): State<AppState>, Json(payload): Json<Value>) -> Reply {

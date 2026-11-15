@@ -1,4 +1,6 @@
 pub mod importer;
+pub mod notify;
+pub mod monitor;
 pub mod history;
 pub mod file_sync;
 pub mod git;
@@ -175,6 +177,7 @@ pub async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let state = AppState::new();
+    state.monitor.spawn(state.clone());
     let app = app_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));

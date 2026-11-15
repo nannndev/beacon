@@ -204,6 +204,7 @@ pub async fn start_run(
     let run_id_clone = run_id.clone();
 
     let mode_clone = mode.clone();
+    let test_name = test.name.clone();
     let history_id_clone = history_id.clone();
     tokio::spawn(async move {
         let tester = APITester::new(
@@ -273,6 +274,7 @@ pub async fn start_run(
             state_clone.history.finish_run(&history_id_clone, outcome);
         }
         let final_snap = serde_json::to_value(&snap).unwrap_or(json!({}));
+        crate::notify::notify_active(&state_clone, &test_name, &mode_clone, &final_snap, outcome);
         *run_clone.stats.write() = final_snap.clone();
         *run_clone.status.write() = if stopped { "stopped" } else { "finished" }.into();
 

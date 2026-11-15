@@ -26,7 +26,7 @@ pub async fn system_info() -> Json<Value> {
     }))
 }
 
-pub async fn monitor_status() -> Json<Value> {
-    Json(json!({}))
+pub async fn monitor_status(axum::extract::State(state): axum::extract::State<crate::state::AppState>) -> Json<Value> {
+    Json(json!(*state.monitor.results.lock()))
 }
 

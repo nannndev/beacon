@@ -375,6 +375,9 @@ pub async fn execute(state: AppState, data: Value, stop: Arc<AtomicBool>, live_r
         let passed = !stopped && all_ok;
         live.finalize(&states, stopped, None);
         state.history.finish_run(&history_id, finish_status(stopped, passed));
+        let ok = steps.iter().filter(|st| st["success"] == true).count();
+        crate::notify::notify_active(&state, &format!("Scenario · {} steps", ids.len()), "scenario",
+            &json!({ "attempts": steps.len(), "success": ok, "errors": steps.len() - ok }), if stopped { "stopped" } else { "completed" });
         return Ok(json!({
             "steps": steps, "passed": passed, "completed": steps.len(), "total": ids.len(),
             "history_id": history_id, "stopped": stopped,
@@ -499,6 +502,8 @@ pub async fn execute(state: AppState, data: Value, stop: Arc<AtomicBool>, live_r
         }));
     }
     state.history.finish_run(&history_id, finish_status(stopped, passed));
+    crate::notify::notify_active(&state, &format!("Scenario · {} steps", ids.len()), "scenario",
+        &json!({ "attempts": completed_flows, "success": successful_flows, "errors": failed_flows }), if stopped { "stopped" } else { "completed" });
     Ok(json!({
         "steps": summaries, "passed": passed, "completed": summaries.len(), "total": ids.len(),
         "history_id": history_id, "virtual_users": s.virtual_users, "iterations": s.iterations,

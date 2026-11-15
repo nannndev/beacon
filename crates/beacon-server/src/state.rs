@@ -76,6 +76,7 @@ pub struct AppState {
     pub gateway: GatewayEngine,
     pub history: Arc<History>,
     pub sharing: Arc<SharingService>,
+    pub monitor: Arc<crate::monitor::Monitor>,
 }
 
 impl AppState {
@@ -95,6 +96,7 @@ impl AppState {
             gateway,
             history,
             sharing,
+            monitor: Arc::default(),
         }
     }
 

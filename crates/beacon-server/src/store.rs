@@ -157,6 +157,11 @@ impl Store {
         };
 
         let proj = self.projects.iter().find(|p| p.id == pid).unwrap_or(&self.projects[0]);
+        self.current_config = self.config_for(proj);
+    }
+
+    /// Runnable config (vars, base URL, flattened endpoints with inherited auth) for one project.
+    pub fn config_for(&self, proj: &Project) -> TestConfig {
         let env = Self::get_active_env(proj);
 
         let mut effective_vars: HashMap<String, String> = HashMap::new();
@@ -209,7 +214,7 @@ impl Store {
             }
         }
 
-        self.current_config = TestConfig::new(base_url, effective_vars, parsed_tests);
+        TestConfig::new(base_url, effective_vars, parsed_tests)
     }
 
     fn flatten_items(nodes: &[Value], project_auth: Option<&Value>, out: &mut Vec<Value>) {

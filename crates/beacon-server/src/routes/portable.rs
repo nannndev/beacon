@@ -115,6 +115,11 @@ pub async fn preview_import(Json(data): Json<Value>) -> ApiResult {
 
 pub async fn import_project(State(state): State<AppState>, Json(data): Json<Value>) -> ApiResult {
     let report = normalize_project(&data).map_err(bad)?;
+    persist_import(&state, &report, None)
+}
+
+/// Saves a normalized import as a new active project, optionally linked to a folder on disk.
+pub fn persist_import(state: &AppState, report: &Value, linked_path: Option<&str>) -> ApiResult {
     let payload = &report["project"];
     let (items, tests) = materialize_items(payload["items"].as_array().map(Vec::as_slice).unwrap_or(&[])).map_err(bad)?;
     let envs: Vec<Environment> = payload["environments"]
@@ -130,7 +135,7 @@ pub async fn import_project(State(state): State<AppState>, Json(data): Json<Valu
         .collect();
     let pid = Uuid::new_v4().to_string();
     let name = payload["name"].as_str().unwrap_or("Imported Project").to_string();
-    let project = Project {
+    let mut project = Project {
         id: pid.clone(),
         name: name.clone(),
         template_id: None,
@@ -143,6 +148,9 @@ pub async fn import_project(State(state): State<AppState>, Json(data): Json<Valu
         tests: None,
         auth: None,
     };
+    if let Some(path) = linked_path {
+        crate::file_sync::link(&mut project, path).map_err(bad)?;
+    }
     let env_count = project.environments.len();
     let mut store = state.store.write();
     store.save_active_project();
@@ -151,7 +159,7 @@ pub async fn import_project(State(state): State<AppState>, Json(data): Json<Valu
     store.sync_current_config();
     store.save().map_err(save_err)?;
     Ok(Json(json!({
-        "id": pid, "project_id": pid, "name": name, "project_name": name, "path": null,
+        "id": pid, "project_id": pid, "name": name, "project_name": name, "path": linked_path,
         "imported": { "tests": tests, "environments": env_count },
         "format": report["format"], "warnings": report["warnings"],
         "missing_private_values": [],
@@ -171,16 +179,7 @@ pub async fn update_global(State(state): State<AppState>, Json(data): Json<Value
 
 // ---- notifications --------------------------------------------------------
 
-fn is_discord(url: &str) -> bool {
-    regex_lite_match(url, &["discord.com/api/webhooks/", "discordapp.com/api/webhooks/"])
-}
-fn is_slack(url: &str) -> bool {
-    url.trim().starts_with("https://hooks.slack.com/services/")
-}
-fn regex_lite_match(url: &str, hosts: &[&str]) -> bool {
-    let u = url.trim();
-    u.starts_with("https://") && hosts.iter().any(|h| u.contains(h))
-}
+use crate::notify::{is_discord, is_slack};
 
 pub async fn test_notification(State(state): State<AppState>, Path(project_id): Path<String>, Json(data): Json<Value>) -> ApiResult {
     if !state.store.read().projects.iter().any(|p| p.id == project_id) {

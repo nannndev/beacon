@@ -563,15 +563,92 @@ pub fn sync_before_save(project: &mut Project) {
 /// Inspect a folder: either an existing Beacon project or something to initialize.
 // shortcut: never lists API-file import candidates (OpenAPI/Postman/...) because the
 // importer is not ported to Rust yet; wire `normalize_project` in here when it is.
+const INSPECT_MAX_FILES: usize = 500;
+const INSPECT_MAX_CANDIDATES: usize = 20;
+const INSPECT_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const INSPECT_EXTENSIONS: &[&str] = &["json", "yaml", "yml", "har"];
+const INSPECT_IGNORED: &[&str] = &[".git", ".beacon", ".venv", "venv", "node_modules", "vendor", "dist", "build", "coverage", ".next", ".nuxt", "target"];
+
+fn api_file(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| INSPECT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Imports one API description file; None when it is not a format Beacon understands.
+fn read_candidate(path: &Path) -> Option<Value> {
+    if path.metadata().ok()?.len() > INSPECT_MAX_BYTES {
+        return None;
+    }
+    let content = fs::read_to_string(path).ok()?;
+    let name = path.file_name()?.to_string_lossy().to_string();
+    crate::importer::normalize_project(&json!({ "content": content, "filename": name })).ok()
+}
+
+/// Scans a repository (without executing anything) for importable API descriptions.
 pub fn inspect(raw_path: &str) -> R<Value> {
     let root = absolute_dir(raw_path, "Repository path must be an absolute directory")?;
-    let mode = if root.join(MANIFEST).is_file() { "beacon_project" } else { "empty_repository" };
-    Ok(json!({
-        "mode": mode,
-        "repository_path": root.to_string_lossy(),
-        "repository_name": root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-        "candidates": [],
-    }))
+    let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if root.join(MANIFEST).is_file() {
+        return Ok(json!({ "mode": "beacon_project", "repository_path": root.to_string_lossy(), "repository_name": name, "candidates": [] }));
+    }
+    let mut candidates: Vec<Value> = Vec::new();
+    let mut checked = 0;
+    let mut stack = vec![root.clone()];
+    'walk: while let Some(dir) = stack.pop() {
+        let mut entries: Vec<_> = fs::read_dir(&dir).map_err(|e| format!("Could not inspect repository: {e}"))?.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for path in entries {
+            // symlink_metadata: never follow links out of the repository
+            let Ok(meta) = path.symlink_metadata() else { continue };
+            if meta.is_dir() {
+                if !path.file_name().is_some_and(|n| INSPECT_IGNORED.contains(&n.to_string_lossy().as_ref())) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if !meta.is_file() || !api_file(&path) {
+                continue;
+            }
+            if checked >= INSPECT_MAX_FILES || candidates.len() >= INSPECT_MAX_CANDIDATES {
+                break 'walk;
+            }
+            checked += 1;
+            if let Some(report) = read_candidate(&path) {
+                let rel = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                candidates.push(json!({ "path": rel, "format": report["format"], "format_label": report["format_label"], "summary": report["summary"], "warnings": report["warnings"] }));
+            }
+        }
+    }
+    // OpenAPI/Swagger first, then shallower paths, then alphabetical.
+    candidates.sort_by_key(|c| {
+        let path = c["path"].as_str().unwrap_or("").to_string();
+        let rank = if matches!(c["format"].as_str(), Some("openapi3" | "swagger2")) { 0 } else { 1 };
+        (rank, path.matches('/').count(), path.to_lowercase())
+    });
+    let mode = if candidates.is_empty() { "empty_repository" } else { "import_candidates" };
+    Ok(json!({ "mode": mode, "repository_path": root.to_string_lossy(), "repository_name": name, "candidates": candidates }))
+}
+
+/// Loads one candidate chosen from `inspect`, rejecting paths that leave the repository.
+pub fn load_candidate(raw_path: &str, candidate: &str) -> R<Value> {
+    let root = absolute_dir(raw_path, "Repository path must be an absolute directory")?;
+    let rel = Path::new(candidate);
+    if candidate.is_empty() || rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("Invalid repository candidate path".into());
+    }
+    let path = root.join(rel);
+    let real = path.canonicalize().map_err(|_| "The selected API file no longer exists".to_string())?;
+    if !real.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("Repository candidate escapes the cloned folder".into());
+    }
+    if !real.is_file() {
+        return Err("The selected API file no longer exists".into());
+    }
+    if !api_file(&real) {
+        return Err("Unsupported API file type".into());
+    }
+    let content = fs::read_to_string(&real).map_err(|e| format!("Could not read API file: {e}"))?;
+    let name = real.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    crate::importer::normalize_project(&json!({ "content": content, "filename": name }))
 }
 
 #[cfg(test)]
@@ -584,6 +661,29 @@ mod tests {
         assert_eq!(slug("***"), "resource");
         assert_eq!(resource_file("endpoints", "Login", "ep_9f2c1d7e0b"), "endpoints/login--e9f2c1d7.yaml");
         assert!(is_secret("X-Api-Key") && is_secret("refresh_TOKEN") && !is_secret("base_path"));
+    }
+
+    #[test]
+    fn inspect_finds_api_files_and_load_candidate_stays_inside() {
+        let root = std::env::temp_dir().join(format!("beacon-inspect-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("specs")).unwrap();
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+        let openapi = r#"{"openapi":"3.0.0","info":{"title":"Pets","version":"1"},"paths":{"/pets":{"get":{"summary":"List pets"}}}}"#;
+        fs::write(root.join("specs/openapi.json"), openapi).unwrap();
+        fs::write(root.join("node_modules/ignored.json"), openapi).unwrap();
+        fs::write(root.join("notes.json"), "{\"not\":\"an api\"}").unwrap();
+
+        let found = inspect(root.to_str().unwrap()).unwrap();
+        assert_eq!(found["mode"], "import_candidates");
+        let cands = found["candidates"].as_array().unwrap();
+        assert_eq!(cands.len(), 1, "{found}");
+        assert_eq!(cands[0]["path"], "specs/openapi.json");
+
+        let report = load_candidate(root.to_str().unwrap(), "specs/openapi.json").unwrap();
+        assert_eq!(report["format"], "openapi3");
+        assert!(load_candidate(root.to_str().unwrap(), "../etc/passwd").is_err());
+        assert!(load_candidate(root.to_str().unwrap(), "/etc/passwd").is_err());
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
