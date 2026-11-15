@@ -151,8 +151,8 @@ export default function LandingPage() {
     mac: [
       {
         label: 'Homebrew Cask',
-        hint: 'Installs Beacon.app + beacon CLI without Gatekeeper quarantine',
-        cmd: 'brew install --cask --no-quarantine nannndev/tap/beacon',
+        hint: 'Installs Beacon.app + beacon CLI (macOS)',
+        cmd: 'brew install --cask nannndev/tap/beacon',
       },
       {
         label: 'Shell Installer',

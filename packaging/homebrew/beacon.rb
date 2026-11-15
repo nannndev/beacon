@@ -14,7 +14,7 @@ cask "beacon" do
 
   caveats <<~EOS
     Beacon is currently unsigned on macOS.
-    If Gatekeeper blocks first launch, install with --no-quarantine or run:
+    If Gatekeeper blocks first launch, run:
       xattr -dr com.apple.quarantine #{appdir}/Beacon.app
   EOS
 

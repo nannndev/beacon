@@ -11,7 +11,7 @@ Built with **Rust** (`beacon-core`, `beacon-server`, `beacon-gateway`, `beacon-a
 ### macOS (Homebrew)
 
 ```bash
-brew install --cask --no-quarantine nannndev/tap/beacon
+brew install --cask nannndev/tap/beacon
 ```
 
 Or via one-liner shell installer (copies `Beacon.app` to `/Applications` and links the `beacon` CLI):
