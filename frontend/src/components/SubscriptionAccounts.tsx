@@ -90,6 +90,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current !== null) {
       window.clearInterval(pollTimerRef.current)
+      window.clearTimeout(pollTimerRef.current)
       pollTimerRef.current = null
     }
   }, [])
@@ -152,8 +153,10 @@ export function SubscriptionAccounts({ onChanged }: Props) {
     if (!pending) return
 
     if (pending.start.kind === 'device') {
-      const ms = Math.max(2000, (pending.start.interval || 5) * 1000)
-      pollTimerRef.current = window.setInterval(async () => {
+      // Poll on a self-rescheduling timer so a provider's slow_down (a longer
+      // interval) is honoured; a fixed setInterval keeps tripping it forever.
+      let ms = Math.max(2000, (pending.start.interval || 5) * 1000)
+      const tick = async () => {
         try {
           const out = await api.gatewayAccountPoll(pending.provider, {
             session_id: pending.start.session_id,
@@ -172,17 +175,22 @@ export function SubscriptionAccounts({ onChanged }: Props) {
             toast.success(`${pending.providerName} connected`)
             void syncUsage(true)
             await onChanged?.()
+            return
           } else if (out.status === 'expired') {
             stopPolling()
             setPending(null)
             toast.error(out.error || `${pending.providerName} login timed out`)
+            return
           }
+          if ('interval' in out && out.interval) ms = Math.max(ms, out.interval * 1000)
+          pollTimerRef.current = window.setTimeout(tick, ms)
         } catch (e: any) {
           stopPolling()
           toast.error(e?.message || `${pending.providerName} login failed`)
           setPending(null)
         }
-      }, ms)
+      }
+      pollTimerRef.current = window.setTimeout(tick, ms)
     } else if (pending.start.auto_callback || pending.start.kind === 'redirect') {
       pollTimerRef.current = window.setInterval(async () => {
         try {

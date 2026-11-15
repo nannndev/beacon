@@ -31,6 +31,8 @@ pub struct OAuthManager {
     sessions: Arc<RwLock<HashMap<String, OAuthSession>>>,
     /// One callback listener per port; a newer login replaces an older pending one.
     listeners: Arc<RwLock<HashMap<u16, tokio::task::AbortHandle>>>,
+    /// Earliest time each device session may hit the provider again.
+    next_poll: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl Default for OAuthManager {
@@ -44,7 +46,29 @@ impl OAuthManager {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             listeners: Arc::new(RwLock::new(HashMap::new())),
+            next_poll: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Device flows (RFC 8628) answer `slow_down` and never issue the token while a
+    /// client polls faster than the interval, so the UI timer is gated here.
+    pub fn poll_allowed(&self, session_id: &str) -> bool {
+        let Some(interval) = self.sessions.read().get(session_id).map(|s| s.interval) else { return true };
+        let now = Instant::now();
+        let mut next = self.next_poll.write();
+        if next.get(session_id).is_some_and(|t| now < *t) {
+            return false;
+        }
+        next.insert(session_id.to_string(), now + Duration::from_secs(interval));
+        true
+    }
+
+    /// Adopts the provider's raised interval after `slow_down`.
+    pub fn slow_down(&self, session_id: &str, interval: u64) {
+        if let Some(s) = self.sessions.write().get_mut(session_id) {
+            s.interval = interval;
+        }
+        self.next_poll.write().insert(session_id.to_string(), Instant::now() + Duration::from_secs(interval));
     }
 
     pub fn insert_session(&self, session: OAuthSession) {
@@ -66,6 +90,7 @@ impl OAuthManager {
     }
 
     pub fn remove_session(&self, session_id: &str) {
+        self.next_poll.write().remove(session_id);
         let mut map = self.sessions.write();
         map.remove(session_id);
     }
@@ -210,6 +235,9 @@ pub async fn poll_copilot_device_flow(
     session_id: &str,
 ) -> Result<Value, String> {
     let session = mgr.get_session(session_id).ok_or_else(|| "Session expired or invalid".to_string())?;
+    if !mgr.poll_allowed(session_id) {
+        return Ok(json!({ "status": "pending" }));
+    }
     let device_code = session.device_code.as_deref().unwrap_or("");
 
     let res = client
@@ -232,6 +260,7 @@ pub async fn poll_copilot_device_flow(
             "authorization_pending" => return Ok(json!({ "status": "pending" })),
             "slow_down" => {
                 let interval = body.get("interval").and_then(|v| v.as_u64()).unwrap_or(session.interval + 5);
+                mgr.slow_down(session_id, interval);
                 return Ok(json!({ "status": "pending", "interval": interval }));
             }
             "expired_token" => {
@@ -1174,6 +1203,9 @@ pub async fn poll_device_flow(
     session_id: &str,
 ) -> Result<Value, String> {
     let session = mgr.get_session(session_id).ok_or_else(|| "Session expired or invalid".to_string())?;
+    if !mgr.poll_allowed(session_id) {
+        return Ok(json!({ "status": "pending" }));
+    }
     let device_code = session.device_code.clone().unwrap_or_default();
     let device_id = session.device_id.clone().unwrap_or_default();
     let provider = session.provider.as_str();
@@ -1206,7 +1238,11 @@ pub async fn poll_device_flow(
         ], &headers).await?;
         match t.get("error").and_then(|v| v.as_str()) {
             Some("authorization_pending") => return Ok(json!({ "status": "pending" })),
-            Some("slow_down") => return Ok(json!({ "status": "pending", "interval": session.interval + 5 })),
+            Some("slow_down") => {
+                let interval = t["interval"].as_u64().unwrap_or(session.interval + 5);
+                mgr.slow_down(session_id, interval);
+                return Ok(json!({ "status": "pending", "interval": interval }));
+            }
             Some("expired_token") => { mgr.remove_session(session_id); return Ok(json!({ "status": "expired", "error": "Login timed out. Please try again." })); }
             Some(err) => { mgr.remove_session(session_id); return Err(format!("{provider}: {}", t["error_description"].as_str().unwrap_or(err))); }
             None => {}
@@ -1438,6 +1474,23 @@ mod tests {
         assert_eq!(parse_callback_code_or_token("code=xyz"), "xyz");
         assert_eq!(parse_callback_code_or_token("  claude-code#state-123 "), "claude-code");
         assert_eq!(parse_callback_code_or_token("sess-raw-token"), "sess-raw-token");
+    }
+
+    #[test]
+    fn device_polls_respect_interval_and_slow_down() {
+        let mgr = OAuthManager::new();
+        mgr.insert_session(OAuthSession {
+            id: "s".into(), provider: "copilot".into(), account_id: None, kind: "device".into(),
+            code_verifier: None, device_code: Some("d".into()), device_id: None, interval: 5,
+            expires_at: Instant::now() + Duration::from_secs(60),
+        });
+        assert!(mgr.poll_allowed("s"), "first poll goes through");
+        assert!(!mgr.poll_allowed("s"), "a poll inside the interval is held back");
+        mgr.slow_down("s", 15);
+        assert_eq!(mgr.get_session("s").unwrap().interval, 15);
+        assert!(!mgr.poll_allowed("s"));
+        mgr.remove_session("s");
+        assert!(mgr.poll_allowed("s"), "unknown sessions are not gated");
     }
 
     #[test]
