@@ -560,6 +560,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
   const [attachedSnapshots, setAttachedSnapshots] = useState<AttachedSnapshot[]>([])
 
   const abortRef = useRef<AbortController | null>(null)
+  const afterToolRef = useRef(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
@@ -815,9 +816,18 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
             },
             onDelta: (delta) => {
               setStreamPhase('writing')
-              patchAssistant((m) => ({ ...m, content: (m.content || '') + delta }))
+              if (!delta) return
+              // Text after a tool call is a new agent turn: start it on its own
+              // paragraph so a leading "## heading" still renders as markdown.
+              const newTurn = afterToolRef.current
+              afterToolRef.current = false
+              patchAssistant((m) => ({
+                ...m,
+                content: newTurn && m.content ? `${m.content.trimEnd()}\n\n${delta}` : (m.content || '') + delta,
+              }))
             },
             onToolStart: (ev) => {
+              afterToolRef.current = true
               setActiveStep((st) => st + 1)
               setStreamPhase('executing')
               patchAssistant((m) => {

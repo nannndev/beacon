@@ -48,6 +48,7 @@ import {
   useReducedMotion,
 } from '../components/motion'
 import { ThemedShot, type ShotPair } from '../components/ThemedShot'
+import { GatewayFigure } from '../components/figures/bucket/GatewayFigure'
 import requestBuilderLight from '../assets/screens/request-builder-light.webp'
 import requestBuilderDark from '../assets/screens/request-builder-dark.webp'
 import responseAssertionsLight from '../assets/screens/response-assertions-light.webp'
@@ -579,11 +580,12 @@ export default function LandingPage() {
               Beacon ships a standard MCP server, not Claude-only, so any assistant can
               drive the projects you already have. The same{' '}
               <span className="font-semibold text-foreground">
-                <CountUp value={15} durationMs={900} /> tools
+                <CountUp value={23} durationMs={900} /> tools
               </span>{' '}
               power the built-in Beacon AI: switch or create projects, build endpoints,
-              chain collections, load-test, and document responses from a live call or
-              straight from your handler code.
+              import specs or curl, sort them into folders, chain collections,
+              load-test, and document responses from a live call or straight from
+              your handler code.
             </p>
             <a
               href={DOCS_URL.replace(/\/$/, '') + '/mcp'}
@@ -611,6 +613,33 @@ claude mcp add beacon -- <path-to>/mcp_server
 "send Login, then run the Checkout scenario"
 "load-test /reports 100x at concurrency 10"
 "document GET /orders from src/orders/handler.rs"`}</code></pre>
+          </Reveal>
+        </div>
+      </section>
+
+      <section id="gateway" className="border-t border-border/60">
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:px-8 lg:py-16">
+          <Reveal>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
+              <ServerCog className="h-3.5 w-3.5 text-cyan-400" /> AI GATEWAY
+            </div>
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
+              Your subscriptions, one endpoint.
+            </h2>
+            <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
+              Sign in with Claude, ChatGPT Codex, GitHub Copilot, Gemini, Kimi, Kilo Code,
+              Muse or Nous, and Beacon serves them all as one OpenAI-compatible API on your
+              machine. When an account hits its rate limit the gateway fails over to the
+              next one instead of returning an error.
+            </p>
+            <p className="mt-3 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
+              The figure is that rule running live: each request takes the first account
+              with quota left, and the piston in each cylinder shows how much of that
+              account&apos;s window is used.
+            </p>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <GatewayFigure />
           </Reveal>
         </div>
       </section>
