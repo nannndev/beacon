@@ -17,19 +17,21 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct GatewayEngine {
     pub store: Arc<GatewayStore>,
     pub http_client: Client,
+    pub oauth: crate::oauth::OAuthManager,
 }
 
 impl GatewayEngine {
     pub fn new(store: GatewayStore) -> Self {
         Self {
             store: Arc::new(store),
-            http_client: Client::builder().build().unwrap(),
+            // Meta (Muse) answers UA-less requests with a 302 to a login page
+            http_client: Client::builder().user_agent("Beacon/1.0").build().unwrap(),
+            oauth: crate::oauth::OAuthManager::new(),
         }
     }
 
@@ -171,8 +173,7 @@ impl GatewayEngine {
         }
 
         // Fallback default
-        let has_paid_codex = accounts.iter().any(|a| a.provider == "codex" && !a.is_free());
-        let default_codex_model = if has_paid_codex { "gpt-5.6-terra" } else { "chatgpt-4o-latest" };
+        let default_codex_model = "gpt-5.6-terra";
         vec![Target {
             provider: "codex".to_string(),
             model: default_codex_model.to_string(),
@@ -332,17 +333,90 @@ impl GatewayEngine {
                         }
                     }
                 }
+            } else if target.kind == "oauth" {
+                let accounts: Vec<AccountRecord> = self.store.list_accounts().into_iter().filter(|a| a.provider == target.provider).collect();
+                for acc in accounts {
+                    let t0 = std::time::Instant::now();
+                    let mut resp = None;
+                    // One forced refresh + retry when the upstream rejects the token.
+                    for force in [false, true] {
+                        let cred = match crate::oauth::fresh_credential(&self.http_client, &self.store, &acc, force).await {
+                            Ok(c) => c,
+                            Err(e) => { last_error = e; break; }
+                        };
+                        let Some((req, kind)) = crate::oauth::subscription_request(&self.http_client, &target.provider, &cred, &target.model, &body) else { break };
+                        match req.send().await {
+                            Ok(r) if r.status().as_u16() == 401 && !force => { last_error = format!("{}: 401", target.provider); continue; }
+                            Ok(r) => { resp = Some((r, kind)); break; }
+                            Err(e) => { last_error = format!("{}: {e}", target.provider); break; }
+                        }
+                    }
+                    let Some((upstream, kind)) = resp else { continue };
+                    let status = upstream.status();
+                    if !status.is_success() {
+                        let err_text = upstream.text().await.unwrap_or_default();
+                        self.store.record_usage(None, Some("AI Copilot"), Some(&target.provider), Some(&target.model), 0, 0, t0.elapsed().as_millis() as i64, "error", status.as_u16() as i64, Some(&err_text), true);
+                        last_error = format!("{} HTTP {}: {}", target.public(), status, err_text.chars().take(300).collect::<String>());
+                        continue;
+                    }
+                    self.store.record_usage(None, Some("AI Copilot"), Some(&target.provider), Some(&target.model), 0, 0, t0.elapsed().as_millis() as i64, "success", 200, None, true);
+                    let byte_stream: futures::stream::BoxStream<'static, Result<axum::body::Bytes, std::io::Error>> = if kind == "openai" {
+                        upstream.bytes_stream().map(|b| b.map_err(std::io::Error::other)).boxed()
+                    } else {
+                        let mut tr = crate::translate::SseToOpenAi::new(kind, target.public());
+                        let start = tr.base.start_chunk();
+                        let mut buf = String::new();
+                        let events = upstream.bytes_stream().map(move |item| {
+                            let bytes = item.map_err(std::io::Error::other)?;
+                            buf.push_str(&String::from_utf8_lossy(&bytes));
+                            let mut out = String::new();
+                            // SSE events can span network chunks: only consume complete lines.
+                            while let Some(i) = buf.find('\n') {
+                                let line: String = buf.drain(..=i).collect();
+                                if let Some(data) = line.trim().strip_prefix("data:") {
+                                    if let Ok(ev) = serde_json::from_str::<Value>(data.trim()) {
+                                        match tr.feed(&ev) {
+                                            Ok(frames) => out.extend(frames),
+                                            Err(e) => out.push_str(&format!("data: {}\n\n", json!({ "error": { "message": e } }))),
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(axum::body::Bytes::from(out))
+                        });
+                        futures::stream::once(async move { Ok(axum::body::Bytes::from(start)) })
+                            .chain(events)
+                            .boxed()
+                    };
+                    return Ok(Response::builder()
+                        .header("Content-Type", "text/event-stream")
+                        .header("Cache-Control", "no-cache")
+                        .body(Body::from_stream(byte_stream))
+                        .unwrap());
+                }
             } else if target.kind == "apikey" {
                 if let Some(key) = self.store.get_provider_key(&target.provider) {
                     if let Some(p) = find_provider_by_id(&target.provider) {
-                        let url = format!("{}/chat/completions", p.base_url.trim_end_matches('/'));
+                        let base = self.store.get_provider_record(&target.provider)
+                            .and_then(|r| r.base_url)
+                            .filter(|s| !s.trim().is_empty())
+                            .unwrap_or_else(|| p.base_url.to_string());
+                        let url = format!("{}/chat/completions", base.trim_end_matches('/'));
                         body["model"] = json!(target.model);
 
                         let mut headers = reqwest::header::HeaderMap::new();
-                        headers.insert(
-                            reqwest::header::AUTHORIZATION,
-                            format!("Bearer {}", key).parse().unwrap(),
-                        );
+                        if target.provider == "anthropic" || p.family == "anthropic" {
+                            if let Ok(val) = key.parse() {
+                                headers.insert("x-api-key", val);
+                            }
+                            if let Ok(ver) = "2023-06-01".parse() {
+                                headers.insert("anthropic-version", ver);
+                            }
+                        } else {
+                            if let Ok(val) = format!("Bearer {}", key).parse() {
+                                headers.insert(reqwest::header::AUTHORIZATION, val);
+                            }
+                        }
                         headers.insert(
                             reqwest::header::CONTENT_TYPE,
                             "application/json".parse().unwrap(),
@@ -653,69 +727,211 @@ async fn handle_accounts_usage(State(engine): State<GatewayEngine>) -> Json<Valu
     }))
 }
 
+#[derive(Deserialize)]
+struct OAuthStartPayload {
+    account_id: Option<String>,
+    #[allow(dead_code)]
+    label: Option<String>,
+    gemini_oauth_client_id: Option<String>,
+    gemini_oauth_client_secret: Option<String>,
+}
+
 async fn handle_oauth_start(
-    State(_engine): State<GatewayEngine>,
+    State(engine): State<GatewayEngine>,
     Path(provider): Path<String>,
-    Json(_payload): Json<Value>,
-) -> Json<Value> {
-    let session_id = Uuid::new_v4().to_string();
-    if provider == "codex" {
-        Json(json!({
-            "kind": "device",
-            "session_id": session_id,
-            "user_code": "OPEN-CODE",
-            "verification_uri": "https://chatgpt.com",
-            "interval": 5,
-            "expires_in": 900
-        }))
-    } else {
-        Json(json!({
-            "kind": "redirect",
-            "session_id": session_id,
-            "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
-            "auto_callback": false
-        }))
+    Json(payload): Json<OAuthStartPayload>,
+) -> (StatusCode, Json<Value>) {
+    if let Some(ref cid) = payload.gemini_oauth_client_id {
+        let _ = engine.store.set_setting("gemini_oauth_client_id", cid);
+    }
+    if let Some(ref sec) = payload.gemini_oauth_client_secret {
+        let _ = engine.store.set_setting("gemini_oauth_client_secret", sec);
+    }
+
+    match provider.as_str() {
+        "copilot" => {
+            match crate::oauth::start_copilot_device_flow(&engine.http_client, &engine.oauth, payload.account_id).await {
+                Ok(val) => (StatusCode::OK, Json(val)),
+                Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e, "message": e }))),
+            }
+        }
+        "claude" => {
+            let val = crate::oauth::start_claude_pkce_flow(&engine.http_client, &engine.oauth, &engine.store, payload.account_id).await;
+            (StatusCode::OK, Json(val))
+        }
+        "codex" => {
+            let val = crate::oauth::start_codex_pkce_flow(&engine.http_client, &engine.oauth, &engine.store, payload.account_id).await;
+            (StatusCode::OK, Json(val))
+        }
+        "gemini-cli" => {
+            match crate::oauth::start_gemini_cli_flow(&engine.http_client, &engine.oauth, &engine.store, payload.account_id).await {
+                Ok(val) => (StatusCode::OK, Json(val)),
+                Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e, "message": e }))),
+            }
+        }
+        _ => {
+            match crate::oauth::start_device_flow(&engine.http_client, &engine.oauth, &provider, payload.account_id).await {
+                Ok(val) => (StatusCode::OK, Json(val)),
+                Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e, "message": e }))),
+            }
+        }
     }
 }
 
+#[derive(Deserialize)]
+struct OAuthPollPayload {
+    session_id: String,
+    #[allow(dead_code)]
+    account_id: Option<String>,
+    #[allow(dead_code)]
+    label: Option<String>,
+}
+
 async fn handle_oauth_poll(
-    State(_engine): State<GatewayEngine>,
-    Path(_provider): Path<String>,
-    Json(_payload): Json<Value>,
-) -> Json<Value> {
-    Json(json!({ "status": "pending" }))
+    State(engine): State<GatewayEngine>,
+    Path(provider): Path<String>,
+    Json(payload): Json<OAuthPollPayload>,
+) -> (StatusCode, Json<Value>) {
+    let polled = if provider == "copilot" {
+        crate::oauth::poll_copilot_device_flow(&engine.http_client, &engine.oauth, &engine.store, &payload.session_id).await
+    } else {
+        crate::oauth::poll_device_flow(&engine.http_client, &engine.oauth, &engine.store, &payload.session_id).await
+    };
+    match provider.as_str() {
+        _ => {
+            match polled {
+                Ok(res) => {
+                    if res.get("status").and_then(|v| v.as_str()) == Some("done") {
+                        let mut state = get_oauth_accounts_state(&engine.store);
+                        state["status"] = json!("done");
+                        let accounts = engine.store.list_accounts();
+                        if let Some(acc) = accounts.iter().rev().find(|a| a.provider == provider) {
+                            state["account"] = json!({
+                                "id": acc.id,
+                                "provider": acc.provider,
+                                "label": acc.label,
+                                "email": acc.email,
+                                "connected_at": acc.connected_at,
+                                "refreshed_at": acc.refreshed_at,
+                                "expires_at": null,
+                                "last_error": acc.last_error,
+                            });
+                        }
+                        (StatusCode::OK, Json(state))
+                    } else {
+                        (StatusCode::OK, Json(res))
+                    }
+                }
+                Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "status": "error", "error": e, "message": e }))),
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct OAuthCompletePayload {
+    session_id: String,
+    callback: String,
+    account_id: Option<String>,
+    #[allow(dead_code)]
+    label: Option<String>,
 }
 
 async fn handle_oauth_complete(
     State(engine): State<GatewayEngine>,
-    Path(_provider): Path<String>,
-    Json(_payload): Json<Value>,
-) -> Json<Value> {
-    let mut state = get_oauth_accounts_state(&engine.store);
-    state["account"] = json!({
-        "id": "new-account",
-        "provider": "unknown",
-        "label": null,
-        "email": null,
-        "connected_at": 0.0,
-        "refreshed_at": null,
-        "expires_at": null,
-        "last_error": null
-    });
-    Json(state)
+    Path(provider): Path<String>,
+    Json(payload): Json<OAuthCompletePayload>,
+) -> (StatusCode, Json<Value>) {
+    let target_id = payload.account_id.as_deref();
+    let res = match provider.as_str() {
+        "claude" => {
+            crate::oauth::complete_claude_pkce_flow(
+                &engine.http_client,
+                &engine.oauth,
+                &engine.store,
+                &payload.session_id,
+                &payload.callback,
+                target_id,
+            ).await
+        }
+        "codex" => {
+            crate::oauth::complete_codex_pkce_flow(
+                &engine.http_client,
+                &engine.oauth,
+                &engine.store,
+                &payload.session_id,
+                &payload.callback,
+                target_id,
+            ).await
+        }
+        "gemini-cli" => {
+            crate::oauth::complete_gemini_cli_flow(
+                &engine.http_client,
+                &engine.oauth,
+                &engine.store,
+                &payload.session_id,
+                &payload.callback,
+                target_id,
+            ).await
+        }
+        _ => {
+            crate::oauth::complete_generic_token_flow(
+                &engine.store,
+                &provider,
+                &payload.callback,
+                target_id,
+            ).await
+        }
+    };
+
+    match res {
+        Ok(_) => {
+            let mut state = get_oauth_accounts_state(&engine.store);
+            let accounts = engine.store.list_accounts();
+            if let Some(acc) = accounts.iter().rev().find(|a| a.provider == provider) {
+                state["account"] = json!({
+                    "id": acc.id,
+                    "provider": acc.provider,
+                    "label": acc.label,
+                    "email": acc.email,
+                    "connected_at": acc.connected_at,
+                    "refreshed_at": acc.refreshed_at,
+                    "expires_at": null,
+                    "last_error": acc.last_error,
+                });
+            }
+            (StatusCode::OK, Json(state))
+        }
+        Err(err) => (StatusCode::BAD_REQUEST, Json(json!({ "error": err, "message": err }))),
+    }
+}
+
+#[derive(Deserialize)]
+struct OAuthTestPayload {
+    account_id: Option<String>,
 }
 
 async fn handle_oauth_test(
-    State(_engine): State<GatewayEngine>,
-    Path(_provider): Path<String>,
-    Json(_payload): Json<Value>,
+    State(engine): State<GatewayEngine>,
+    Path(provider): Path<String>,
+    Json(payload): Json<OAuthTestPayload>,
 ) -> Json<Value> {
-    Json(json!({
-        "valid": true,
-        "latency_ms": 120,
-        "email": null,
-        "models": []
-    }))
+    let accounts = engine.store.list_accounts();
+    let target_account = if let Some(ref aid) = payload.account_id {
+        accounts.into_iter().find(|a| a.provider == provider && a.id == *aid)
+    } else {
+        accounts.into_iter().find(|a| a.provider == provider)
+    };
+
+    if let Some(account) = target_account {
+        let val = crate::oauth::test_oauth_account(&engine.http_client, &account).await;
+        Json(val)
+    } else {
+        Json(json!({
+            "valid": false,
+            "error": format!("No connected account found for provider '{}'", provider)
+        }))
+    }
 }
 
 async fn handle_list_providers(State(engine): State<GatewayEngine>) -> Json<Value> {
@@ -730,19 +946,125 @@ struct ConnectPayload {
     base_url: Option<String>,
 }
 
+async fn verify_upstream_provider(
+    client: &reqwest::Client,
+    provider_id: &str,
+    api_key: &str,
+    base_url: &str,
+) -> Result<i64, String> {
+    let t0 = std::time::Instant::now();
+    let trimmed_key = api_key.trim();
+    let trimmed_base = base_url.trim_end_matches('/');
+
+    let res = if provider_id == "ollama" {
+        let url = format!("{}/api/tags", trimmed_base);
+        client.get(&url).timeout(std::time::Duration::from_secs(5)).send().await
+    } else if provider_id == "anthropic" {
+        let url = if trimmed_base.ends_with("/v1") {
+            format!("{}/messages", trimmed_base)
+        } else {
+            format!("{}/v1/messages", trimmed_base)
+        };
+        client
+            .post(&url)
+            .header("x-api-key", trimmed_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": "claude-3-5-haiku-20241022",
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}]
+            }))
+            .timeout(std::time::Duration::from_secs(8))
+            .send()
+            .await
+    } else {
+        let url = format!("{}/models", trimmed_base);
+        let mut req = client.get(&url).timeout(std::time::Duration::from_secs(8));
+        if !trimmed_key.is_empty() {
+            req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", trimmed_key));
+        }
+        req.send().await
+    };
+
+    match res {
+        Ok(resp) => {
+            let latency_ms = t0.elapsed().as_millis() as i64;
+            let status = resp.status();
+            if status.is_success() {
+                Ok(latency_ms)
+            } else if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+                let err_text = resp.text().await.unwrap_or_default();
+                let detail = serde_json::from_str::<Value>(&err_text)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or_else(|| format!("HTTP {} - invalid credentials", status));
+                Err(format!("Authentication failed: {}", detail))
+            } else {
+                let err_text = resp.text().await.unwrap_or_default();
+                let detail = serde_json::from_str::<Value>(&err_text)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or_else(|| format!("HTTP {}", status));
+                if status.as_u16() >= 400 && status.as_u16() < 500 && status != reqwest::StatusCode::NOT_FOUND {
+                    Err(format!("Provider rejected key: {}", detail))
+                } else {
+                    Ok(latency_ms)
+                }
+            }
+        }
+        Err(e) => Err(format!("Connection check failed: {}", e)),
+    }
+}
+
 async fn handle_connect_provider(
     State(engine): State<GatewayEngine>,
     Path(id): Path<String>,
     Json(payload): Json<ConnectPayload>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let base_url = payload.base_url.as_deref().filter(|s| !s.trim().is_empty());
-    match engine.store.connect_provider(&id, &payload.api_key, base_url) {
+    let prov = find_provider_by_id(&id);
+    let default_base = prov.map(|p| p.base_url).unwrap_or("");
+    let custom_base = payload.base_url.as_deref().filter(|s| !s.trim().is_empty());
+    let base_url = custom_base.unwrap_or(default_base);
+    let api_key = payload.api_key.trim();
+
+    if prov.map(|p| p.needs_key).unwrap_or(true) && api_key.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "detail": format!("API key is required for {}", prov.map(|p| p.name).unwrap_or(&id)) })),
+        ));
+    }
+
+    let mut latency_ms: Option<i64> = None;
+    if !base_url.is_empty() {
+        match verify_upstream_provider(&engine.http_client, &id, api_key, base_url).await {
+            Ok(lat) => {
+                latency_ms = Some(lat);
+            }
+            Err(e) => {
+                return Err((StatusCode::BAD_REQUEST, Json(json!({ "detail": e }))));
+            }
+        }
+    }
+
+    match engine.store.connect_provider(&id, api_key, custom_base) {
         Ok(_) => {
+            let _ = engine.store.set_provider_verification(&id, latency_ms, None);
             let providers = build_gateway_providers(&engine.store);
             if let Some(p) = providers.into_iter().find(|p| p["id"] == id) {
                 Ok(Json(p))
             } else {
-                Ok(Json(json!({ "id": id, "connected": true })))
+                Ok(Json(json!({ "id": id, "connected": true, "latency_ms": latency_ms })))
             }
         }
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "detail": e })))),

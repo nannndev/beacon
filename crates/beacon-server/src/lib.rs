@@ -1,9 +1,16 @@
+pub mod importer;
+pub mod notify;
+pub mod monitor;
+pub mod history;
+pub mod file_sync;
+pub mod git;
 pub mod routes;
+pub mod sharing;
 pub mod state;
 pub mod store;
 
 use axum::{
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
     Router,
 };
 use state::AppState;
@@ -45,7 +52,18 @@ pub fn app_router(state: AppState) -> Router {
             "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),
         )
-        .route("/projects/:id", put(routes::projects::update_project))
+        .route(
+            "/projects/:id",
+            put(routes::projects::update_project).delete(routes::portable::delete_project),
+        )
+        .route("/projects/:id/export", get(routes::portable::export_project))
+        .route("/projects/template", get(routes::portable::project_template))
+        .route("/projects/import", post(routes::portable::import_project))
+        .route("/projects/import/preview", post(routes::portable::preview_import))
+        .route("/projects/:id/notifications/test", post(routes::portable::test_notification))
+        .route("/global", put(routes::portable::update_global))
+        .route("/datasets/preview", post(routes::portable::preview_dataset))
+        .route("/graphql/introspect", post(routes::portable::graphql_introspect))
         .route("/projects/reorder", put(routes::projects::reorder_projects))
         .route(
             "/projects/:id/switch",
@@ -55,6 +73,24 @@ pub fn app_router(state: AppState) -> Router {
             "/projects/samples/jsonplaceholder",
             post(routes::projects::sample_jsonplaceholder),
         )
+        .route("/projects/:id/git", get(routes::git_sync::git_status))
+        .route("/projects/:id/git/branches", get(routes::git_sync::git_branches).post(routes::git_sync::git_create_branch))
+        .route("/projects/:id/git/diff", get(routes::git_sync::git_diff))
+        .route("/projects/:id/git/commit", post(routes::git_sync::git_commit))
+        .route("/projects/:id/git/compare", post(routes::git_sync::git_compare))
+        .route("/projects/:id/git/fetch", post(routes::git_sync::git_fetch))
+        .route("/projects/:id/git/init", post(routes::git_sync::git_init))
+        .route("/projects/:id/git/pull", post(routes::git_sync::git_pull))
+        .route("/projects/:id/git/push", post(routes::git_sync::git_push))
+        .route("/projects/:id/git/switch", post(routes::git_sync::git_switch))
+        .route("/projects/:id/git/remote", put(routes::git_sync::git_set_remote))
+        .route("/projects/:id/file-sync", get(routes::git_sync::file_sync_status).delete(routes::git_sync::file_sync_unlink))
+        .route("/projects/:id/file-sync/link", post(routes::git_sync::file_sync_link))
+        .route("/projects/:id/file-sync/reload", post(routes::git_sync::file_sync_reload))
+        .route("/projects/file-sync/clone", post(routes::git_sync::file_sync_clone))
+        .route("/projects/file-sync/import-candidate", post(routes::git_sync::file_sync_import_candidate))
+        .route("/projects/file-sync/initialize", post(routes::git_sync::file_sync_initialize))
+        .route("/projects/file-sync/open", post(routes::git_sync::file_sync_open))
         .route(
             "/projects/:id/environments",
             post(routes::environments::create_environment),
@@ -72,6 +108,36 @@ pub fn app_router(state: AppState) -> Router {
         .route("/status/:run_id", get(routes::runs::get_status))
         .route("/stop/:run_id", post(routes::runs::stop_run))
         .route("/proxy", post(routes::runs::proxy_request))
+        .route("/scenario", post(routes::scenario::run_scenario))
+        .route("/scenario/start", post(routes::scenario::start_scenario))
+        .route("/history", get(routes::history::list_history))
+        .route("/history/health", get(routes::history::history_health))
+        .route("/history/rebuild", post(routes::history::rebuild_history))
+        .route("/history/compare", post(routes::history::compare_history))
+        .route("/history/groups", post(routes::history::create_history_group))
+        .route(
+            "/history/:id",
+            get(routes::history::get_history)
+                .patch(routes::history::update_history)
+                .delete(routes::history::delete_history),
+        )
+        .route("/history/:id/finish", post(routes::history::finish_history_group))
+        .route("/history/:id/export", get(routes::history::export_history))
+        .route("/history/:id/report", get(routes::history::history_report))
+        .route("/sharing/projects/:id", get(routes::sharing::sharing_status))
+        .route("/sharing/projects/:id/revisions", get(routes::sharing::project_revisions))
+        .route("/sharing/projects/:id/watch", get(routes::sharing::watch_shared_project))
+        .route("/sharing/projects/:id/enable", post(routes::sharing::enable_sharing))
+        .route("/sharing/projects/:id/disable", post(routes::sharing::disable_sharing))
+        .route("/sharing/projects/:id/pairing-code", post(routes::sharing::refresh_pairing_code))
+        .route("/sharing/projects/:id/requests/:request_id/decision", post(routes::sharing::decide_pairing))
+        .route("/sharing/projects/:id/sync", post(routes::sharing::sync_shared_project))
+        .route("/sharing/projects/:id/conflict/:conflict_id", post(routes::sharing::resolve_shared_project_conflict))
+        .route("/sharing/projects/:id/leave", post(routes::sharing::leave_shared_project))
+        .route("/sharing/projects/:id/duplicate-private", post(routes::sharing::duplicate_shared_project))
+        .route("/sharing/projects/:id/members/:member_id", patch(routes::sharing::update_member).delete(routes::sharing::remove_member))
+        .route("/sharing/join", post(routes::sharing::join_local_project))
+        .route("/sharing/join/status", post(routes::sharing::joined_project_status))
         .route("/ws", get(routes::ws::ws_handler))
         .with_state(state);
 
@@ -111,6 +177,7 @@ pub async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let state = AppState::new();
+    state.monitor.spawn(state.clone());
     let app = app_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));

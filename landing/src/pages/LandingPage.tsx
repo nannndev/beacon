@@ -5,9 +5,11 @@ import {
   ArrowRight,
   Bot,
   Braces,
+  Check,
   ChevronLeft,
   ChevronRight,
   Coffee,
+  Copy,
   Download,
   FileDown,
   FileCode2,
@@ -105,7 +107,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.11.0'
+const RELEASE_VERSION = '0.11.1'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -127,6 +129,62 @@ export default function LandingPage() {
   const download = () => { void startDownload() }
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<string>('')
+  const [installOs, setInstallOs] = useState<'mac' | 'windows' | 'linux'>(() => {
+    if (typeof navigator === 'undefined') return 'mac'
+    const ua = `${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase()
+    if (ua.includes('win')) return 'windows'
+    if (ua.includes('linux')) return 'linux'
+    return 'mac'
+  })
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
+
+  const copyCommand = (cmd: string) => {
+    void navigator.clipboard?.writeText(cmd)
+    setCopiedCmd(cmd)
+    window.setTimeout(() => setCopiedCmd((cur) => (cur === cmd ? null : cur)), 1800)
+  }
+
+  const installMethods: Record<
+    'mac' | 'windows' | 'linux',
+    Array<{ label: string; hint: string; cmd: string }>
+  > = {
+    mac: [
+      {
+        label: 'Homebrew Cask',
+        hint: 'Installs Beacon.app + beacon CLI without Gatekeeper quarantine',
+        cmd: 'brew install --cask --no-quarantine nannndev/tap/beacon',
+      },
+      {
+        label: 'Shell Installer',
+        hint: 'Downloads latest DMG, copies to /Applications, and links beacon CLI',
+        cmd: 'curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash',
+      },
+    ],
+    windows: [
+      {
+        label: 'Scoop',
+        hint: 'Installs and auto-updates via Scoop bucket',
+        cmd: 'scoop bucket add nannndev https://github.com/nannndev/scoop-bucket && scoop install beacon',
+      },
+      {
+        label: 'PowerShell',
+        hint: 'Downloads latest NSIS installer and runs silent setup',
+        cmd: 'irm https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.ps1 | iex',
+      },
+    ],
+    linux: [
+      {
+        label: 'AppImage (No root)',
+        hint: 'Installs portable Beacon.AppImage into ~/.local/bin',
+        cmd: 'curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash',
+      },
+      {
+        label: 'Debian / Ubuntu (.deb)',
+        hint: 'Downloads and installs the native .deb package',
+        cmd: 'curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash -s -- --deb',
+      },
+    ],
+  }
 
   useEffect(() => {
     const sections = NAV_LINKS
@@ -579,11 +637,12 @@ export default function LandingPage() {
               Beacon ships a standard MCP server, not Claude-only, so any assistant can
               drive the projects you already have. The same{' '}
               <span className="font-semibold text-foreground">
-                <CountUp value={15} durationMs={900} /> tools
+                <CountUp value={23} durationMs={900} /> tools
               </span>{' '}
               power the built-in Beacon AI: switch or create projects, build endpoints,
-              chain collections, load-test, and document responses from a live call or
-              straight from your handler code.
+              import specs or curl, sort them into folders, chain collections,
+              load-test, and document responses from a live call or straight from
+              your handler code.
             </p>
             <a
               href={DOCS_URL.replace(/\/$/, '') + '/mcp'}
@@ -611,6 +670,32 @@ claude mcp add beacon -- <path-to>/mcp_server
 "send Login, then run the Checkout scenario"
 "load-test /reports 100x at concurrency 10"
 "document GET /orders from src/orders/handler.rs"`}</code></pre>
+          </Reveal>
+        </div>
+      </section>
+
+      <section id="gateway" className="border-t border-border/60">
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:px-8 lg:py-16">
+          <Reveal>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-4 py-1 text-xs font-semibold tracking-widest text-muted-foreground">
+              <ServerCog className="h-3.5 w-3.5 text-cyan-400" /> AI GATEWAY
+            </div>
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">
+              Your subscriptions, one endpoint.
+            </h2>
+            <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
+              Sign in with Claude, ChatGPT Codex, GitHub Copilot, Gemini, Kimi, Kilo Code,
+              Muse or Nous, and Beacon serves them all as one OpenAI-compatible API on your
+              machine. When an account hits its rate limit the gateway fails over to the
+              next one instead of returning an error.
+            </p>
+          </Reveal>
+          <Reveal delay={0.1} className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xl">
+            <ThemedShot
+              shot={SHOTS.gateway}
+              alt="Beacon AI Gateway with ChatGPT Codex, GitHub Copilot, Kimi Code and Kilo Code accounts connected"
+              className="h-auto w-full"
+            />
           </Reveal>
         </div>
       </section>
@@ -718,6 +803,63 @@ claude mcp add beacon -- <path-to>/mcp_server
               </button>
             </RevealItem>
           </RevealGroup>
+
+          <Reveal className="mx-auto mt-8 max-w-4xl rounded-2xl border border-border/80 bg-card/70 p-5 shadow-sm backdrop-blur-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-background text-foreground">
+                  <SquareTerminal className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold tracking-tight">Install via package manager or terminal</div>
+                  <div className="text-xs text-muted-foreground">Prefer CLI setup? Install Beacon with one command.</div>
+                </div>
+              </div>
+              <div className="inline-flex rounded-xl border border-border bg-background/80 p-1 text-xs">
+                {(['mac', 'windows', 'linux'] as const).map((os) => (
+                  <button
+                    key={os}
+                    type="button"
+                    onClick={() => setInstallOs(os)}
+                    className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${
+                      installOs === os
+                        ? 'bg-foreground text-background shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {os === 'mac' ? 'macOS' : os === 'windows' ? 'Windows' : 'Linux'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {installMethods[installOs].map((item) => {
+                const copied = copiedCmd === item.cmd
+                return (
+                  <div key={item.label} className="flex flex-col justify-between rounded-xl border border-border/80 bg-background/80 p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-foreground">
+                        {item.label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyCommand(item.cmd)}
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <code className="mt-2.5 block overflow-x-auto rounded-lg bg-muted/50 px-2.5 py-2 font-mono text-[11.5px] text-foreground whitespace-nowrap">
+                      {item.cmd}
+                    </code>
+                    <p className="mt-2 text-[11px] text-muted-foreground">{item.hint}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </Reveal>
 
           <div className="mt-5 text-center text-xs text-muted-foreground">
             Install, open Beacon, and start testing locally. No Python runtime or hosted Beacon account required.

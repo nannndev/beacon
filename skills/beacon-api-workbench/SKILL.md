@@ -1,6 +1,6 @@
 ---
 name: beacon-api-workbench
-description: Drive the Beacon API workbench (github.com/nannndev/beacon) from an agent to discover, create, import, send, chain, load-test, and document API or web endpoints. Supports Beacon/Postman/OpenAPI/Swagger/Insomnia/HAR imports, response assertions/extractors, capturing live responses as documented examples, and authorized rate-limit testing. Prefer the Beacon MCP server; fall back to REST.
+description: Drive the Beacon API workbench (github.com/nannndev/beacon) from an agent to discover, create, import, organize into folders, send, chain, load-test, and document API or web endpoints. Supports Beacon/Postman/OpenAPI/Swagger/Insomnia/HAR and curl imports, folder trees, response assertions/extractors, capturing live responses as documented examples, and authorized rate-limit testing. Prefer the Beacon MCP server; fall back to REST.
 ---
 
 # Driving Beacon
@@ -20,7 +20,10 @@ show up in the desktop app immediately.
 - `beacon_list_projects`, `beacon_switch_project(project)`, `beacon_create_project(name, base_url?)`.
 
 **Inspect**
+- `beacon_get_config()` - active project, base URL, environment, variable *names* (never values) and endpoint count.
 - `beacon_list_endpoints(filter?)` - id, name, method, URL, assertion/extractor summary.
+- `beacon_search_endpoints(query?, offset?, limit?)` - paginated compact search; use it
+  instead of `list` on large projects so results don't flood your context.
 - `beacon_get_endpoint(id)` - full definition by id or exact name.
 - `beacon_list_variables()` - project, environment and global variables.
 
@@ -28,9 +31,30 @@ show up in the desktop app immediately.
 - `beacon_create_endpoint(name, url, method?, headers?, payload?, payload_type?, auth?, extractors?, assertions?)`.
   `url` may be relative to the project base URL and may use `{{variables}}`.
   Always pass a descriptive `name` (see **Naming endpoints**).
+  Pass `folder` (name, id, or `Parent/Child` path) to place it in a folder; missing
+  folders are created.
+- `beacon_add_endpoint_from_curl(curl, name?, folder?)` - create from a `curl` command
+  (`-X`, `-H`, `-d`/`--data-raw`, `-u` as Basic auth, `--url`, line continuations).
 - `beacon_update_endpoint(id, ...)` - partial update; only the fields you pass change.
+- `beacon_duplicate_endpoint(id)` - copy with a fresh id at the project root.
 - `beacon_delete_endpoint(id)`.
 - `beacon_set_variable(name, value)`.
+
+**Import**
+- `beacon_import_collection(data, into_folder?)` - Beacon export, Postman v2, OpenAPI 3,
+  Swagger 2 (JSON or YAML), Insomnia or HAR. Pass parsed JSON, or
+  `{content, filename}` for raw JSON/YAML text. Without `into_folder` a folder named
+  after the source is created.
+
+**Organize (folders)**
+- `beacon_get_collection()` - the folder tree in display order. Call it before organizing.
+- `beacon_organize_collection(operations)` - ordered steps applied atomically (one
+  failure saves nothing; endpoints are never lost):
+  `{op:"create_folder", name, parent?}`, `{op:"rename_folder", folder, name}`,
+  `{op:"delete_folder", folder, delete_contents?}` (contents move up by default),
+  `{op:"move", items:[...], to, index?}` (`to: null` is the top level),
+  `{op:"reorder", parent?, order:[...]}`. Reference folders and items by id, name or
+  `Parent/Child` path. Send every step in one call.
 
 **Send / document**
 - `beacon_probe_endpoint(endpoint_id? | url, method?, headers?, payload?, assertions?)` -
@@ -48,6 +72,8 @@ show up in the desktop app immediately.
 **Run**
 - `beacon_run_collection(endpoint_ids?, stop_on_failure?)` - ordered run with
   variable chaining; `['Login','Get Profile']` primes `{{access_token}}`.
+- `beacon_run_endpoint(id, concurrency?, max_requests?, delay_ms?)` - load-run one saved
+  endpoint; same stats as `beacon_run_load_test`.
 - `beacon_run_load_test(endpoint_id? | url, concurrency?, max_requests?, delay_ms?, mode?)` -
   **fires real HTTP** and returns counts, status mix, RPS and latency percentiles.
   Confirm the target is authorized before raising `max_requests` or `concurrency`.
@@ -80,6 +106,15 @@ method and URL are already shown next to the name, so never repeat them.
 
 Imports fall back to `METHOD path` names. After importing, list the new
 endpoints and rename the generic ones with `beacon_update_endpoint(id, name=...)`.
+
+## Organizing into folders
+
+Group endpoints into one folder per module or resource (`Auth`, `Users`,
+`Orders`), nested when the API is (`Admin/Discount`). When creating several
+endpoints for one module, pass `folder` on each create. To tidy an existing
+project: `beacon_get_collection`, propose the tree in one table, then apply every
+move in a single `beacon_organize_collection` call. Never fake folders with name
+prefixes like `Discount / Add Discount`.
 When the user asks to clean up names in an existing project, list them, propose
 the renames in one table, and apply them after the user agrees. Renaming
 changes no request behaviour.
@@ -92,7 +127,9 @@ changes no request behaviour.
    "G-SPOT", user wants "Google APIs"), create or switch to the right project
    first, or ask one short question with two options ("new project 'Google APIs'
    or add to G-SPOT?"). Never put a new API's variables into an unrelated project.
-2. Use `beacon_list_endpoints(filter)`, then `beacon_get_endpoint` on the selected result.
+2. Use `beacon_search_endpoints(query)` (or `beacon_list_endpoints` on small projects), then
+   `beacon_get_endpoint` on the selected result. Use `beacon_get_collection` when the
+   folder structure matters.
 3. Check `beacon_list_variables` so `{{base_url}}` and tokens resolve before sending traffic.
 4. Use `beacon_probe_endpoint` once to inspect the real response, assertions, and
    extractors. For a login flow, probe Login first and confirm `extracted`.
@@ -130,10 +167,13 @@ The Rust backend (default `http://localhost:8000`) exposes the same surface:
 - `GET /projects`, `GET /tests`, `GET /config`
 - `POST /tests`, `PUT /tests/{id}`, `DELETE /tests/{id}`, `POST /tests/{id}/duplicate`
 - `PUT /projects/{id}` with `{ "items": [...] }` to reorder/move/rename the tree
+- `POST /projects/import/preview` then `POST /projects/import` for a collection or spec
 - `POST /send` `{ test_id }` for one request with assertions and extractors
 - `POST /run` `{ test_id, mode, concurrency, max_requests, delay, use_min_delay, ... }`
   (modes: load, ramp, spike, soak, rate_probe, capacity, fuzz, benchmark) ->
-  `{ run_id }`; poll `GET /status/{run_id}`; stop with `POST /stop/{run_id}`
+  `{ run_id, history_id }`; poll `GET /status/{run_id}`; stop with `POST /stop/{run_id}`
+- `POST /scenario` `{ test_ids, ... }` for an ordered multi-step journey
+- `GET /history?limit=` and `GET /history/{id}` for saved run results
 
 ## Safety
 

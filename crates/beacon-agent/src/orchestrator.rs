@@ -67,6 +67,27 @@ pub fn build_system_prompt(context: &Value) -> String {
         Some("en") => out.push_str("- Language: always reply in English.\n"),
         _ => {}
     }
+    match ps("character") {
+        Some("chill") => out.push_str("- Character: Chill Partner — relaxed, relatable, conversational, light humor when appropriate, never stiff or robotic.\n"),
+        Some("hype") => out.push_str("- Character: Hype & Expressive — energetic, encouraging, celebrates wins, uses emoji naturally.\n"),
+        Some("empathetic") => out.push_str("- Character: Empathetic — patient, understanding, reassuring especially when debugging errors or failures.\n"),
+        Some("auditor") => out.push_str("- Character: Strict Auditor — direct, objective, security- and quality-focused, minimal small talk.\n"),
+        Some("mentor") => out.push_str("- Character: Sharp Mentor — clear, educational, explains the 'why' behind recommendations step-by-step.\n"),
+        _ => {}
+    }
+    match ps("tone") {
+        Some("formal") => out.push_str("- Tone: formal and professional. Polite, precise wording, no slang.\n"),
+        Some("friendly") => out.push_str("- Tone: friendly and warm, like a helpful teammate. Natural, not stiff.\n"),
+        Some("casual") => out.push_str("- Tone: casual and relaxed, like chatting with a close coworker. In Indonesian use everyday santai wording (aku/kamu or gue/lu if the user does), short sentences, light humor when it fits.\n"),
+        _ => {}
+    }
+    match ps("emotion") {
+        Some("calm") => out.push_str("- Emotion: calm and neutral. No emoji, no exclamation marks.\n"),
+        Some("warm") => out.push_str("- Emotion: warm and encouraging. Acknowledge the user's progress or frustration in a few words; an occasional emoji is fine.\n"),
+        Some("expressive") => out.push_str("- Emotion: expressive and upbeat. Show genuine enthusiasm and empathy, celebrate wins, use emoji naturally (not every line).\n"),
+        Some("empathetic") => out.push_str("- Emotion: empathetic and supportive. Acknowledge frustration when endpoints fail, reassure the user, and guide gently.\n"),
+        _ => {}
+    }
     match ps("style") {
         Some("concise") => out.push_str("- Length: concise, no filler.\n"),
         Some("detailed") => out.push_str("- Length: detailed, with explanations.\n"),
@@ -168,6 +189,12 @@ impl AgentOrchestrator {
                                             continue;
                                         }
                                         if let Ok(val) = serde_json::from_str::<Value>(payload) {
+                                            if let Some(m) = val.get("model").and_then(|v| v.as_str()) {
+                                                if !m.is_empty() {
+                                                    let model_evt = json!({ "type": "model", "model": m });
+                                                    yield Ok(Event::default().data(serde_json::to_string(&model_evt).unwrap()));
+                                                }
+                                            }
                                             if let Some(choices) = val.get("choices").and_then(|c| c.as_array()) {
                                                 if let Some(first) = choices.first() {
                                                     let delta = first.get("delta").cloned().unwrap_or(json!({}));

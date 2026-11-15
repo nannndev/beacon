@@ -1,5 +1,6 @@
 pub mod cipher;
 pub mod engine;
+pub mod oauth;
 pub mod providers;
 pub mod store;
 pub mod translate;

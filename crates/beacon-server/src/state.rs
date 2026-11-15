@@ -1,3 +1,5 @@
+use crate::history::History;
+use crate::sharing::SharingService;
 use crate::store::Store;
 use beacon_core::EndpointTest;
 use beacon_gateway::{GatewayEngine, GatewayStore};
@@ -34,6 +36,7 @@ pub struct ActiveRun {
     pub scenario_steps: Arc<RwLock<Vec<Value>>>,
     pub recent_events: Arc<RwLock<Vec<Value>>>,
     pub failure: Arc<RwLock<Option<Value>>>,
+    pub result: Arc<RwLock<Option<Value>>>,
 }
 
 impl ActiveRun {
@@ -55,6 +58,7 @@ impl ActiveRun {
             scenario_steps: Arc::new(RwLock::new(Vec::new())),
             recent_events: Arc::new(RwLock::new(Vec::new())),
             failure: Arc::new(RwLock::new(None)),
+            result: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -70,6 +74,9 @@ pub struct AppState {
     pub runs: Arc<RwLock<HashMap<String, Arc<ActiveRun>>>>,
     pub ws_broadcast: broadcast::Sender<Value>,
     pub gateway: GatewayEngine,
+    pub history: Arc<History>,
+    pub sharing: Arc<SharingService>,
+    pub monitor: Arc<crate::monitor::Monitor>,
 }
 
 impl AppState {
@@ -79,12 +86,17 @@ impl AppState {
         let data_dir = store.file_path.parent().unwrap_or(Path::new("config"));
         let gw_store = GatewayStore::new(data_dir).unwrap_or_else(|_| GatewayStore::new("config").unwrap());
         let gateway = GatewayEngine::new(gw_store);
+        let history = Arc::new(History::open(data_dir.join("history.db")));
+        let sharing = Arc::new(SharingService::new(data_dir));
 
         Self {
             store: Arc::new(RwLock::new(store)),
             runs: Arc::new(RwLock::new(HashMap::new())),
             ws_broadcast: tx,
             gateway,
+            history,
+            sharing,
+            monitor: Arc::default(),
         }
     }
 

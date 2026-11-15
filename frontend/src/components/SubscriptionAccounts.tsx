@@ -19,6 +19,7 @@ import { Card } from './ui/card'
 import { Input } from './ui/input'
 import { toast } from './ui/toast'
 import { api } from '../lib/api'
+import { openExternalUrl } from '../lib/platform'
 import { ProviderLogo } from './gateway/ProviderLogo'
 import type {
   OAuthAccount,
@@ -89,6 +90,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current !== null) {
       window.clearInterval(pollTimerRef.current)
+      window.clearTimeout(pollTimerRef.current)
       pollTimerRef.current = null
     }
   }, [])
@@ -151,8 +153,10 @@ export function SubscriptionAccounts({ onChanged }: Props) {
     if (!pending) return
 
     if (pending.start.kind === 'device') {
-      const ms = Math.max(2000, (pending.start.interval || 5) * 1000)
-      pollTimerRef.current = window.setInterval(async () => {
+      // Poll on a self-rescheduling timer so a provider's slow_down (a longer
+      // interval) is honoured; a fixed setInterval keeps tripping it forever.
+      let ms = Math.max(2000, (pending.start.interval || 5) * 1000)
+      const tick = async () => {
         try {
           const out = await api.gatewayAccountPoll(pending.provider, {
             session_id: pending.start.session_id,
@@ -171,14 +175,23 @@ export function SubscriptionAccounts({ onChanged }: Props) {
             toast.success(`${pending.providerName} connected`)
             void syncUsage(true)
             await onChanged?.()
+            return
+          } else if (out.status === 'expired') {
+            stopPolling()
+            setPending(null)
+            toast.error(out.error || `${pending.providerName} login timed out`)
+            return
           }
+          if ('interval' in out && out.interval) ms = Math.max(ms, out.interval * 1000)
+          pollTimerRef.current = window.setTimeout(tick, ms)
         } catch (e: any) {
           stopPolling()
           toast.error(e?.message || `${pending.providerName} login failed`)
           setPending(null)
         }
-      }, ms)
-    } else if (pending.start.auto_callback) {
+      }
+      pollTimerRef.current = window.setTimeout(tick, ms)
+    } else if (pending.start.auto_callback || pending.start.kind === 'redirect') {
       pollTimerRef.current = window.setInterval(async () => {
         try {
           const next = await api.gatewayAccounts()
@@ -204,7 +217,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
         } catch {
           // ignore transient poll errors
         }
-      }, 2000)
+      }, 1500)
     }
 
     return () => stopPolling()
@@ -234,7 +247,15 @@ export function SubscriptionAccounts({ onChanged }: Props) {
         previousRefreshed,
       })
       if (start.kind === 'redirect' && start.auth_url) {
-        window.open(start.auth_url, '_blank', 'noopener,noreferrer')
+        void openExternalUrl(start.auth_url)
+      } else if (start.kind === 'device' && start.verification_uri) {
+        if (start.user_code) {
+          try {
+            await navigator.clipboard.writeText(start.user_code)
+            toast.success(`Copied code ${start.user_code} to clipboard`)
+          } catch {}
+        }
+        void openExternalUrl(start.verification_uri)
       }
     } catch (e: any) {
       toast.error(e?.message || `Could not start ${meta.name} login`)
@@ -533,7 +554,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
                     size="sm"
                     variant="outline"
                     className="h-8 gap-1.5 text-xs"
-                    onClick={() => window.open(pending.start.auth_url, '_blank', 'noopener,noreferrer')}
+                    onClick={() => void openExternalUrl(pending.start.auth_url!)}
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Open Login Page
@@ -594,7 +615,7 @@ export function SubscriptionAccounts({ onChanged }: Props) {
                   size="sm"
                   variant="outline"
                   className="h-8 gap-1.5 text-xs"
-                  onClick={() => window.open(pending.start.verification_uri, '_blank', 'noopener,noreferrer')}
+                  onClick={() => void openExternalUrl(pending.start.verification_uri!)}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open Verification Page

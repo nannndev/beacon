@@ -47,6 +47,8 @@ export const AGENT_GUIDES: AgentGuideOption[] = [
 export const DEFAULT_AGENT_PREFERENCES: AgentPreferences = {
   language: 'auto',
   style: 'balanced',
+  tone: 'friendly',
+  emotion: 'warm',
   guides: ['verify-live-first', 'capture-examples'],
   skills: [],
   custom: '',
@@ -71,6 +73,8 @@ export function loadAgentPreferences(): AgentPreferences {
         ? Math.max(0, Math.min(500, Math.floor(Number(parsed.maxSteps))))
         : 10,
       scope: parsed.scope === 'workspace' ? 'workspace' : 'global',
+      tone: ['formal', 'friendly', 'casual'].includes(parsed.tone) ? parsed.tone : DEFAULT_AGENT_PREFERENCES.tone,
+      emotion: ['calm', 'warm', 'expressive'].includes(parsed.emotion) ? parsed.emotion : DEFAULT_AGENT_PREFERENCES.emotion,
     }
   } catch {
     return { ...DEFAULT_AGENT_PREFERENCES }

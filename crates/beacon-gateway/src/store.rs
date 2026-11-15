@@ -42,10 +42,17 @@ pub struct AccountRecord {
 impl AccountRecord {
     pub fn detect_plan(&self) -> String {
         if self.provider == "codex" {
+            if let Some(p) = self.cred.get("plan").and_then(|v| v.as_str()) {
+                if !p.is_empty() {
+                    return p.to_lowercase();
+                }
+            }
             if let Some(token) = self.cred.get("access_token").and_then(|t| t.as_str()) {
                 let parts: Vec<&str> = token.split('.').collect();
                 if parts.len() >= 2 {
-                    if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, parts[1]) {
+                    let decoded_res = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, parts[1])
+                        .or_else(|_| base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE, parts[1]));
+                    if let Ok(decoded) = decoded_res {
                         if let Ok(claims) = serde_json::from_slice::<Value>(&decoded) {
                             if let Some(plan) = claims
                                 .get("https://api.openai.com/auth")
@@ -129,6 +136,7 @@ pub struct GatewaySettings {
     pub gemini_oauth_configured: bool,
 }
 
+#[derive(Clone)]
 pub struct GatewayStore {
     conn: Arc<Mutex<Connection>>,
     pub cipher: Cipher,
@@ -238,17 +246,68 @@ impl GatewayStore {
         out
     }
 
+    pub fn get_settings(&self) -> GatewaySettings {
+        self.get_gateway_settings()
+    }
+
     pub fn save_account(&self, provider: &str, cred: &Value, label: Option<&str>, email: Option<&str>) -> Result<String, String> {
+        self.update_or_save_account(provider, cred, label, email, None)
+    }
+
+    pub fn update_or_save_account(
+        &self,
+        provider: &str,
+        cred: &Value,
+        label: Option<&str>,
+        email: Option<&str>,
+        target_account_id: Option<&str>,
+    ) -> Result<String, String> {
         let cred_str = serde_json::to_string(cred).map_err(|e| e.to_string())?;
         let encrypted = self.cipher.encrypt(&cred_str)?;
-        let id = Uuid::new_v4().to_string();
         let conn = self.conn.lock();
+
+        // 1. If target_account_id provided, update that specific record
+        if let Some(target_id) = target_account_id {
+            let updated = conn.execute(
+                "UPDATE accounts SET secret = ?1, email = coalesce(?2, email), label = coalesce(?3, label), refreshed_at = ?4, last_error = NULL WHERE id = ?5",
+                params![encrypted, email, label, now(), target_id],
+            ).unwrap_or(0);
+            if updated > 0 {
+                return Ok(target_id.to_string());
+            }
+        }
+
+        // 2. If same email already exists for this provider, update it instead of duplicating
+        if let Some(em) = email {
+            let mut stmt = conn.prepare("SELECT id FROM accounts WHERE provider = ?1 AND email = ?2 LIMIT 1").map_err(|e| e.to_string())?;
+            let existing_id: Option<String> = stmt.query_row(params![provider, em], |r| r.get(0)).ok();
+            if let Some(eid) = existing_id {
+                let _ = conn.execute(
+                    "UPDATE accounts SET secret = ?1, label = coalesce(?2, label), refreshed_at = ?3, last_error = NULL WHERE id = ?4",
+                    params![encrypted, label, now(), eid],
+                );
+                return Ok(eid);
+            }
+        }
+
+        // 3. Otherwise insert fresh account
+        let id = format!("{}:{}", provider, &Uuid::new_v4().to_string()[..8]);
         conn.execute(
             "INSERT INTO accounts (id, provider, label, email, connected_at, secret) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![id, provider, label, email, now(), encrypted],
         )
         .map_err(|e| format!("Failed to insert account: {}", e))?;
         Ok(id)
+    }
+
+    pub fn record_account_error(&self, id: &str, err: Option<&str>) -> Result<(), String> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "UPDATE accounts SET last_error = ?1 WHERE id = ?2",
+            params![err, id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn remove_account(&self, provider: &str, account_id: Option<&str>) -> Result<bool, String> {
@@ -323,6 +382,55 @@ impl GatewayStore {
             .ok()?;
         let enc: Option<String> = stmt.query_row(params![provider_id], |r| r.get(0)).ok()?;
         enc.and_then(|blob| self.cipher.decrypt(&blob).ok())
+    }
+
+    pub fn get_provider_record(&self, provider_id: &str) -> Option<ProviderRecord> {
+        let conn = self.conn.lock();
+        let mut stmt = conn
+            .prepare("SELECT id, enabled, api_key, base_url, default_model, models, verified_at, latency_ms, error FROM providers WHERE id = ?1")
+            .ok()?;
+        stmt.query_row(params![provider_id], |row| {
+            let id: String = row.get(0)?;
+            let enabled: bool = row.get(1)?;
+            let api_key: Option<String> = row.get(2)?;
+            let base_url: Option<String> = row.get(3)?;
+            let default_model: Option<String> = row.get(4)?;
+            let models_json: Option<String> = row.get(5)?;
+            let verified_at: Option<f64> = row.get(6)?;
+            let latency_ms: Option<i64> = row.get(7)?;
+            let error: Option<String> = row.get(8)?;
+
+            let models = models_json
+                .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+                .unwrap_or_default();
+
+            Ok(ProviderRecord {
+                id,
+                enabled,
+                base_url,
+                default_model,
+                models,
+                verified_at,
+                latency_ms,
+                error,
+                has_key: api_key.is_some() && !api_key.unwrap().is_empty(),
+            })
+        }).ok()
+    }
+
+    pub fn set_provider_verification(
+        &self,
+        provider_id: &str,
+        latency_ms: Option<i64>,
+        error: Option<&str>,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "UPDATE providers SET latency_ms = ?1, error = ?2, verified_at = ?3 WHERE id = ?4",
+            params![latency_ms, error, now(), provider_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     // ---- Combos -----------------------------------------------------

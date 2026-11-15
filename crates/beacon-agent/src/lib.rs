@@ -1,3 +1,5 @@
+pub mod collection;
+pub mod curl;
 pub mod orchestrator;
 pub mod prompt;
 pub mod tools;
@@ -69,14 +71,12 @@ async fn handle_agent_models(State(state): State<AgentState>) -> Json<Value> {
         }
     }
 
-    let default_model = if let Some(codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
-        if codex_acc.is_free() {
-            Some("cx/chatgpt-4o-latest".to_string())
-        } else {
-            Some("cx/gpt-5.6-terra".to_string())
-        }
+    let default_model = if let Some(_codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
+        Some("cx/gpt-5.6-terra".to_string())
+    } else if let Some(_copilot_acc) = accounts.iter().find(|a| a.provider == "copilot") {
+        Some("gh/gpt-4o".to_string())
     } else if let Some(first_sub) = subscriptions.first() {
-        first_sub.get("models").and_then(|m| m.as_array()).and_then(|a| a.get(1)).and_then(|v| v.as_str()).map(String::from)
+        first_sub.get("models").and_then(|m| m.as_array()).and_then(|a| a.first()).and_then(|v| v.as_str()).map(String::from)
     } else {
         None
     };
@@ -95,14 +95,12 @@ async fn handle_agent_context(State(state): State<AgentState>) -> Json<Value> {
     let accounts = state.orchestrator.gateway.store.list_accounts();
     let has_gw = !accounts.is_empty();
 
-    let default_model = if let Some(codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
-        if codex_acc.is_free() {
-            Some("cx/chatgpt-4o-latest")
-        } else {
-            Some("cx/gpt-5.6-terra")
-        }
+    let default_model = if let Some(_codex_acc) = accounts.iter().find(|a| a.provider == "codex") {
+        Some("cx/gpt-5.6-terra")
+    } else if let Some(_copilot_acc) = accounts.iter().find(|a| a.provider == "copilot") {
+        Some("gh/gpt-4o")
     } else if has_gw {
-        Some("cx/chatgpt-4o-latest")
+        Some("cx/gpt-5.6-terra")
     } else {
         None
     };

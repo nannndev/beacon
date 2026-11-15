@@ -157,6 +157,11 @@ impl Store {
         };
 
         let proj = self.projects.iter().find(|p| p.id == pid).unwrap_or(&self.projects[0]);
+        self.current_config = self.config_for(proj);
+    }
+
+    /// Runnable config (vars, base URL, flattened endpoints with inherited auth) for one project.
+    pub fn config_for(&self, proj: &Project) -> TestConfig {
         let env = Self::get_active_env(proj);
 
         let mut effective_vars: HashMap<String, String> = HashMap::new();
@@ -209,7 +214,7 @@ impl Store {
             }
         }
 
-        self.current_config = TestConfig::new(base_url, effective_vars, parsed_tests);
+        TestConfig::new(base_url, effective_vars, parsed_tests)
     }
 
     fn flatten_items(nodes: &[Value], project_auth: Option<&Value>, out: &mut Vec<Value>) {
@@ -335,6 +340,10 @@ impl Store {
 
     pub fn save(&mut self) -> Result<(), String> {
         self.save_active_project();
+        // Linked folders are the readable project source; write them before the cache.
+        for project in &mut self.projects {
+            crate::file_sync::sync_before_save(project);
+        }
 
         let persisted = PersistedData {
             current_project_id: self.current_project_id.clone(),
@@ -419,6 +428,26 @@ impl Store {
         }
         self.save()?;
         Ok(format!("Deleted endpoint '{}'", needle))
+    }
+
+    /// Active project's tree; legacy flat projects are presented as a flat list of requests.
+    pub fn get_collection(&mut self) -> Vec<Value> {
+        self.save_active_project();
+        let Some(proj) = self.get_active_project() else { return Vec::new() };
+        if let Some(items) = &proj.items {
+            return items.clone();
+        }
+        proj.tests.clone().unwrap_or_default().into_iter().map(|mut t| { t["type"] = json!("request"); t }).collect()
+    }
+
+    pub fn set_collection(&mut self, items: Vec<Value>) -> Result<(), String> {
+        // Flush in-memory endpoint edits into the tree before replacing it.
+        self.save_active_project();
+        let proj = self.get_active_project_mut().ok_or("No active project")?;
+        proj.items = Some(items);
+        proj.tests = None;
+        self.sync_current_config();
+        self.save()
     }
 
     pub fn duplicate_endpoint(&mut self, id_or_name: &str) -> Result<EndpointTest, String> {
@@ -591,6 +620,9 @@ impl beacon_agent::WorkspaceOps for ServerWorkspace {
     fn delete_endpoint(&self, id_or_name: &str) -> Result<String, String> {
         self.0.write().delete_endpoint(id_or_name)
     }
+    fn duplicate_endpoint(&self, id_or_name: &str) -> Result<EndpointTest, String> {
+        self.0.write().duplicate_endpoint(id_or_name)
+    }
     fn set_variable(&self, name: &str, value: &str) -> Result<(), String> {
         self.0.write().set_variable(name, value)
     }
@@ -605,5 +637,11 @@ impl beacon_agent::WorkspaceOps for ServerWorkspace {
     }
     fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String> {
         self.0.write().create_project(name, base_url)
+    }
+    fn get_collection(&self) -> Vec<Value> {
+        self.0.write().get_collection()
+    }
+    fn set_collection(&self, items: Vec<Value>) -> Result<(), String> {
+        self.0.write().set_collection(items)
     }
 }

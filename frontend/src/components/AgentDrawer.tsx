@@ -5,9 +5,11 @@ import {
   ArrowDown,
   ArrowRight,
   Bot,
+  Brain,
   Check,
   ChevronDown,
   ChevronRight,
+  Clock,
   Command,
   Copy,
   Download,
@@ -19,6 +21,7 @@ import {
   Maximize2,
   Minimize2,
   Paperclip,
+  PenLine,
   Play,
   Plus,
   RotateCcw,
@@ -139,16 +142,88 @@ function uid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
 }
 
-function TypingDots() {
+type StreamPhase = 'connecting' | 'thinking' | 'executing' | 'writing'
+
+const CHARACTER_BADGES: Record<string, { emoji: string; label: string }> = {
+  default: { emoji: '🤝', label: 'Teammate' },
+  chill: { emoji: '😎', label: 'Chill' },
+  hype: { emoji: '🔥', label: 'Expressive' },
+  empathetic: { emoji: '💛', label: 'Empathetic' },
+  auditor: { emoji: '🛡️', label: 'Auditor' },
+  mentor: { emoji: '🧠', label: 'Mentor' },
+}
+
+function AgentActivityIndicator({
+  phase,
+  runningToolName,
+  hasCompletedTools,
+  modelName,
+  step,
+  elapsedSeconds,
+  compact = false,
+}: {
+  phase: StreamPhase
+  runningToolName?: string
+  hasCompletedTools?: boolean
+  modelName?: string
+  step: number
+  elapsedSeconds: number
+  compact?: boolean
+}) {
+  let label = 'Thinking & reasoning…'
+  let Icon = Brain
+  let iconClass = 'text-emerald-400 animate-pulse'
+  let dotClass = 'bg-emerald-500'
+
+  if (runningToolName) {
+    label = `Running ${runningToolName}…`
+    Icon = Loader2
+    iconClass = 'text-amber-400 animate-spin'
+    dotClass = 'bg-amber-400'
+  } else if (phase === 'connecting') {
+    const target = modelName && modelName !== 'auto' ? modelName : 'model'
+    label = `Connecting to ${target}…`
+    Icon = Sparkles
+    iconClass = 'text-cyan-400 animate-pulse'
+    dotClass = 'bg-cyan-400'
+  } else if (phase === 'writing') {
+    label = 'Writing response…'
+    Icon = PenLine
+    iconClass = 'text-emerald-400 animate-pulse'
+    dotClass = 'bg-emerald-500'
+  } else if (hasCompletedTools) {
+    label = 'Analyzing tool results & thinking…'
+    Icon = Brain
+    iconClass = 'text-violet-400 animate-pulse'
+    dotClass = 'bg-violet-400'
+  }
+
   return (
-    <div className="flex items-center gap-1.5 py-1 px-1" aria-label="typing">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-emerald-500/80 animate-pulse"
-          style={{ animationDelay: `${i * 160}ms`, animationDuration: '1.2s' }}
-        />
-      ))}
+    <div
+      className={`flex items-center justify-between gap-3 ${
+        compact ? 'text-[10.5px] text-muted-foreground pt-1 px-1' : 'py-0.5 text-[11.5px] text-foreground/90'
+      }`}
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-65 ${dotClass}`} />
+          <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClass}`} />
+        </span>
+        <Icon className={`w-3.5 h-3.5 shrink-0 ${iconClass}`} />
+        <span className="truncate font-medium">{label}</span>
+        {step > 1 && (
+          <span className="px-1.5 py-0 rounded bg-muted/80 border border-border/70 font-mono text-[9.5px] text-muted-foreground shrink-0">
+            Step {step}
+          </span>
+        )}
+      </div>
+      {elapsedSeconds >= 1 && (
+        <span className="inline-flex items-center gap-1 font-mono text-[10px] text-muted-foreground shrink-0 tabular-nums">
+          <Clock className="w-2.5 h-2.5 opacity-70" />
+          {elapsedSeconds}s
+        </span>
+      )}
     </div>
   )
 }
@@ -463,6 +538,20 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [activeStep, setActiveStep] = useState(0)
+  const [streamPhase, setStreamPhase] = useState<StreamPhase>('connecting')
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!streaming || !streamStartedAt) {
+      setElapsedSeconds(0)
+      return
+    }
+    const id = window.setInterval(() => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)))
+    }, 500)
+    return () => window.clearInterval(id)
+  }, [streaming, streamStartedAt])
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({})
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
@@ -471,6 +560,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
   const [attachedSnapshots, setAttachedSnapshots] = useState<AttachedSnapshot[]>([])
 
   const abortRef = useRef<AbortController | null>(null)
+  const afterToolRef = useRef(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
@@ -691,6 +781,9 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       abortRef.current = controller
       setStreaming(true)
       setActiveStep(1)
+      setStreamPhase('connecting')
+      setStreamStartedAt(Date.now())
+      setElapsedSeconds(0)
       setRecentOutcome('none')
       window.clearTimeout(doneResetRef.current)
 
@@ -718,13 +811,25 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           },
           {
             onModel: (resolvedModel) => {
+              setStreamPhase((prev) => (prev === 'connecting' ? 'thinking' : prev))
               patchAssistant((m) => ({ ...m, model: resolvedModel }))
             },
             onDelta: (delta) => {
-              patchAssistant((m) => ({ ...m, content: (m.content || '') + delta }))
+              setStreamPhase('writing')
+              if (!delta) return
+              // Text after a tool call is a new agent turn: start it on its own
+              // paragraph so a leading "## heading" still renders as markdown.
+              const newTurn = afterToolRef.current
+              afterToolRef.current = false
+              patchAssistant((m) => ({
+                ...m,
+                content: newTurn && m.content ? `${m.content.trimEnd()}\n\n${delta}` : (m.content || '') + delta,
+              }))
             },
             onToolStart: (ev) => {
+              afterToolRef.current = true
               setActiveStep((st) => st + 1)
+              setStreamPhase('executing')
               patchAssistant((m) => {
                 const list = [...(m.toolExecutions || [])]
                 const idx = list.findIndex((t) => t.call_id === ev.call_id)
@@ -742,6 +847,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
               })
             },
             onToolResult: (ev) => {
+              setStreamPhase('thinking')
               patchAssistant((m) => {
                 const list = [...(m.toolExecutions || [])]
                 const idx = list.findIndex((t) => t.call_id === ev.call_id)
@@ -793,6 +899,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       } finally {
         if (abortRef.current === controller) abortRef.current = null
         setStreaming(false)
+        setStreamStartedAt(null)
       }
     },
     [context, prefs, updateSession, onWorkspaceChanged],
@@ -835,8 +942,8 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       updateSession(activeSession.id, (s) => ({
         ...s,
         title: isFirst ? baseText.slice(0, 48) + (baseText.length > 48 ? '…' : '') : s.title,
-        projectId: context.projectId,
-        projectName: context.projectName,
+        projectId: prefs.scope === 'global' ? undefined : context.projectId,
+        projectName: prefs.scope === 'global' ? 'Global Session' : context.projectName,
         updatedAt: Date.now(),
         messages: nextMessages,
       }))
@@ -1222,12 +1329,18 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           <div className="flex items-center gap-1.5 min-w-0">
             <button
               type="button"
-              onClick={() => setShowSettings(true)}
-              title="Change scope in settings"
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-medium text-[9.5px] shrink-0 cursor-pointer ${
+              onClick={() => {
+                const nextScope = prefs.scope === 'workspace' ? 'global' : 'workspace'
+                const nextPrefs = { ...prefs, scope: nextScope }
+                setPrefs(nextPrefs)
+                saveAgentPreferences(nextPrefs)
+                toast.success(nextScope === 'global' ? 'Switched to Global Session (persists across projects)' : 'Switched to Workspace Scope')
+              }}
+              title="Click to toggle between Workspace Scope and Global Session"
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-medium text-[9.5px] shrink-0 cursor-pointer transition-colors ${
                 prefs.scope === 'workspace'
-                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
-                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20'
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
               }`}
             >
               {prefs.scope === 'workspace' ? <FolderKanban className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
@@ -1254,18 +1367,34 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
               </span>
             )}
           </div>
-          {streaming && activeStep > 1 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono text-[9.5px] flex items-center gap-1 shrink-0">
-              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              Step {activeStep}/{prefs.maxSteps > 0 ? prefs.maxSteps : '∞'}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {(() => {
+              const badge = CHARACTER_BADGES[prefs.character || 'default'] || CHARACTER_BADGES.default
+              return (
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(true)}
+                  title="Change AI character, tone, & emotion"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border/80 bg-background/60 hover:bg-muted text-[9.5px] text-foreground/85 transition-colors cursor-pointer"
+                >
+                  <span>{badge.emoji}</span>
+                  <span>{badge.label}</span>
+                </button>
+              )
+            })()}
+            {streaming && activeStep > 1 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono text-[9.5px] flex items-center gap-1 shrink-0">
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                Step {activeStep}/{prefs.maxSteps > 0 ? prefs.maxSteps : '∞'}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* History Dropdown with Search */}
         {showHistory && (
           <div
-            style={{ animation: 'agent-expand-in 200ms ease-out' }}
+            style={{ animation: 'agent-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1)' }}
             className="max-h-80 flex flex-col border-b border-border bg-background shrink-0"
           >
             {sessions.length > 2 && (
@@ -1522,29 +1651,64 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                           </div>
                         )}
 
-                        {/* Message Bubble */}
-                        {(msg.role === 'user' || msg.content || (!msg.error && !msg.pendingApproval && streaming && !msg.toolExecutions?.length)) && (
-                          <div
-                            className={`rounded-2xl px-3.5 py-2.5 transition-all duration-200 ${
-                              msg.role === 'user'
-                                ? 'btn-metal rounded-tr-sm shadow-sm'
-                                : 'bg-muted/50 border border-border text-foreground rounded-tl-sm'
-                            }`}
-                          >
-                            {msg.role === 'user' ? (
-                              <div className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.content}</div>
-                            ) : msg.content ? (
-                              <div className="relative">
-                                <RichMarkdown text={msg.content} />
-                                {streaming && messages[messages.length - 1]?.id === msg.id && (
-                                  <span className="inline-block w-1.5 h-3.5 ml-1 bg-emerald-500 rounded-sm animate-pulse align-middle" />
-                                )}
-                              </div>
-                            ) : (
-                              <TypingDots />
-                            )}
-                          </div>
-                        )}
+                        {/* Message Bubble & Live AI Activity */}
+                        {(() => {
+                          const isLatestStreaming = streaming && messages[messages.length - 1]?.id === msg.id
+                          const runningTool = msg.toolExecutions?.find((t) => t.status === 'running')
+                          const hasCompletedTools = Boolean(msg.toolExecutions?.some((t) => t.status !== 'running'))
+                          const showStatusBubble =
+                            msg.role === 'assistant' &&
+                            !msg.content &&
+                            !msg.error &&
+                            !msg.pendingApproval &&
+                            isLatestStreaming &&
+                            !runningTool
+
+                          return (
+                            <>
+                              {(msg.role === 'user' || msg.content || showStatusBubble) && (
+                                <div
+                                  className={`rounded-2xl px-3.5 py-2.5 transition-all duration-200 ${
+                                    msg.role === 'user'
+                                      ? 'btn-metal rounded-tr-sm shadow-sm'
+                                      : 'bg-muted/50 border border-border text-foreground rounded-tl-sm'
+                                  }`}
+                                >
+                                  {msg.role === 'user' ? (
+                                    <div className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.content}</div>
+                                  ) : msg.content ? (
+                                    <div className="relative">
+                                      <RichMarkdown text={msg.content} />
+                                      {isLatestStreaming && (
+                                        <span className="inline-block w-1.5 h-3.5 ml-1 bg-emerald-500 rounded-sm animate-pulse align-middle" />
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <AgentActivityIndicator
+                                      phase={streamPhase}
+                                      runningToolName={runningTool ? runningTool.summary || runningTool.name : undefined}
+                                      hasCompletedTools={hasCompletedTools}
+                                      modelName={msg.model || activeSession?.model}
+                                      step={activeStep}
+                                      elapsedSeconds={elapsedSeconds}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              {isLatestStreaming && (msg.content || runningTool) && !msg.error && !msg.pendingApproval && (
+                                <AgentActivityIndicator
+                                  compact
+                                  phase={streamPhase}
+                                  runningToolName={runningTool ? runningTool.summary || runningTool.name : undefined}
+                                  hasCompletedTools={hasCompletedTools}
+                                  modelName={msg.model || activeSession?.model}
+                                  step={activeStep}
+                                  elapsedSeconds={elapsedSeconds}
+                                />
+                              )}
+                            </>
+                          )
+                        })()}
 
                         {/* Error Card */}
                         {msg.error && <ErrorCard error={msg.error} onOpenGateway={onOpenGateway} />}
@@ -1675,7 +1839,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
             <div className="p-3 shrink-0 relative">
               {matchingSlashCommands.length > 0 && (
                 <div
-                  style={{ animation: 'agent-pop-in 120ms ease-out' }}
+                  style={{ animation: 'agent-pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1)' }}
                   className="mb-2 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
                 >
                   <div className="px-2.5 py-1 border-b border-border bg-background/70 flex items-center justify-between text-[10px] text-muted-foreground">
@@ -1714,7 +1878,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   e.preventDefault()
                   void handleSend()
                 }}
-                className="rounded-2xl border border-border bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-foreground/15 transition-shadow"
+                className="rounded-2xl border border-border/90 bg-background/95 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-foreground/15 focus-within:shadow-md transition-all duration-200"
               >
                 {attachedSnapshots.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
@@ -1769,135 +1933,138 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   className="block w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-[13px] text-foreground placeholder-muted-foreground outline-none max-h-40"
                 />
 
-                <div className="flex items-center gap-1 px-1.5 pb-1.5 flex-wrap">
-                  <AgentModelPicker
-                    value={activeSession?.model || 'auto'}
-                    onChange={(nextModel) => {
-                      if (!activeSession) return
-                      updateSession(activeSession.id, (s) => ({ ...s, model: nextModel }))
-                    }}
-                    options={modelOptions}
-                    combos={combosMap}
-                    defaultLabel={modelsCatalog?.default_model}
-                    disabled={streaming}
-                    onManageProviders={
-                      onOpenGateway
-                        ? () => {
-                            onOpenChange(false)
-                            onOpenGateway()
-                          }
-                        : undefined
-                    }
-                  />
+                <div className="flex items-end justify-between gap-2 px-1.5 pb-1.5">
+                  <div className="flex items-center gap-1 flex-wrap min-w-0 flex-1">
+                    <AgentModelPicker
+                      value={activeSession?.model || 'auto'}
+                      onChange={(nextModel) => {
+                        if (!activeSession) return
+                        updateSession(activeSession.id, (s) => ({ ...s, model: nextModel }))
+                      }}
+                      options={modelOptions}
+                      combos={combosMap}
+                      defaultLabel={modelsCatalog?.default_model}
+                      disabled={streaming}
+                      onManageProviders={
+                        onOpenGateway
+                          ? () => {
+                              onOpenChange(false)
+                              onOpenGateway()
+                            }
+                          : undefined
+                      }
+                    />
 
-                  {messages.length >= 6 && !streaming && (
-                    <button
-                      type="button"
-                      onClick={handleCompactChat}
-                      title="Summarize older turns & tool outputs (/compact)"
-                      className="h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    >
-                      <Layers className="w-3 h-3 text-emerald-500" />
-                      <span className="hidden sm:inline">Compact</span>
-                    </button>
-                  )}
-
-                  {/* Context Snapshot Quick-Injector */}
-                  <div ref={contextMenuRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowContextMenu((v) => !v)}
-                      title="Attach live Beacon context snapshot"
-                      className={`h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 transition-colors ${
-                        attachedSnapshots.length > 0 || showContextMenu
-                          ? 'text-emerald-500 bg-emerald-500/10'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
-                    >
-                      <Paperclip className="w-3 h-3" />
-                      <span className="hidden sm:inline">Context</span>
-                    </button>
-                    {showContextMenu && (
-                      <div
-                        style={{ animation: 'agent-pop-in 120ms ease-out' }}
-                        className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-border bg-card shadow-2xl p-1.5 z-50"
+                    {messages.length >= 6 && !streaming && (
+                      <button
+                        type="button"
+                        onClick={handleCompactChat}
+                        title="Summarize older turns & tool outputs (/compact)"
+                        className="h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                       >
-                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Attach Live Snapshot
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => attachSnapshot('project')}
-                          className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 flex items-center gap-2"
-                        >
-                          <span>📁</span>
-                          <span>Project &amp; Active Env</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!context.selectedEndpointId}
-                          onClick={() => attachSnapshot('endpoint')}
-                          className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2"
-                        >
-                          <span>🎯</span>
-                          <span className="truncate">
-                            {context.selectedEndpointName || 'Focused Endpoint'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!context.lastSendResult}
-                          onClick={() => attachSnapshot('response')}
-                          className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2"
-                        >
-                          <span>📡</span>
-                          <span>Last Send Response</span>
-                        </button>
-                      </div>
+                        <Layers className="w-3 h-3 text-emerald-500" />
+                        <span className="hidden sm:inline">Compact</span>
+                      </button>
                     )}
+
+                    {/* Context Snapshot Quick-Injector */}
+                    <div ref={contextMenuRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowContextMenu((v) => !v)}
+                        title="Attach live Beacon context snapshot"
+                        className={`h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 transition-colors ${
+                          attachedSnapshots.length > 0 || showContextMenu
+                            ? 'text-emerald-500 bg-emerald-500/10'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                      >
+                        <Paperclip className="w-3 h-3" />
+                        <span className="hidden sm:inline">Context</span>
+                      </button>
+                      {showContextMenu && (
+                        <div
+                          style={{ animation: 'agent-pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1)' }}
+                          className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-border bg-card shadow-2xl p-1.5 z-50"
+                        >
+                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Attach Live Snapshot
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => attachSnapshot('project')}
+                            className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 flex items-center gap-2 transition-colors"
+                          >
+                            <span>📁</span>
+                            <span>Project &amp; Active Env</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!context.selectedEndpointId}
+                            onClick={() => attachSnapshot('endpoint')}
+                            className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2 transition-colors"
+                          >
+                            <span>🎯</span>
+                            <span className="truncate">
+                              {context.selectedEndpointName || 'Focused Endpoint'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!context.lastSendResult}
+                            onClick={() => attachSnapshot('response')}
+                            className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2 transition-colors"
+                          >
+                            <span>📡</span>
+                            <span>Last Send Response</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <ChipSelect
+                      icon={<Zap className={`w-3 h-3 ${runMode === 'full' ? 'text-amber-500' : ''}`} />}
+                      label="Execution Mode"
+                      value={runMode}
+                      onChange={(v) => {
+                        if (!activeSession) return
+                        updateSession(activeSession.id, (s) => ({
+                          ...s,
+                          approvalMode: v as AgentApprovalMode,
+                        }))
+                      }}
+                      options={[
+                        { value: 'safe', label: 'Safe', hint: 'Confirm probes, writes & heavy' },
+                        { value: 'agent', label: 'Agent', hint: 'Auto edits, confirm heavy' },
+                        { value: 'full', label: 'Auto', hint: 'Autonomous overdrive' },
+                      ]}
+                    />
                   </div>
 
-                  <ChipSelect
-                    icon={<Zap className={`w-3 h-3 ${runMode === 'full' ? 'text-amber-500' : ''}`} />}
-                    label="Execution Mode"
-                    value={runMode}
-                    onChange={(v) => {
-                      if (!activeSession) return
-                      updateSession(activeSession.id, (s) => ({
-                        ...s,
-                        approvalMode: v as AgentApprovalMode,
-                      }))
-                    }}
-                    options={[
-                      { value: 'safe', label: 'Safe', hint: 'Confirm probes, writes & heavy' },
-                      { value: 'agent', label: 'Agent', hint: 'Auto edits, confirm heavy' },
-                      { value: 'full', label: 'Auto', hint: 'Autonomous overdrive' },
-                    ]}
-                  />
-
-                  <div className="flex-1" />
-
-                  {streaming ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      onClick={() => abortRef.current?.abort()}
-                      title="Stop generation"
-                      className="h-8 w-8 rounded-xl bg-red-600 hover:bg-red-700 text-white shrink-0"
-                    >
-                      <Square className="w-3.5 h-3.5" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={!input.trim() && attachedSnapshots.length === 0}
-                      title="Send (Enter)"
-                      className="h-8 w-8 rounded-xl btn-metal disabled:opacity-30 shrink-0 transition-transform active:scale-95"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
+                  {/* Pinned bottom-right Send / Stop slot so wrapping left controls never shift it */}
+                  <div className="shrink-0 self-end flex items-center">
+                    {streaming ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        onClick={() => abortRef.current?.abort()}
+                        title="Stop generation"
+                        className="h-8 w-8 rounded-xl bg-red-600 hover:bg-red-700 text-white shrink-0 transition-all duration-150 hover:scale-[1.04] active:scale-95 shadow-sm"
+                      >
+                        <Square className="w-3.5 h-3.5" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={!input.trim() && attachedSnapshots.length === 0}
+                        title="Send (Enter)"
+                        className="h-8 w-8 rounded-xl btn-metal disabled:opacity-30 shrink-0 transition-all duration-150 hover:scale-[1.04] active:scale-95"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </form>
               <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1.5 pt-1.5">
