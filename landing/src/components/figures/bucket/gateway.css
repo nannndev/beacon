@@ -1,5 +1,0 @@
-/* Scoped to the figure: the request pulse and the per-account lamps. */
-.gw-figure .gw-pulse { fill: var(--anatomy-lit); }
-.gw-figure .gw-lamp { fill: var(--anatomy-lit); transition: fill-opacity 0.4s ease; }
-.gw-figure .gw-lamp[data-on="off"] { fill-opacity: 0.12; }
-.gw-figure .gw-piston { fill: var(--anatomy-lit); stroke: var(--anatomy-lit); stroke-width: 0.6px; vector-effect: non-scaling-stroke; }

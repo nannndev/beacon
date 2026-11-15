@@ -48,7 +48,6 @@ import {
   useReducedMotion,
 } from '../components/motion'
 import { ThemedShot, type ShotPair } from '../components/ThemedShot'
-import { GatewayFigure } from '../components/figures/bucket/GatewayFigure'
 import requestBuilderLight from '../assets/screens/request-builder-light.webp'
 import requestBuilderDark from '../assets/screens/request-builder-dark.webp'
 import responseAssertionsLight from '../assets/screens/response-assertions-light.webp'
@@ -632,14 +631,13 @@ claude mcp add beacon -- <path-to>/mcp_server
               machine. When an account hits its rate limit the gateway fails over to the
               next one instead of returning an error.
             </p>
-            <p className="mt-3 max-w-lg text-pretty text-sm leading-6 text-muted-foreground">
-              The figure is that rule running live: each request takes the first account
-              with quota left, and the piston in each cylinder shows how much of that
-              account&apos;s window is used.
-            </p>
           </Reveal>
-          <Reveal delay={0.1}>
-            <GatewayFigure />
+          <Reveal delay={0.1} className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xl">
+            <ThemedShot
+              shot={SHOTS.gateway}
+              alt="Beacon AI Gateway with ChatGPT Codex, GitHub Copilot, Kimi Code and Kilo Code accounts connected"
+              className="h-auto w-full"
+            />
           </Reveal>
         </div>
       </section>
