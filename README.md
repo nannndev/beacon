@@ -2,9 +2,48 @@
 
 **Beacon** is a modern API workspace for building requests, chaining API flows, validating responses, and running authorized load and rate-limit tests.
 
-Built with React, TypeScript, Vite, shadcn/ui, FastAPI, and an optional Tauri desktop shell for Windows, macOS, and Linux.
+Built with **Rust** (`beacon-core`, `beacon-server`, `beacon-gateway`, `beacon-agent`, `beacon-mcp`, `beacon-cli`), **React**, **TypeScript**, **Vite**, **shadcn/ui**, and **Tauri v2** for macOS, Windows, and Linux — with no Python runtime required.
 
 ![Beacon API workspace and testing features](./assets/beacon-feature-banner.png)
+
+## Install
+
+### macOS (Homebrew)
+
+```bash
+brew install --cask --no-quarantine nannndev/tap/beacon
+```
+
+Or via one-liner shell installer (copies `Beacon.app` to `/Applications` and links the `beacon` CLI):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash
+```
+
+### Windows (Scoop / PowerShell)
+
+```powershell
+scoop bucket add nannndev https://github.com/nannndev/scoop-bucket
+scoop install beacon
+```
+
+Or via PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.ps1 | iex
+```
+
+### Linux (`AppImage` / `.deb`)
+
+```bash
+# Portable AppImage (no root required)
+curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash
+
+# Debian / Ubuntu (.deb)
+curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash -s -- --deb
+```
+
+Direct installers (`.dmg`, `.exe`, `.AppImage`, `.deb`) are also published on [GitHub Releases](https://github.com/nannndev/beacon/releases).
 
 ## Product Preview
 
@@ -76,61 +115,47 @@ Private environment values remain under the ignored `.beacon/` directory. Respon
 - Load, Ramp, Spike, Soak, Rate Probe, Capacity, Fuzz, Benchmark, Scenario, and WebSocket test modes, each with a one-line behaviour summary (Fuzz exposes selectable injection types)
 - Live Monitor with honest per-second throughput, response-time and error-rate charts, a p95 reference, response logs, and exportable results
 - Local Run History with pinning, filters, expandable charts, a latency-distribution histogram, and semantic two-run comparison
-- Desktop app via Tauri with bundled FastAPI and MCP sidecars
-- Headless CLI for endpoint, folder, and full-project checks with JSON/JUnit reports and CI exit codes
-- Standard MCP server for Claude, Cursor, Windsurf, Cline, Continue, and other MCP clients
-- Local AI gateway: one OpenAI- and Anthropic-compatible endpoint for OpenAI, Anthropic, DeepSeek, OpenRouter, Groq, Ollama and more, with gateway keys, fallback combos and usage logs
+- Native desktop app via Tauri v2 with bundled Rust backend, CLI, and MCP sidecars
+- Built-in **Beacon AI Copilot** drawer with live activity states, character/vibe presets, custom `SKILL.md` playbooks, and multi-step tool execution across projects
+- Headless CLI (`beacon`) for endpoint, folder, and full-project checks with JSON/JUnit reports and CI exit codes
+- Standard MCP server (`beacon-mcp`) for Claude, Cursor, Windsurf, Cline, Continue, Antigravity, and other MCP clients
+- Unified **AI Gateway**: OpenAI- and Anthropic-compatible local proxy supporting 21 API-key providers and 8 OAuth subscription providers (Claude, ChatGPT/Codex, GitHub Copilot, Gemini CLI, Kimi, etc.), encrypted vault (`gateway.db`), fallback combos, and usage logs
 
-## Quick Start
+## Development Quick Start
 
-### One-time setup
+### Prerequisites
 
-```bash
-# pnpm (recommended)
-pnpm run setup
+- **Rust** toolchain (`cargo`, `rustc`)
+- **Node.js** + **pnpm**
 
-# Windows alternative
-setup.bat
-```
-
-### Start the app
+### Start the backend & frontend
 
 ```bash
-pnpm dev
+# Terminal 1 — Rust Axum backend (port 8000)
+cargo run -p beacon-server --release
+
+# Terminal 2 — React + Vite frontend (port 5173)
+cd frontend
+pnpm install
+pnpm run dev
 ```
 
-The launcher reads ports from the root `.env` and starts:
+### Run Tauri desktop app locally
 
-- FastAPI backend: <http://localhost:8000>
-- React frontend: <http://localhost:5173>
-- VitePress docs: <http://localhost:5174/docs/>
-- Landing page: <http://localhost:5175>
+```bash
+cd frontend
+pnpm run desktop:build
+```
+
+### Run tests
+
+```bash
+cargo test --workspace
+```
 
 On a fresh install, Beacon opens a conservative JSONPlaceholder sample project
 with six resource folders and 47 requests. Existing workspaces are never
 replaced; use **Add Sample Project** in the sidebar to add or reopen it.
-
-To start individual services:
-
-```bash
-pnpm run dev:backend
-pnpm run dev:frontend
-pnpm run dev:docs
-```
-
-### Manual setup
-
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
-
-# Frontend (new terminal)
-cd frontend
-pnpm install
-pnpm dev
-```
 
 ## MCP Server
 
