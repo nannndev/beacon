@@ -1,0 +1,34 @@
+{
+  "version": "0.11.1",
+  "description": "Native Rust API workbench, load tester, AI Gateway, and MCP copilot",
+  "homepage": "https://github.com/nannndev/beacon",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/nannndev/beacon/releases/download/v0.11.1/Beacon_0.11.1_x64-setup.exe#/dl.exe",
+      "hash": "REPLACE_WITH_SHA256"
+    }
+  },
+  "installer": {
+    "args": [
+      "/S"
+    ]
+  },
+  "uninstaller": {
+    "file": "$LOCALAPPDATA\\Beacon\\uninstall.exe",
+    "args": [
+      "/S"
+    ]
+  },
+  "checkver": {
+    "github": "https://github.com/nannndev/beacon"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/nannndev/beacon/releases/download/v$version/Beacon_$version_x64-setup.exe#/dl.exe"
+      }
+    }
+  }
+}
+

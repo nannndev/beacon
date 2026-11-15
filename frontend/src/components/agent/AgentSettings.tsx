@@ -23,7 +23,7 @@ const Seg = <T extends string>({
   onChange: (v: T) => void
   label: string
 }) => (
-  <div role="radiogroup" aria-label={label} className="flex w-full rounded-lg border border-border p-0.5 bg-background">
+  <div role="radiogroup" aria-label={label} className="flex w-full rounded-lg border border-border p-0.5 bg-muted/40">
     {options.map(([v, text]) => (
       <button
         key={v}
@@ -31,8 +31,8 @@ const Seg = <T extends string>({
         role="radio"
         aria-checked={value === v}
         onClick={() => onChange(v)}
-        className={`flex-1 px-2 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors cursor-pointer ${
-          value === v ? 'btn-metal' : 'text-muted-foreground hover:text-foreground'
+        className={`flex-1 px-2 py-1 rounded-md text-[11px] whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer ${
+          value === v ? 'btn-metal shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
         }`}
       >
         {text}
@@ -124,23 +124,23 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
   }
 
   return (
-    <div style={{ animation: 'agent-expand-in 220ms ease-out' }} className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">Agent Skills &amp; Preferences</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Customize tone, workflow guides, project notes, and custom SKILL.md playbooks.
-            </p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose} title="Close" className="h-8 w-8 shrink-0 text-muted-foreground">
-            <X className="w-4 h-4" />
-          </Button>
+    <div style={{ animation: 'agent-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1)' }} className="flex-1 flex flex-col min-h-0">
+      <div className="px-4 py-3 border-b border-border/70 bg-background/75 backdrop-blur-md flex items-start justify-between gap-3 shrink-0">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">Agent Skills &amp; Preferences</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Customize character, tone, workflow guides, project notes, and custom SKILL.md playbooks.
+          </p>
         </div>
+        <Button variant="ghost" size="icon" onClick={onClose} title="Close" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
 
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
         <section className="space-y-2.5">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Character &amp; Vibe</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {CHARACTER_PRESETS.map((c) => {
               const active = (draft.character || 'default') === c.id
               return (
@@ -155,13 +155,13 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
                       ...(c.style ? { style: c.style } : {}),
                     })
                   }
-                  className={`flex items-start gap-2 rounded-xl border p-2 text-left transition-all cursor-pointer ${
+                  className={`group flex items-start gap-2 rounded-xl border p-2.5 text-left transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer ${
                     active
-                      ? 'border-emerald-500/60 bg-emerald-500/10 shadow-sm'
-                      : 'border-border bg-background/60 hover:bg-muted/60 hover:border-border'
+                      ? 'border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/25 shadow-sm'
+                      : 'border-border bg-background/60 hover:bg-muted/60 hover:border-border/80'
                   }`}
                 >
-                  <span className="text-base leading-none mt-0.5 shrink-0">{c.emoji}</span>
+                  <span className="text-base leading-none mt-0.5 shrink-0 transition-transform duration-150 group-hover:scale-110">{c.emoji}</span>
                   <div className="min-w-0">
                     <div className={`text-[11px] font-semibold truncate ${active ? 'text-emerald-400' : 'text-foreground'}`}>
                       {c.name}
@@ -470,12 +470,12 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
       </div>
 
       {/* Footer matching 7Server AgentSettings */}
-      <div className="p-3 border-t border-border bg-background/70 flex items-center justify-between gap-2 shrink-0">
+      <div className="p-3 border-t border-border bg-background/80 backdrop-blur-md flex items-center justify-between gap-2 shrink-0">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setDraft({ ...DEFAULT_AGENT_PREFERENCES })}
-          className="h-8 text-xs text-muted-foreground"
+          className="h-8 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Reset
         </Button>
@@ -487,7 +487,7 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
             size="sm"
             disabled={!dirty}
             onClick={() => onSave(draft)}
-            className="h-8 text-xs px-3.5 btn-metal"
+            className="h-8 text-xs px-3.5 btn-metal transition-transform active:scale-[0.97]"
           >
             Save Preferences
           </Button>

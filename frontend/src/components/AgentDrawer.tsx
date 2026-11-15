@@ -1394,7 +1394,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         {/* History Dropdown with Search */}
         {showHistory && (
           <div
-            style={{ animation: 'agent-expand-in 200ms ease-out' }}
+            style={{ animation: 'agent-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1)' }}
             className="max-h-80 flex flex-col border-b border-border bg-background shrink-0"
           >
             {sessions.length > 2 && (
@@ -1839,7 +1839,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
             <div className="p-3 shrink-0 relative">
               {matchingSlashCommands.length > 0 && (
                 <div
-                  style={{ animation: 'agent-pop-in 120ms ease-out' }}
+                  style={{ animation: 'agent-pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1)' }}
                   className="mb-2 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
                 >
                   <div className="px-2.5 py-1 border-b border-border bg-background/70 flex items-center justify-between text-[10px] text-muted-foreground">
@@ -1878,7 +1878,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   e.preventDefault()
                   void handleSend()
                 }}
-                className="rounded-2xl border border-border bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-foreground/15 transition-shadow"
+                className="rounded-2xl border border-border/90 bg-background/95 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-foreground/15 focus-within:shadow-md transition-all duration-200"
               >
                 {attachedSnapshots.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
@@ -1933,135 +1933,138 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   className="block w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-[13px] text-foreground placeholder-muted-foreground outline-none max-h-40"
                 />
 
-                <div className="flex items-center gap-1 px-1.5 pb-1.5 flex-wrap">
-                  <AgentModelPicker
-                    value={activeSession?.model || 'auto'}
-                    onChange={(nextModel) => {
-                      if (!activeSession) return
-                      updateSession(activeSession.id, (s) => ({ ...s, model: nextModel }))
-                    }}
-                    options={modelOptions}
-                    combos={combosMap}
-                    defaultLabel={modelsCatalog?.default_model}
-                    disabled={streaming}
-                    onManageProviders={
-                      onOpenGateway
-                        ? () => {
-                            onOpenChange(false)
-                            onOpenGateway()
-                          }
-                        : undefined
-                    }
-                  />
+                <div className="flex items-end justify-between gap-2 px-1.5 pb-1.5">
+                  <div className="flex items-center gap-1 flex-wrap min-w-0 flex-1">
+                    <AgentModelPicker
+                      value={activeSession?.model || 'auto'}
+                      onChange={(nextModel) => {
+                        if (!activeSession) return
+                        updateSession(activeSession.id, (s) => ({ ...s, model: nextModel }))
+                      }}
+                      options={modelOptions}
+                      combos={combosMap}
+                      defaultLabel={modelsCatalog?.default_model}
+                      disabled={streaming}
+                      onManageProviders={
+                        onOpenGateway
+                          ? () => {
+                              onOpenChange(false)
+                              onOpenGateway()
+                            }
+                          : undefined
+                      }
+                    />
 
-                  {messages.length >= 6 && !streaming && (
-                    <button
-                      type="button"
-                      onClick={handleCompactChat}
-                      title="Summarize older turns & tool outputs (/compact)"
-                      className="h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    >
-                      <Layers className="w-3 h-3 text-emerald-500" />
-                      <span className="hidden sm:inline">Compact</span>
-                    </button>
-                  )}
-
-                  {/* Context Snapshot Quick-Injector */}
-                  <div ref={contextMenuRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowContextMenu((v) => !v)}
-                      title="Attach live Beacon context snapshot"
-                      className={`h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 transition-colors ${
-                        attachedSnapshots.length > 0 || showContextMenu
-                          ? 'text-emerald-500 bg-emerald-500/10'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
-                    >
-                      <Paperclip className="w-3 h-3" />
-                      <span className="hidden sm:inline">Context</span>
-                    </button>
-                    {showContextMenu && (
-                      <div
-                        style={{ animation: 'agent-pop-in 120ms ease-out' }}
-                        className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-border bg-card shadow-2xl p-1.5 z-50"
+                    {messages.length >= 6 && !streaming && (
+                      <button
+                        type="button"
+                        onClick={handleCompactChat}
+                        title="Summarize older turns & tool outputs (/compact)"
+                        className="h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                       >
-                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Attach Live Snapshot
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => attachSnapshot('project')}
-                          className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 flex items-center gap-2"
-                        >
-                          <span>📁</span>
-                          <span>Project &amp; Active Env</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!context.selectedEndpointId}
-                          onClick={() => attachSnapshot('endpoint')}
-                          className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2"
-                        >
-                          <span>🎯</span>
-                          <span className="truncate">
-                            {context.selectedEndpointName || 'Focused Endpoint'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!context.lastSendResult}
-                          onClick={() => attachSnapshot('response')}
-                          className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2"
-                        >
-                          <span>📡</span>
-                          <span>Last Send Response</span>
-                        </button>
-                      </div>
+                        <Layers className="w-3 h-3 text-emerald-500" />
+                        <span className="hidden sm:inline">Compact</span>
+                      </button>
                     )}
+
+                    {/* Context Snapshot Quick-Injector */}
+                    <div ref={contextMenuRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowContextMenu((v) => !v)}
+                        title="Attach live Beacon context snapshot"
+                        className={`h-7 px-2 rounded-lg text-[11px] flex items-center gap-1 transition-colors ${
+                          attachedSnapshots.length > 0 || showContextMenu
+                            ? 'text-emerald-500 bg-emerald-500/10'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                      >
+                        <Paperclip className="w-3 h-3" />
+                        <span className="hidden sm:inline">Context</span>
+                      </button>
+                      {showContextMenu && (
+                        <div
+                          style={{ animation: 'agent-pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1)' }}
+                          className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-border bg-card shadow-2xl p-1.5 z-50"
+                        >
+                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Attach Live Snapshot
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => attachSnapshot('project')}
+                            className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 flex items-center gap-2 transition-colors"
+                          >
+                            <span>📁</span>
+                            <span>Project &amp; Active Env</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!context.selectedEndpointId}
+                            onClick={() => attachSnapshot('endpoint')}
+                            className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2 transition-colors"
+                          >
+                            <span>🎯</span>
+                            <span className="truncate">
+                              {context.selectedEndpointName || 'Focused Endpoint'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!context.lastSendResult}
+                            onClick={() => attachSnapshot('response')}
+                            className="w-full px-2 py-1.5 rounded-lg text-left text-xs hover:bg-muted/60 disabled:opacity-40 flex items-center gap-2 transition-colors"
+                          >
+                            <span>📡</span>
+                            <span>Last Send Response</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <ChipSelect
+                      icon={<Zap className={`w-3 h-3 ${runMode === 'full' ? 'text-amber-500' : ''}`} />}
+                      label="Execution Mode"
+                      value={runMode}
+                      onChange={(v) => {
+                        if (!activeSession) return
+                        updateSession(activeSession.id, (s) => ({
+                          ...s,
+                          approvalMode: v as AgentApprovalMode,
+                        }))
+                      }}
+                      options={[
+                        { value: 'safe', label: 'Safe', hint: 'Confirm probes, writes & heavy' },
+                        { value: 'agent', label: 'Agent', hint: 'Auto edits, confirm heavy' },
+                        { value: 'full', label: 'Auto', hint: 'Autonomous overdrive' },
+                      ]}
+                    />
                   </div>
 
-                  <ChipSelect
-                    icon={<Zap className={`w-3 h-3 ${runMode === 'full' ? 'text-amber-500' : ''}`} />}
-                    label="Execution Mode"
-                    value={runMode}
-                    onChange={(v) => {
-                      if (!activeSession) return
-                      updateSession(activeSession.id, (s) => ({
-                        ...s,
-                        approvalMode: v as AgentApprovalMode,
-                      }))
-                    }}
-                    options={[
-                      { value: 'safe', label: 'Safe', hint: 'Confirm probes, writes & heavy' },
-                      { value: 'agent', label: 'Agent', hint: 'Auto edits, confirm heavy' },
-                      { value: 'full', label: 'Auto', hint: 'Autonomous overdrive' },
-                    ]}
-                  />
-
-                  <div className="flex-1" />
-
-                  {streaming ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      onClick={() => abortRef.current?.abort()}
-                      title="Stop generation"
-                      className="h-8 w-8 rounded-xl bg-red-600 hover:bg-red-700 text-white shrink-0"
-                    >
-                      <Square className="w-3.5 h-3.5" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={!input.trim() && attachedSnapshots.length === 0}
-                      title="Send (Enter)"
-                      className="h-8 w-8 rounded-xl btn-metal disabled:opacity-30 shrink-0 transition-transform active:scale-95"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
+                  {/* Pinned bottom-right Send / Stop slot so wrapping left controls never shift it */}
+                  <div className="shrink-0 self-end flex items-center">
+                    {streaming ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        onClick={() => abortRef.current?.abort()}
+                        title="Stop generation"
+                        className="h-8 w-8 rounded-xl bg-red-600 hover:bg-red-700 text-white shrink-0 transition-all duration-150 hover:scale-[1.04] active:scale-95 shadow-sm"
+                      >
+                        <Square className="w-3.5 h-3.5" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={!input.trim() && attachedSnapshots.length === 0}
+                        title="Send (Enter)"
+                        className="h-8 w-8 rounded-xl btn-metal disabled:opacity-30 shrink-0 transition-all duration-150 hover:scale-[1.04] active:scale-95"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </form>
               <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1.5 pt-1.5">

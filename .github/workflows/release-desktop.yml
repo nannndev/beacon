@@ -449,6 +449,62 @@ jobs:
             artifacts/**/beacon-linux-x64
             artifacts/latest.json
 
+      - name: Update Homebrew Tap & Scoop Bucket
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          REL_VER: ${{ steps.ver.outputs.release_version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping tap/bucket update."
+            exit 0
+          fi
+
+          OWNER="${REPO%%/*}"
+          DMG=$(find artifacts -name '*.dmg' | head -1)
+          EXE=$(find artifacts -name '*-setup.exe' | head -1)
+
+          if [ -n "$DMG" ]; then
+            DMG_BASE=$(basename "$DMG")
+            DMG_SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
+            if git clone "https://x-access-token:${TAP_TOKEN}@github.com/${OWNER}/homebrew-tap.git" /tmp/homebrew-tap 2>/dev/null; then
+              mkdir -p /tmp/homebrew-tap/Casks
+              sed \
+                -e "s/version \"[^\"]*\"/version \"${REL_VER}\"/" \
+                -e "s/sha256 .*/sha256 \"${DMG_SHA}\"/" \
+                -e "s|url \"https://github.com/[^\"]*\"|url \"https://github.com/${REPO}/releases/download/v#{version}/${DMG_BASE}\"|" \
+                packaging/homebrew/beacon.rb > /tmp/homebrew-tap/Casks/beacon.rb
+              git -C /tmp/homebrew-tap config user.name "github-actions[bot]"
+              git -C /tmp/homebrew-tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git -C /tmp/homebrew-tap add Casks/beacon.rb
+              git -C /tmp/homebrew-tap diff --cached --quiet || (git -C /tmp/homebrew-tap commit -m "chore(cask): beacon ${REL_VER}" && git -C /tmp/homebrew-tap push)
+            else
+              echo "::warning::Could not clone ${OWNER}/homebrew-tap — skipping Cask update."
+            fi
+          fi
+
+          if [ -n "$EXE" ]; then
+            EXE_BASE=$(basename "$EXE")
+            EXE_SHA=$(shasum -a 256 "$EXE" | awk '{print $1}')
+            if git clone "https://x-access-token:${TAP_TOKEN}@github.com/${OWNER}/scoop-bucket.git" /tmp/scoop-bucket 2>/dev/null; then
+              mkdir -p /tmp/scoop-bucket/bucket
+              jq \
+                --arg v "$REL_VER" \
+                --arg u "https://github.com/${REPO}/releases/download/v${REL_VER}/${EXE_BASE}#/dl.exe" \
+                --arg h "$EXE_SHA" \
+                '.version = $v | .architecture["64bit"].url = $u | .architecture["64bit"].hash = $h' \
+                packaging/scoop/beacon.json > /tmp/scoop-bucket/bucket/beacon.json
+              git -C /tmp/scoop-bucket config user.name "github-actions[bot]"
+              git -C /tmp/scoop-bucket config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git -C /tmp/scoop-bucket add bucket/beacon.json
+              git -C /tmp/scoop-bucket diff --cached --quiet || (git -C /tmp/scoop-bucket commit -m "chore(scoop): beacon ${REL_VER}" && git -C /tmp/scoop-bucket push)
+            else
+              echo "::warning::Could not clone ${OWNER}/scoop-bucket — skipping Scoop update."
+            fi
+          fi
+
       - name: Announce release to Discord
         if: startsWith(github.ref, 'refs/tags/')
         env:

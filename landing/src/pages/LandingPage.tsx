@@ -5,9 +5,11 @@ import {
   ArrowRight,
   Bot,
   Braces,
+  Check,
   ChevronLeft,
   ChevronRight,
   Coffee,
+  Copy,
   Download,
   FileDown,
   FileCode2,
@@ -105,7 +107,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.11.0'
+const RELEASE_VERSION = '0.11.1'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -127,6 +129,62 @@ export default function LandingPage() {
   const download = () => { void startDownload() }
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<string>('')
+  const [installOs, setInstallOs] = useState<'mac' | 'windows' | 'linux'>(() => {
+    if (typeof navigator === 'undefined') return 'mac'
+    const ua = `${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase()
+    if (ua.includes('win')) return 'windows'
+    if (ua.includes('linux')) return 'linux'
+    return 'mac'
+  })
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
+
+  const copyCommand = (cmd: string) => {
+    void navigator.clipboard?.writeText(cmd)
+    setCopiedCmd(cmd)
+    window.setTimeout(() => setCopiedCmd((cur) => (cur === cmd ? null : cur)), 1800)
+  }
+
+  const installMethods: Record<
+    'mac' | 'windows' | 'linux',
+    Array<{ label: string; hint: string; cmd: string }>
+  > = {
+    mac: [
+      {
+        label: 'Homebrew Cask',
+        hint: 'Installs Beacon.app + beacon CLI without Gatekeeper quarantine',
+        cmd: 'brew install --cask --no-quarantine nannndev/tap/beacon',
+      },
+      {
+        label: 'Shell Installer',
+        hint: 'Downloads latest DMG, copies to /Applications, and links beacon CLI',
+        cmd: 'curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash',
+      },
+    ],
+    windows: [
+      {
+        label: 'Scoop',
+        hint: 'Installs and auto-updates via Scoop bucket',
+        cmd: 'scoop bucket add nannndev https://github.com/nannndev/scoop-bucket && scoop install beacon',
+      },
+      {
+        label: 'PowerShell',
+        hint: 'Downloads latest NSIS installer and runs silent setup',
+        cmd: 'irm https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.ps1 | iex',
+      },
+    ],
+    linux: [
+      {
+        label: 'AppImage (No root)',
+        hint: 'Installs portable Beacon.AppImage into ~/.local/bin',
+        cmd: 'curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash',
+      },
+      {
+        label: 'Debian / Ubuntu (.deb)',
+        hint: 'Downloads and installs the native .deb package',
+        cmd: 'curl -fsSL https://raw.githubusercontent.com/nannndev/beacon/main/scripts/install.sh | bash -s -- --deb',
+      },
+    ],
+  }
 
   useEffect(() => {
     const sections = NAV_LINKS
@@ -745,6 +803,63 @@ claude mcp add beacon -- <path-to>/mcp_server
               </button>
             </RevealItem>
           </RevealGroup>
+
+          <Reveal className="mx-auto mt-8 max-w-4xl rounded-2xl border border-border/80 bg-card/70 p-5 shadow-sm backdrop-blur-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-background text-foreground">
+                  <SquareTerminal className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold tracking-tight">Install via package manager or terminal</div>
+                  <div className="text-xs text-muted-foreground">Prefer CLI setup? Install Beacon with one command.</div>
+                </div>
+              </div>
+              <div className="inline-flex rounded-xl border border-border bg-background/80 p-1 text-xs">
+                {(['mac', 'windows', 'linux'] as const).map((os) => (
+                  <button
+                    key={os}
+                    type="button"
+                    onClick={() => setInstallOs(os)}
+                    className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${
+                      installOs === os
+                        ? 'bg-foreground text-background shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {os === 'mac' ? 'macOS' : os === 'windows' ? 'Windows' : 'Linux'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {installMethods[installOs].map((item) => {
+                const copied = copiedCmd === item.cmd
+                return (
+                  <div key={item.label} className="flex flex-col justify-between rounded-xl border border-border/80 bg-background/80 p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-foreground">
+                        {item.label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyCommand(item.cmd)}
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <code className="mt-2.5 block overflow-x-auto rounded-lg bg-muted/50 px-2.5 py-2 font-mono text-[11.5px] text-foreground whitespace-nowrap">
+                      {item.cmd}
+                    </code>
+                    <p className="mt-2 text-[11px] text-muted-foreground">{item.hint}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </Reveal>
 
           <div className="mt-5 text-center text-xs text-muted-foreground">
             Install, open Beacon, and start testing locally. No Python runtime or hosted Beacon account required.
