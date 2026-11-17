@@ -46,8 +46,15 @@ pub async fn send_single(
                 }
             }
         }
-        if let Ok(merged) = serde_json::from_value::<EndpointTest>(test_json) {
-            test = merged;
+        // Silently falling back to the saved version would send something other than what is on screen.
+        match serde_json::from_value::<EndpointTest>(test_json) {
+            Ok(merged) => test = merged,
+            Err(err) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "detail": format!("Unsaved request is invalid: {err}") })),
+                ));
+            }
         }
     }
 

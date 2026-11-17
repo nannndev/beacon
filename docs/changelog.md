@@ -6,6 +6,18 @@ tags and installers published in [GitHub Releases](https://github.com/nannndev/b
 
 ::: v-pre
 
+## [0.12.1] - 2026-11-17
+
+### Added
+
+- **Code to project from the chat**: Ask Beacon AI to analyze a local folder or a GitHub repository ("import repo acme/shop-api"). It summarizes the frameworks, modules, auth, and routes, then creates a project with a folder per module and a base URL environment. The MCP server gets the same two tools, `beacon_analyze_code` and `beacon_import_code`.
+
+### Fixed
+
+- **Request errors explained**: A 4xx or 5xx response now shows its status, headers, and body instead of an empty "Request failed" box. "Request failed" only appears when no response arrived, and it always says why.
+- **Unsaved edits are sent, or rejected with a reason**: Sending an edited request no longer falls back silently to the saved version when the edit is invalid.
+- **Creating endpoints through the API**: `POST /tests` no longer requires an `id` or `name`.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added

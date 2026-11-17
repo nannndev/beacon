@@ -107,7 +107,7 @@ const SUPPORT_URL =
   (import.meta as any).env?.VITE_SUPPORT_URL || 'https://buymeacoffee.com/ekaprasety8'
 const GITHUB_URL =
   (import.meta as any).env?.VITE_GITHUB_URL || 'https://github.com/nannndev/beacon'
-const RELEASE_VERSION = '0.12.0'
+const RELEASE_VERSION = '0.12.1'
 const RELEASE_URL = `${GITHUB_URL}/releases/tag/v${RELEASE_VERSION}`
 // Beacon community Discord. Override with VITE_DISCORD_URL in the root .env.
 const DISCORD_URL =
@@ -391,7 +391,7 @@ export default function LandingPage() {
               className="group mb-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 font-semibold text-cyan-600 dark:text-cyan-400">v{RELEASE_VERSION}</span>
-              GitHub import, agent characters & a signed macOS app
+              Turn any codebase into a project from the chat
               <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </a>
           </RevealItem>
@@ -873,8 +873,8 @@ claude mcp add beacon -- <path-to>/mcp_server
             <History className="h-7 w-7 text-cyan-500" />
             <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-4xl">What changed in {RELEASE_VERSION}</h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-              Turn a GitHub repo into a collection, give Beacon AI a personality, and run
-              a macOS app that Apple has signed and notarized.
+              Point Beacon AI at a repo or folder and get a ready project, see why a
+              request failed, and run a macOS app that Apple has signed and notarized.
             </p>
             <a href={RELEASE_URL} target="_blank" rel="noopener" className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-500 hover:text-cyan-400">
               Read the full release notes <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -883,10 +883,10 @@ claude mcp add beacon -- <path-to>/mcp_server
 
           <RevealGroup className="grid gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/70" stagger={0.07}>
             {[
-              ['GitHub to collection', 'Connect GitHub with a token stored encrypted on your machine. Beacon reads a repository or local project, summarizes its API, and builds a collection you can import.'],
+              ['Code to project, from the chat', 'Ask Beacon AI to import a local folder or GitHub repo. It explains the frameworks, modules and auth, then builds a project with a folder per module.'],
+              ['Clear request errors', 'A 4xx or 5xx shows its status and body instead of an empty "Request failed". When no response arrives, Beacon says why.'],
               ['Agent characters', 'Pick a character for Beacon AI and set its tone and emotion. It can now create folders, move and reorder endpoints, and import specs or curl commands on request.'],
               ['Signed for macOS', 'The macOS app is signed with a Developer ID and notarized by Apple, so it opens without a warning. Requests to APIs on your local network now work too.'],
-              ['Everything back on Rust', 'Run history, scenarios, Git sync, LAN sharing, Discord and Slack alerts, and the full CLI all run on the Rust engine, and old run history still opens.'],
             ].map(([title, body]) => (
               <RevealItem key={title} className="bg-background/80 px-5 py-4 md:grid md:grid-cols-[0.35fr_0.65fr] md:gap-5">
                 <h3 className="font-semibold">{title}</h3>

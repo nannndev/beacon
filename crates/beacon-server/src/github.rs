@@ -1,7 +1,8 @@
 //! GitHub Personal Access Token (PAT) integration + Repo / Project Code
 //! analyzer for summarizing APIs and generating Beacon collections.
 
-use crate::importer::normalize_project;
+use crate::importer::{materialize_items, normalize_project};
+use crate::store::{Environment, Project, Store};
 use beacon_gateway::{Cipher, GatewayEngine};
 use chrono::Utc;
 use regex::Regex;
@@ -519,6 +520,138 @@ pub async fn summarize_local_project(
         }
     }
     Ok(result)
+}
+
+/// Where a code source lives: a local folder, or a GitHub repo with an optional branch.
+#[derive(Debug, PartialEq)]
+pub enum CodeSource {
+    Local(PathBuf),
+    GitHub { repo: String, branch: Option<String> },
+}
+
+/// Accepts a folder path (absolute, ~, or relative to an existing dir), "owner/repo",
+/// or a github.com URL (…/owner/repo[.git][/tree/branch]).
+pub fn parse_code_source(raw: &str) -> CodeSource {
+    let s = raw.trim();
+    let expanded = match s.strip_prefix("~/") {
+        Some(rest) => std::env::var_os("HOME").map(|h| PathBuf::from(h).join(rest)).unwrap_or_else(|| PathBuf::from(s)),
+        None => PathBuf::from(s),
+    };
+    if expanded.is_dir() {
+        return CodeSource::Local(expanded);
+    }
+    let url = s.trim_start_matches("https://").trim_start_matches("http://").trim_start_matches("www.");
+    if let Some(rest) = url.strip_prefix("github.com/") {
+        let parts: Vec<&str> = rest.trim_end_matches('/').split('/').collect();
+        if parts.len() >= 2 {
+            let repo = format!("{}/{}", parts[0], parts[1].trim_end_matches(".git"));
+            let branch = (parts.len() >= 4 && parts[2] == "tree").then(|| parts[3..].join("/"));
+            return CodeSource::GitHub { repo, branch };
+        }
+    }
+    let looks_like_path = s.starts_with('/') || s.starts_with('~') || s.starts_with('.') || s.contains('\\') || s.contains(':');
+    if !looks_like_path && s.split('/').count() == 2 && !s.contains(' ') {
+        return CodeSource::GitHub { repo: s.trim_end_matches(".git").to_string(), branch: None };
+    }
+    CodeSource::Local(expanded)
+}
+
+// Last analysis per source, so the agent can import it without re-scanning.
+// shortcut: unbounded and process-wide, fine for a desktop app's handful of sources.
+fn analysis_cache() -> &'static parking_lot::Mutex<HashMap<String, CodeSummaryResult>> {
+    static CACHE: std::sync::OnceLock<parking_lot::Mutex<HashMap<String, CodeSummaryResult>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Agent entry point: analyzes a local folder or GitHub repo and caches the result.
+/// No AI pass here, since the agent calling this is the AI.
+pub async fn analyze_source(data_dir: &Path, source: &str, branch: Option<&str>) -> Result<CodeSummaryResult, String> {
+    let result = match parse_code_source(source) {
+        CodeSource::Local(path) => summarize_local_project(None, &path.to_string_lossy(), false).await?,
+        CodeSource::GitHub { repo, branch: url_branch } => {
+            summarize_github_repo(data_dir, None, &repo, branch.or(url_branch.as_deref()), false).await?
+        }
+    };
+    analysis_cache().lock().insert(source.trim().to_string(), result.clone());
+    Ok(result)
+}
+
+pub fn cached_analysis(source: &str) -> Option<CodeSummaryResult> {
+    analysis_cache().lock().get(source.trim()).cloned()
+}
+
+/// Adds the endpoints to `project_id`, or to a new project (made active) when it is
+/// None. Saves the store. Returns the project id.
+pub fn add_endpoints_to_project(
+    store: &mut Store,
+    name: &str,
+    base_url: &str,
+    project_id: Option<&str>,
+    endpoints: &[&DiscoveredEndpoint],
+) -> Result<String, String> {
+    if endpoints.is_empty() {
+        return Err("Select at least one endpoint to generate a collection".into());
+    }
+    let base = base_url.trim().trim_end_matches('/');
+    let base_url = if base.is_empty() { "http://localhost:8000".to_string() } else { base.to_string() };
+
+    let raw_items: Vec<Value> = endpoints
+        .iter()
+        .map(|ep| {
+            let clean_path = if ep.path.starts_with('/') { ep.path.clone() } else { format!("/{}", ep.path) };
+            let mut headers = serde_json::Map::new();
+            if let Some(auth) = ep.auth_hint.as_deref().filter(|a| !a.trim().is_empty()) {
+                headers.insert("Authorization".to_string(), json!(auth));
+            }
+            let payload = ep
+                .sample_body
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .unwrap_or_else(|| json!({}));
+            json!({
+                "name": ep.name,
+                "method": ep.method.to_uppercase(),
+                "url": format!("{base_url}{clean_path}"),
+                "folder": ep.folder,
+                "description": ep.description,
+                "headers": Value::Object(headers),
+                "payload": payload,
+            })
+        })
+        .collect();
+    let (materialized, _) = materialize_items(&raw_items)?;
+
+    let target_id = if let Some(pid) = project_id.filter(|s| !s.is_empty()) {
+        // Flush unsaved edits of the active project before touching its tree.
+        store.save_active_project();
+        let proj = store.projects.iter_mut().find(|p| p.id == pid).ok_or("Target project not found")?;
+        proj.items.get_or_insert_with(Vec::new).extend(materialized);
+        pid.to_string()
+    } else {
+        store.save_active_project();
+        let proj_id = uuid::Uuid::new_v4().to_string();
+        let env_id = uuid::Uuid::new_v4().to_string();
+        let mut vars = HashMap::new();
+        vars.insert("base_url".to_string(), json!(base_url));
+        store.projects.push(Project {
+            id: proj_id.clone(),
+            name: if name.trim().is_empty() { "Generated API Collection".to_string() } else { name.trim().to_string() },
+            template_id: None,
+            environments: vec![Environment { id: env_id.clone(), name: "Default".to_string(), base_url, variables: vars }],
+            current_environment_id: Some(env_id),
+            notifications: None,
+            shared_origin: None,
+            file_sync: None,
+            items: Some(materialized),
+            tests: None,
+            auth: None,
+        });
+        store.current_project_id = Some(proj_id.clone());
+        proj_id
+    };
+    store.sync_current_config();
+    store.save()?;
+    Ok(target_id)
 }
 
 fn collect_local_paths(root: &Path, dir: &Path, out: &mut Vec<String>, depth: usize) {
@@ -1312,5 +1445,21 @@ mod tests {
         let st = get_status(&dir);
         assert!(!st.connected);
         assert!(st.login.is_none());
+    }
+}
+
+#[cfg(test)]
+mod source_tests {
+    use super::*;
+
+    #[test]
+    fn parses_code_sources() {
+        let gh = |repo: &str, branch: Option<&str>| CodeSource::GitHub { repo: repo.into(), branch: branch.map(Into::into) };
+        assert_eq!(parse_code_source("acme/shop-api"), gh("acme/shop-api", None));
+        assert_eq!(parse_code_source("https://github.com/acme/shop-api.git"), gh("acme/shop-api", None));
+        assert_eq!(parse_code_source("github.com/acme/shop-api/tree/feat/x"), gh("acme/shop-api", Some("feat/x")));
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(parse_code_source(here.to_str().unwrap()), CodeSource::Local(here));
+        assert!(matches!(parse_code_source("./missing/dir"), CodeSource::Local(_)));
     }
 }

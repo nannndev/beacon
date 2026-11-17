@@ -644,4 +644,87 @@ impl beacon_agent::WorkspaceOps for ServerWorkspace {
     fn set_collection(&self, items: Vec<Value>) -> Result<(), String> {
         self.0.write().set_collection(items)
     }
+    fn analyze_code<'a>(&'a self, source: &'a str, branch: Option<&'a str>) -> futures::future::BoxFuture<'a, Result<Value, String>> {
+        Box::pin(async move {
+            let dir = self.data_dir();
+            let r = crate::github::analyze_source(&dir, source, branch).await?;
+            // Cap the list so a huge repo doesn't flood the model's context.
+            const SHOWN: usize = 150;
+            let endpoints: Vec<Value> = r.endpoints.iter().take(SHOWN).map(|e| json!({
+                "method": e.method, "path": e.path, "name": e.name, "folder": e.folder,
+                "source_file": e.source_file, "description": e.description,
+            })).collect();
+            Ok(json!({
+                "source": source,
+                "source_type": r.source_type,
+                "branch": r.branch,
+                "suggested_project_name": r.suggested_name,
+                "default_base_url": r.default_base_url,
+                "frameworks": r.frameworks,
+                "auth": r.auth_summary,
+                "summary": r.summary_markdown,
+                "spec_files": r.spec_files,
+                "files_scanned": r.files_scanned,
+                "folders": r.folders,
+                "endpoints_found": r.endpoints.len(),
+                "endpoints": endpoints,
+                "endpoints_truncated": r.endpoints.len() > SHOWN,
+                "next": "Review the endpoints, then call beacon_import_code with the same source.",
+            }))
+        })
+    }
+    fn import_code(&self, source: &str, project_name: &str, base_url: &str, into_active: bool, endpoints: Option<Vec<Value>>) -> Result<Value, String> {
+        let analysis = crate::github::cached_analysis(source);
+        let detected = match (&endpoints, &analysis) {
+            (Some(list), _) => list
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    let mut v = v.clone();
+                    // Agents send sample_body as JSON; the endpoint model stores it as text.
+                    if let Some(body) = v.get("sample_body").filter(|b| !b.is_string() && !b.is_null()) {
+                        v["sample_body"] = json!(body.to_string());
+                    }
+                    let path = v.get("path").and_then(|p| p.as_str()).unwrap_or("/").to_string();
+                    let method = v.get("method").and_then(|m| m.as_str()).unwrap_or("GET").to_uppercase();
+                    v["id"] = json!(format!("agent-{i}"));
+                    v["method"] = json!(method);
+                    if v.get("name").and_then(|n| n.as_str()).map_or(true, |n| n.trim().is_empty()) {
+                        v["name"] = json!(format!("{method} {path}"));
+                    }
+                    for k in ["folder", "source_file"] {
+                        if !v.get(k).is_some_and(|f| f.is_string()) { v[k] = json!(""); }
+                    }
+                    serde_json::from_value::<crate::github::DiscoveredEndpoint>(v).map_err(|e| format!("Invalid endpoint #{}: {e}", i + 1))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            (None, Some(a)) => a.endpoints.clone(),
+            (None, None) => return Err("Analyze this source first with beacon_analyze_code, or pass 'endpoints'.".into()),
+        };
+        let name = if !project_name.trim().is_empty() { project_name.to_string() } else { analysis.as_ref().map(|a| a.suggested_name.clone()).unwrap_or_default() };
+        let base = if !base_url.trim().is_empty() { base_url.to_string() } else { analysis.as_ref().map(|a| a.default_base_url.clone()).unwrap_or_default() };
+        let selected: Vec<&crate::github::DiscoveredEndpoint> = detected.iter().collect();
+
+        let mut store = self.0.write();
+        let target = if into_active {
+            Some(store.current_project_id.clone().ok_or("No active project")?)
+        } else {
+            None
+        };
+        let project_id = crate::github::add_endpoints_to_project(&mut store, &name, &base, target.as_deref(), &selected)?;
+        let project_name = store.projects.iter().find(|p| p.id == project_id).map(|p| p.name.clone()).unwrap_or(name);
+        Ok(json!({
+            "status": if into_active { "added_to_active_project" } else { "project_created" },
+            "project_id": project_id,
+            "project_name": project_name,
+            "endpoints_added": selected.len(),
+            "base_url": base,
+        }))
+    }
+}
+
+impl ServerWorkspace {
+    fn data_dir(&self) -> PathBuf {
+        self.0.read().file_path.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("config"))
+    }
 }

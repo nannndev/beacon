@@ -82,3 +82,40 @@ fn flat_names(tree: &serde_json::Value) -> Vec<String> {
     }
     out
 }
+
+#[tokio::test]
+async fn analyzes_local_code_and_imports_it_as_a_project() {
+    let _guard = ENV_GUARD.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("beacon-agent-code-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let src = root.join("shop-api");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("package.json"), r#"{"dependencies":{"express":"4"}}"#).unwrap();
+    std::fs::write(
+        src.join("server.js"),
+        "const app = require('express')();\napp.get('/users', h);\napp.post('/users', h);\napp.get('/orders/:id', h);\napp.listen(3000);\n",
+    )
+    .unwrap();
+    std::env::set_var("BEACON_DATA_DIR", root.join("data"));
+    let ws = ServerWorkspace(Arc::new(RwLock::new(Store::new())));
+    let source = src.to_string_lossy().to_string();
+
+    let analysis = execute_tool("beacon_analyze_code", &json!({ "source": source }), &ws).await;
+    assert!(analysis["endpoints_found"].as_u64().unwrap_or(0) >= 3, "{analysis}");
+
+    let imported = execute_tool("beacon_import_code", &json!({ "source": source }), &ws).await;
+    assert_eq!(imported["mutated"], true, "{imported}");
+    assert_eq!(imported["status"], "project_created");
+    let endpoints = execute_tool("beacon_list_endpoints", &json!({}), &ws).await.to_string();
+    assert!(endpoints.contains("/orders/"), "{endpoints}");
+
+    // A curated list replaces the detected one and lands in the active project.
+    let curated = execute_tool("beacon_import_code", &json!({
+        "source": source, "into_active_project": true,
+        "endpoints": [{ "method": "post", "path": "/login", "folder": "Auth", "sample_body": { "email": "a@b.c" } }]
+    }), &ws).await;
+    assert_eq!(curated["endpoints_added"], 1, "{curated}");
+    let login = execute_tool("beacon_get_endpoint", &json!({ "id": "POST /login" }), &ws).await.to_string();
+    assert!(login.contains("a@b.c"), "{login}");
+    std::fs::remove_dir_all(&root).ok();
+}

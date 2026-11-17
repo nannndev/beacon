@@ -1,9 +1,7 @@
 //! GitHub PAT connection + Repo/Code Summarizer + Collection Generator routes.
 
 use crate::github::{self, DiscoveredEndpoint};
-use crate::importer::materialize_items;
 use crate::state::AppState;
-use crate::store::{Environment, Project};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -13,7 +11,6 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::Path;
-use uuid::Uuid;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -146,91 +143,16 @@ pub async fn generate_collection(
         return Err(bad("Select at least one endpoint to generate a collection"));
     }
 
-    let base = body.base_url.trim().trim_end_matches('/').to_string();
-    let base_url = if base.is_empty() {
-        "http://localhost:8000".to_string()
-    } else {
-        base
-    };
-
-    let raw_items: Vec<Value> = selected
-        .iter()
-        .map(|ep| {
-            let clean_path = if ep.path.starts_with('/') {
-                ep.path.clone()
-            } else {
-                format!("/{}", ep.path)
-            };
-            let url = format!("{base_url}{clean_path}");
-            let mut headers = serde_json::Map::new();
-            if let Some(auth) = &ep.auth_hint {
-                if !auth.trim().is_empty() {
-                    headers.insert("Authorization".to_string(), json!(auth));
-                }
-            }
-            let payload = ep
-                .sample_body
-                .as_deref()
-                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-                .unwrap_or_else(|| json!({}));
-
-            json!({
-                "name": ep.name,
-                "method": ep.method.to_uppercase(),
-                "url": url,
-                "folder": ep.folder,
-                "description": ep.description,
-                "headers": Value::Object(headers),
-                "payload": payload,
-            })
-        })
-        .collect();
-
-    let (materialized, _) = materialize_items(&raw_items).map_err(bad)?;
-
     let mut store = state.store.write();
-    let target_id = if let Some(pid) = body.project_id.as_deref().filter(|s| !s.is_empty()) {
-        if let Some(proj) = store.projects.iter_mut().find(|p| p.id == pid) {
-            let existing = proj.items.get_or_insert_with(Vec::new);
-            existing.extend(materialized);
-            pid.to_string()
-        } else {
-            return Err(bad("Target project not found"));
-        }
-    } else {
-        let proj_id = Uuid::new_v4().to_string();
-        let env_id = Uuid::new_v4().to_string();
-        let mut vars = HashMap::new();
-        vars.insert("base_url".to_string(), json!(base_url));
-        let project = Project {
-            id: proj_id.clone(),
-            name: if body.name.trim().is_empty() {
-                "Generated API Collection".to_string()
-            } else {
-                body.name.trim().to_string()
-            },
-            template_id: None,
-            environments: vec![Environment {
-                id: env_id.clone(),
-                name: "Default".to_string(),
-                base_url,
-                variables: vars,
-            }],
-            current_environment_id: Some(env_id),
-            notifications: None,
-            shared_origin: None,
-            file_sync: None,
-            items: Some(materialized),
-            tests: None,
-            auth: None,
-        };
-        store.projects.push(project);
-        store.current_project_id = Some(proj_id.clone());
-        proj_id
-    };
+    let target_id = github::add_endpoints_to_project(
+        &mut store,
+        &body.name,
+        &body.base_url,
+        body.project_id.as_deref(),
+        &selected,
+    )
+    .map_err(bad)?;
 
-    store.sync_current_config();
-    store.save().map_err(server_err)?;
 
     Ok(Json(json!({
         "status": "generated",

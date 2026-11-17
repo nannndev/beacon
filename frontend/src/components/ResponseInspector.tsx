@@ -344,7 +344,8 @@ export default function ResponseInspector({
 
   if (!response) return null
 
-  if (!response.ok) {
+  // A 4xx/5xx is still a response: show its status and body. Only a request that never got one (status 0) is a failure.
+  if (!response.ok && !response.status) {
     return (
       <section className="rounded-xl border border-red-500/30 bg-card">
         <div className="flex items-center gap-2 border-b border-border bg-red-500/10 px-4 py-3">
@@ -358,7 +359,7 @@ export default function ResponseInspector({
             </span>
           )}
         </div>
-        <pre className="overflow-x-auto p-4 font-mono text-xs text-red-600 dark:text-red-400">{response.error}</pre>
+        <pre className="overflow-x-auto p-4 font-mono text-xs text-red-600 dark:text-red-400">{response.error || 'No response from the server (no error detail was returned).'}</pre>
       </section>
     )
   }

@@ -29,6 +29,16 @@ pub trait WorkspaceOps: Send + Sync {
     fn list_projects(&self) -> Vec<Value>;
     fn switch_project(&self, id_or_name: &str) -> Result<Value, String>;
     fn create_project(&self, name: &str, base_url: &str) -> Result<Value, String>;
+    /// Scans a source tree (local folder path, "owner/repo", or a GitHub URL) for API
+    /// routes, specs, frameworks and auth. Workspaces without code access say so.
+    fn analyze_code<'a>(&'a self, _source: &'a str, _branch: Option<&'a str>) -> futures::future::BoxFuture<'a, Result<Value, String>> {
+        Box::pin(async { Err("Code analysis is not available in this workspace".to_string()) })
+    }
+    /// Turns the last analysis of `source` into requests: a new project (made active),
+    /// or the active project when `into_active`. `endpoints` overrides the detected list.
+    fn import_code(&self, _source: &str, _project_name: &str, _base_url: &str, _into_active: bool, _endpoints: Option<Vec<Value>>) -> Result<Value, String> {
+        Err("Code import is not available in this workspace".to_string())
+    }
     /// The active project's collection tree (folders + requests).
     fn get_collection(&self) -> Vec<Value> {
         self.list_endpoints().into_iter().filter_map(|t| serde_json::to_value(t).ok()).map(|mut v| { v["type"] = json!("request"); v }).collect()
@@ -503,6 +513,54 @@ pub fn agent_tool_definitions() -> Vec<Value> {
                         "into_folder": { "type": "string", "description": "Optional existing folder (name, id, or 'Parent/Child' path) to import into" }
                     },
                     "required": ["data"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_analyze_code",
+                "description": "Analyze a codebase to discover its API: routes (Express, FastAPI, Flask, Django, Laravel, Spring, Gin, Axum, Next.js, NestJS, Rails…), OpenAPI/Swagger specs, frameworks, auth scheme and a suggested base URL. Source is a local folder path (e.g. ~/code/shop-api) or a GitHub repo ('owner/repo' or https://github.com/owner/repo, needs GitHub connected in Settings). Read-only. Follow with beacon_import_code to turn it into a project.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source": { "type": "string", "description": "Local folder path, 'owner/repo', or GitHub URL" },
+                        "branch": { "type": "string", "description": "GitHub branch (default: the repo's default branch)" }
+                    },
+                    "required": ["source"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "beacon_import_code",
+                "description": "Create requests from the last beacon_analyze_code of the same source: a new project (default, becomes active) with a Default environment holding base_url, or the active project with into_active_project. Requests are grouped in folders per module. Pass 'endpoints' to import your own corrected/complete list (e.g. after reading the code: fix names, folders, sample bodies, drop internal routes) instead of the detected one.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source": { "type": "string", "description": "Same source you analyzed" },
+                        "project_name": { "type": "string", "description": "Name for the new project (default: the repo/folder name)" },
+                        "base_url": { "type": "string", "description": "Base URL (default: the detected one)" },
+                        "into_active_project": { "type": "boolean", "description": "Add to the active project instead of creating one" },
+                        "endpoints": {
+                            "type": "array",
+                            "description": "Optional curated list replacing the detected endpoints",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "method": { "type": "string" },
+                                    "path": { "type": "string", "description": "Path only, e.g. /users/{id}" },
+                                    "name": { "type": "string" },
+                                    "folder": { "type": "string" },
+                                    "description": { "type": "string" },
+                                    "sample_body": { "description": "JSON body for POST/PUT/PATCH" }
+                                },
+                                "required": ["method", "path"]
+                            }
+                        }
+                    },
+                    "required": ["source"]
                 }
             }
         }),
@@ -1129,6 +1187,33 @@ pub async fn execute_tool(name: &str, args: &Value, workspace: &dyn WorkspaceOps
                     "into_folder": folder,
                     "warnings": normalized.warnings,
                 }),
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
+        "beacon_analyze_code" => {
+            let Some(source) = args.get("source").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()) else {
+                return json!({ "error": "'source' is required" });
+            };
+            let branch = args.get("branch").and_then(|v| v.as_str()).filter(|b| !b.trim().is_empty());
+            match workspace.analyze_code(source, branch).await {
+                Ok(analysis) => analysis,
+                Err(err) => json!({ "error": err }),
+            }
+        }
+
+        "beacon_import_code" => {
+            let Some(source) = args.get("source").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()) else {
+                return json!({ "error": "'source' is required" });
+            };
+            let text = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let into_active = args.get("into_active_project").and_then(|v| v.as_bool()).unwrap_or(false);
+            let endpoints = args.get("endpoints").and_then(|v| v.as_array()).cloned();
+            match workspace.import_code(source, &text("project_name"), &text("base_url"), into_active, endpoints) {
+                Ok(mut out) => {
+                    out["mutated"] = json!(true);
+                    out
+                }
                 Err(err) => json!({ "error": err }),
             }
         }

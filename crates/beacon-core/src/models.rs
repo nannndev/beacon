@@ -71,7 +71,10 @@ pub fn normalize_request_options(raw: Option<&Value>) -> Option<RequestOptions> 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndpointTest {
+    // New endpoints arrive without an id (the server assigns one) and may be unnamed.
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub name: String,
     pub url: String,
     #[serde(default = "default_method")]

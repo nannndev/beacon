@@ -45,6 +45,12 @@ show up in the desktop app immediately.
   Swagger 2 (JSON or YAML), Insomnia or HAR. Pass parsed JSON, or
   `{content, filename}` for raw JSON/YAML text. Without `into_folder` a folder named
   after the source is created.
+- `beacon_analyze_code(source, branch?)` - scan a codebase (local folder path,
+  `owner/repo`, or GitHub URL) for routes, specs, frameworks, auth and base URL.
+  Read-only. GitHub sources need GitHub connected in Beacon Settings.
+- `beacon_import_code(source, project_name?, base_url?, into_active_project?, endpoints?)` -
+  turn the last analysis into a new project with folders per module (or into the
+  active project). Pass a curated `endpoints` list to fix names, folders and bodies.
 
 **Organize (folders)**
 - `beacon_get_collection()` - the folder tree in display order. Call it before organizing.
