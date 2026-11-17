@@ -6,6 +6,30 @@ tags and installers published in [GitHub Releases](https://github.com/nannndev/b
 
 ::: v-pre
 
+## [0.12.0] - 2026-11-17
+
+### Added
+
+- **GitHub integration**: Connect with a personal access token, stored encrypted on your machine. Beacon reads a repository or local project's code, summarizes its API, and generates a collection you can import.
+- **Agent characters**: Pick a character and personality for Beacon AI, and set its tone (formal, friendly, casual) and emotion (calm, warm, expressive).
+- **Folders from the agent**: Beacon AI and the MCP server can create, rename, delete, move, and reorder folders, and place new endpoints straight into a folder.
+- **More agent and MCP tools**: 23 tools now, adding endpoint search, project config, duplicate, single-endpoint runs, curl import, and Postman / OpenAPI / Swagger / Insomnia / HAR import.
+- **Full Rust backend parity**: Run history (including history from earlier versions), scenarios, project import and export, global variables, CSV and JSON test data, GraphQL introspection, Git-backed projects and file sync, LAN project sharing, and pre-request scripts all work again.
+- **Notifications and monitoring**: Discord and Slack summaries after runs, and a scheduled monitor that re-checks a project every few minutes.
+- **AI Gateway logins**: Sign in with Kimi, Muse, Nous, and Kilo Code, and chat through Claude, Gemini, Copilot, and those accounts, not only ChatGPT. Expiring tokens refresh automatically.
+- **Full CLI**: `beacon validate`, `beacon list`, data-driven runs, JSON and JUnit reports, GitHub Actions output, and `beacon ci init github`.
+
+### Improved
+
+- **Signed and notarized macOS app**: The macOS build is signed with a Developer ID and notarized by Apple, so it opens without a security warning.
+- **Clearer request errors**: A failed request now says why, such as "No route to host" or "connection refused", instead of only "error sending request".
+
+### Fixed
+
+- **Local network APIs on macOS**: Requests to APIs on your network (192.168.x.x) failed instantly even with Local Network access turned on. Beacon now asks for permission, and the permission covers the part of Beacon that sends requests.
+- **GitHub Copilot login stuck on "Waiting"**: Login now finishes after you authorize in the browser.
+- **AI Gateway logins**: ChatGPT / Codex login, callback ports already in use, and error messages that showed only "HTTP 400" are fixed.
+
 ## [0.11.0] - 2026-11-12
 
 ### Added
