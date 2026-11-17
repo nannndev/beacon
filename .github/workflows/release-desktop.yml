@@ -243,7 +243,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # BEACON_* names: tauri build would act on APPLE_* itself and notarize
           # the bundle before sign-macos.cjs re-signs it.
-          BEACON_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Only sign with the Developer ID when its certificate was imported above;
+          # otherwise sign-macos.cjs falls back to ad-hoc instead of failing.
+          BEACON_SIGNING_IDENTITY: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY || '' }}
           BEACON_NOTARY_KEY: ${{ secrets.APPLE_API_KEY }}
           BEACON_NOTARY_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: pnpm run desktop:build:mac
