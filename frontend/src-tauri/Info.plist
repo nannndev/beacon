@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Without this macOS silently blocks requests to LAN APIs (192.168.x.x, *.local)
+	     instead of asking the user, and sends fail in 0 ms. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Beacon sends your API requests to servers on your local network, such as a development API on another machine, and shares projects with teammates over LAN.</string>
+</dict>
+</plist>

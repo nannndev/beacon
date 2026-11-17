@@ -45,6 +45,22 @@ impl Default for HttpTransport {
     }
 }
 
+/// reqwest's top-level message ("error sending request for url …") hides the cause;
+/// append the source chain so users see e.g. "No route to host" or a TLS error.
+pub fn describe_error(err: &reqwest::Error) -> String {
+    let mut text = err.to_string();
+    let mut source = std::error::Error::source(err);
+    while let Some(cause) = source {
+        let part = cause.to_string();
+        if !text.contains(&part) {
+            text.push_str(": ");
+            text.push_str(&part);
+        }
+        source = cause.source();
+    }
+    text
+}
+
 impl HttpTransport {
     pub fn new() -> Self {
         let client = Client::builder()
@@ -185,3 +201,15 @@ impl HttpTransport {
     }
 }
 
+
+#[cfg(test)]
+mod describe_error_tests {
+    #[tokio::test]
+    async fn names_the_underlying_cause() {
+        // Port 9 (discard) on loopback is closed, so the cause is a refused connection.
+        let err = reqwest::Client::new().get("http://127.0.0.1:9/").send().await.unwrap_err();
+        let text = super::describe_error(&err);
+        assert!(text.starts_with("error sending request"), "{text}");
+        assert!(text.to_lowercase().contains("refused"), "cause missing: {text}");
+    }
+}

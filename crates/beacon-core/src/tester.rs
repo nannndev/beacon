@@ -213,9 +213,10 @@ impl APITester {
             }
             Err(err) => {
                 self.metrics.record_error();
+                let err = crate::transport::describe_error(&err);
                 Err(match script_error {
                     Some(se) => format!("{err}\n{se}"),
-                    None => err.to_string(),
+                    None => err,
                 })
             }
         }

@@ -412,7 +412,7 @@ pub async fn proxy_request(
         }
         Err(e) => Err((
             StatusCode::BAD_GATEWAY,
-            Json(json!({ "detail": format!("Proxy request failed: {}", e) })),
+            Json(json!({ "detail": format!("Proxy request failed: {}", beacon_core::transport::describe_error(&e)) })),
         )),
     }
 }
