@@ -47,6 +47,19 @@ After a send (or while sending), the **Response** panel appears with tabs:
 - `size_bytes` (and `truncated` flag if the body was capped)
 - `content_type`
 
+### When a request fails
+
+A 4xx or 5xx is still a response: the inspector shows its status, headers, and
+body, so the API's own error message is visible.
+
+**Request failed** appears only when no response arrived, with the reason, for
+example `dns error: failed to lookup address`, `connection refused`, or a
+timeout. On macOS, `No route to host` for a LAN address means Beacon is off in
+System Settings → Privacy & Security → Local Network.
+
+If you send an edited request that has invalid fields, Beacon reports
+`Unsaved request is invalid: …` instead of sending the saved version.
+
 ## Click-to-Extract (Power Feature)
 
 When viewing a JSON body and you are editing a saved endpoint:

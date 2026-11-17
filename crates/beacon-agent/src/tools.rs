@@ -520,7 +520,7 @@ pub fn agent_tool_definitions() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "beacon_analyze_code",
-                "description": "Analyze a codebase to discover its API: routes (Express, FastAPI, Flask, Django, Laravel, Spring, Gin, Axum, Next.js, NestJS, Rails…), OpenAPI/Swagger specs, frameworks, auth scheme and a suggested base URL. Source is a local folder path (e.g. ~/code/shop-api) or a GitHub repo ('owner/repo' or https://github.com/owner/repo, needs GitHub connected in Settings). Read-only. Follow with beacon_import_code to turn it into a project.",
+                "description": "Analyze a codebase to discover its API: routes (Express, Fastify, Hono, NestJS, Next.js, FastAPI, Flask, Django, Laravel, Go, Axum, Rocket), OpenAPI/Swagger specs, frameworks, auth scheme and a suggested base URL. Source is a local folder path (e.g. ~/code/shop-api) or a GitHub repo ('owner/repo' or https://github.com/owner/repo, needs GitHub connected in Settings). Read-only. Follow with beacon_import_code to turn it into a project.",
                 "parameters": {
                     "type": "object",
                     "properties": {

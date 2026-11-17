@@ -38,3 +38,23 @@ Beacon has first-class support for importing Postman collections.
 5. Set up extractors for token chaining
 
 Next: [Variables & Templating](/features/variables)
+
+## Import from source code
+
+Beacon AI can build a project straight from a codebase. In the agent chat, ask
+for example:
+
+- "analisa ~/code/shop-api lalu jadikan project"
+- "import repo acme/shop-api"
+- "make a collection from https://github.com/acme/shop-api/tree/develop"
+
+The agent scans routes (Express, Fastify, Hono, NestJS, Next.js, FastAPI, Flask,
+Django, Laravel, Go, Axum, Rocket) and any OpenAPI/Swagger files,
+summarizes the frameworks, modules, and auth, then creates a project with a
+folder per module and a `base_url` environment. Ask it to fix names, folders, or
+request bodies before importing, or to add the endpoints to the current project.
+
+GitHub repositories need GitHub connected in **Settings** with a personal access
+token. Very large repositories are sampled (up to 45 code files), so check the
+result for missing routes.
+
