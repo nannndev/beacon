@@ -66,6 +66,7 @@ import {
 } from '../lib/agentApi'
 import { AgentModelPicker, parseModelItem } from './agent/AgentModelPicker'
 import { AgentSettings } from './agent/AgentSettings'
+import { CHARACTER_AVATARS } from './agent/characterAvatars'
 import { AgentCharacter } from './agent/AgentCharacter'
 
 interface AgentDrawerProps {
@@ -144,13 +145,13 @@ function uid(prefix: string) {
 
 type StreamPhase = 'connecting' | 'thinking' | 'executing' | 'writing'
 
-const CHARACTER_BADGES: Record<string, { emoji: string; label: string }> = {
-  default: { emoji: '🤝', label: 'Teammate' },
-  chill: { emoji: '😎', label: 'Chill' },
-  hype: { emoji: '🔥', label: 'Expressive' },
-  empathetic: { emoji: '💛', label: 'Empathetic' },
-  auditor: { emoji: '🛡️', label: 'Auditor' },
-  mentor: { emoji: '🧠', label: 'Mentor' },
+const CHARACTER_BADGES: Record<string, { avatar: string; label: string }> = {
+  default: { avatar: CHARACTER_AVATARS.default, label: 'Teammate' },
+  chill: { avatar: CHARACTER_AVATARS.chill, label: 'Chill' },
+  hype: { avatar: CHARACTER_AVATARS.hype, label: 'Expressive' },
+  empathetic: { avatar: CHARACTER_AVATARS.empathetic, label: 'Empathetic' },
+  auditor: { avatar: CHARACTER_AVATARS.auditor, label: 'Auditor' },
+  mentor: { avatar: CHARACTER_AVATARS.mentor, label: 'Mentor' },
 }
 
 function AgentActivityIndicator({
@@ -1377,7 +1378,11 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   title="Change AI character, tone, & emotion"
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border/80 bg-background/60 hover:bg-muted text-[9.5px] text-foreground/85 transition-colors cursor-pointer"
                 >
-                  <span>{badge.emoji}</span>
+                  <img
+                    src={badge.avatar}
+                    alt={badge.label}
+                    className="w-3.5 h-3.5 rounded-sm object-cover shrink-0"
+                  />
                   <span>{badge.label}</span>
                 </button>
               )

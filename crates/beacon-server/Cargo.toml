@@ -26,6 +26,7 @@ sha2 = "0.10"
 hex = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
 base64 = "0.22"
+regex = "1.10"
 # LAN project sharing: sqlite revisions, self-signed TLS identity, pinned peers.
 rand = "0.8"
 rcgen = "0.14"

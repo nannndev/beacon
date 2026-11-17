@@ -3,6 +3,7 @@ import { Check, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, X } from
 import { Button } from '../ui/button'
 import type { AgentCustomSkill, AgentPreferences } from '../../types'
 import { AGENT_GUIDES, DEFAULT_AGENT_PREFERENCES, parseSkillMarkdown } from '../../lib/agentApi'
+import { CHARACTER_AVATARS, type CharacterId } from './characterAvatars'
 
 interface Props {
   value: AgentPreferences
@@ -41,23 +42,21 @@ const Seg = <T extends string>({
   </div>
 )
 
-type CharacterId = NonNullable<AgentPreferences['character']>
-
 const CHARACTER_PRESETS: Array<{
   id: CharacterId
-  emoji: string
+  avatar: string
   name: string
   tagline: string
   tone: AgentPreferences['tone']
   emotion: AgentPreferences['emotion']
   style?: AgentPreferences['style']
 }> = [
-  { id: 'default', emoji: '🤝', name: 'Teammate', tagline: 'Friendly & natural', tone: 'friendly', emotion: 'warm' },
-  { id: 'chill', emoji: '😎', name: 'Chill Partner', tagline: 'Santai, akrab, ringan', tone: 'casual', emotion: 'warm' },
-  { id: 'hype', emoji: '🔥', name: 'Expressive', tagline: 'Antusias & suportif', tone: 'casual', emotion: 'expressive' },
-  { id: 'empathetic', emoji: '💛', name: 'Empathetic', tagline: 'Sabar & menenangkan', tone: 'friendly', emotion: 'empathetic' },
-  { id: 'auditor', emoji: '🛡️', name: 'Strict Auditor', tagline: 'Tegas, fokus QA', tone: 'formal', emotion: 'calm' },
-  { id: 'mentor', emoji: '🧠', name: 'Sharp Mentor', tagline: 'Membimbing detail', tone: 'friendly', emotion: 'warm', style: 'detailed' },
+  { id: 'default', avatar: CHARACTER_AVATARS.default, name: 'Teammate', tagline: 'Friendly & natural', tone: 'friendly', emotion: 'warm' },
+  { id: 'chill', avatar: CHARACTER_AVATARS.chill, name: 'Chill Partner', tagline: 'Santai, akrab, ringan', tone: 'casual', emotion: 'warm' },
+  { id: 'hype', avatar: CHARACTER_AVATARS.hype, name: 'Expressive', tagline: 'Antusias & suportif', tone: 'casual', emotion: 'expressive' },
+  { id: 'empathetic', avatar: CHARACTER_AVATARS.empathetic, name: 'Empathetic', tagline: 'Sabar & menenangkan', tone: 'friendly', emotion: 'empathetic' },
+  { id: 'auditor', avatar: CHARACTER_AVATARS.auditor, name: 'Strict Auditor', tagline: 'Tegas, fokus QA', tone: 'formal', emotion: 'calm' },
+  { id: 'mentor', avatar: CHARACTER_AVATARS.mentor, name: 'Sharp Mentor', tagline: 'Membimbing detail', tone: 'friendly', emotion: 'warm', style: 'detailed' },
 ]
 
 export function AgentSettings({ value, projectId, projectName, onSave, onClose }: Props) {
@@ -161,7 +160,11 @@ export function AgentSettings({ value, projectId, projectName, onSave, onClose }
                       : 'border-border bg-background/60 hover:bg-muted/60 hover:border-border/80'
                   }`}
                 >
-                  <span className="text-base leading-none mt-0.5 shrink-0 transition-transform duration-150 group-hover:scale-110">{c.emoji}</span>
+                  <img
+                    src={c.avatar}
+                    alt={c.name}
+                    className="w-8 h-8 rounded-lg object-cover shrink-0 border border-border/70 shadow-xs transition-transform duration-150 group-hover:scale-110"
+                  />
                   <div className="min-w-0">
                     <div className={`text-[11px] font-semibold truncate ${active ? 'text-emerald-400' : 'text-foreground'}`}>
                       {c.name}

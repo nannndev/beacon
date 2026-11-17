@@ -1,5 +1,6 @@
 pub mod config;
 pub mod environments;
+pub mod github;
 pub mod portable;
 pub mod history;
 pub mod git_sync;

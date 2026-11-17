@@ -4,6 +4,7 @@ pub mod monitor;
 pub mod history;
 pub mod file_sync;
 pub mod git;
+pub mod github;
 pub mod routes;
 pub mod sharing;
 pub mod state;
@@ -138,6 +139,13 @@ pub fn app_router(state: AppState) -> Router {
         .route("/sharing/projects/:id/members/:member_id", patch(routes::sharing::update_member).delete(routes::sharing::remove_member))
         .route("/sharing/join", post(routes::sharing::join_local_project))
         .route("/sharing/join/status", post(routes::sharing::joined_project_status))
+        .route("/github/status", get(routes::github::status))
+        .route("/github/connect", post(routes::github::connect))
+        .route("/github/disconnect", post(routes::github::disconnect))
+        .route("/github/repos", get(routes::github::repos))
+        .route("/github/summarize", post(routes::github::summarize_repo))
+        .route("/github/generate-collection", post(routes::github::generate_collection))
+        .route("/projects/summarize-code", post(routes::github::summarize_code))
         .route("/ws", get(routes::ws::ws_handler))
         .with_state(state);
 

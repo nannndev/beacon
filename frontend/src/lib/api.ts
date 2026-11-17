@@ -578,4 +578,78 @@ export const api = {
   historyHealth: () => req<HistoryHealth>('/history/health'),
   rebuildHistory: (confirm: string) =>
     req('/history/rebuild', jsonInit('POST', { confirm })),
+
+  // GitHub PAT + Repo / Project Code Summarizer
+  githubStatus: () => req<GitHubStatus>('/github/status'),
+  githubConnect: (token: string, api_base?: string) =>
+    req<GitHubStatus>('/github/connect', jsonInit('POST', { token, ...(api_base ? { api_base } : {}) })),
+  githubDisconnect: () => req<{ status: string; connected: boolean }>('/github/disconnect', jsonInit('POST', {})),
+  githubRepos: (q = '', per_page = 50) =>
+    req<{ repos: GitHubRepoSummary[] }>(
+      `/github/repos?per_page=${per_page}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
+    ),
+  githubSummarizeRepo: (repo: string, branch?: string, use_ai = true) =>
+    req<CodeSummaryResult>('/github/summarize', jsonInit('POST', { repo, ...(branch ? { branch } : {}), use_ai })),
+  summarizeLocalCode: (path: string, use_ai = true) =>
+    req<CodeSummaryResult>('/projects/summarize-code', jsonInit('POST', { path, use_ai })),
+  generateCodeCollection: (payload: {
+    name: string
+    base_url: string
+    project_id?: string
+    endpoints: DiscoveredEndpoint[]
+  }) =>
+    req<{ status: string; project_id: string; endpoints_added: number }>('/github/generate-collection', jsonInit('POST', payload)),
+}
+
+export interface GitHubStatus {
+  connected: boolean
+  login?: string | null
+  name?: string | null
+  avatar_url?: string | null
+  html_url?: string | null
+  scopes: string[]
+  api_base?: string | null
+  connected_at?: string | null
+}
+
+export interface GitHubRepoSummary {
+  full_name: string
+  name: string
+  owner: string
+  private: boolean
+  description?: string | null
+  language?: string | null
+  default_branch: string
+  html_url: string
+  updated_at?: string | null
+  stargazers_count: number
+}
+
+export interface DiscoveredEndpoint {
+  id: string
+  name: string
+  method: string
+  path: string
+  folder: string
+  source_file: string
+  description: string
+  auth_hint?: string | null
+  sample_body?: string | null
+  selected: boolean
+}
+
+export interface CodeSummaryResult {
+  source_type: string
+  source_label: string
+  suggested_name: string
+  branch?: string | null
+  default_base_url: string
+  frameworks: string[]
+  auth_summary: string
+  summary_markdown: string
+  ai_enhanced: boolean
+  spec_files: string[]
+  files_scanned: number
+  folders: string[]
+  endpoints: DiscoveredEndpoint[]
 }

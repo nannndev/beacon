@@ -1337,6 +1337,7 @@ function App() {
         onCloneRepository={cloneProjectRepository}
         onImportRepositoryCandidate={importRepositoryCandidate}
         onInitializeRepository={initializeRepositoryProject}
+        onRefreshAll={fetchAll}
       />
       <EnvironmentsDialog open={showEnvDialog} onOpenChange={setShowEnvDialog} project={currentProject} activeEnvId={currentProject?.current_environment_id} onSave={saveEnvironments} />
       <GlobalVarsDialog open={showGlobalDialog} onOpenChange={setShowGlobalDialog} initial={globalVariables} onSave={saveGlobal} />

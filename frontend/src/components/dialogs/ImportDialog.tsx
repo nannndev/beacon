@@ -4,9 +4,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import { JsonCodeEditor } from '../JsonCodeEditor'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
-import { Upload, FileJson, ClipboardPaste, AlertCircle, CheckCircle2, FolderTree, Globe2, Loader2, GitBranch, FolderOpen, SearchCheck } from 'lucide-react'
+import { Upload, FileJson, ClipboardPaste, AlertCircle, CheckCircle2, FolderTree, Globe2, Loader2, GitBranch, FolderOpen, SearchCheck, Code2 } from 'lucide-react'
 import type { CloneRepositoryResult, ImportPreview } from '../../lib/api'
 import { isDesktop } from '../../lib/platform'
+import { GitHubCodeSummaryPanel } from './GitHubCodeSummaryPanel'
 
 interface Props {
   open: boolean
@@ -23,11 +24,12 @@ interface Props {
   onCloneRepository: (url: string, destination: string) => Promise<CloneRepositoryResult>
   onImportRepositoryCandidate: (path: string, candidate: string) => Promise<void>
   onInitializeRepository: (path: string, name: string) => Promise<void>
+  onRefreshAll?: () => Promise<void> | void
 }
 
-type ImportTab = 'upload' | 'paste' | 'git' | 'folder'
+type ImportTab = 'upload' | 'paste' | 'git' | 'folder' | 'github'
 
-export function ImportDialog({ open, onOpenChange, onImport, onPreview, fetchTemplate, onOpenExistingFolder, onCloneRepository, onImportRepositoryCandidate, onInitializeRepository }: Props) {
+export function ImportDialog({ open, onOpenChange, onImport, onPreview, fetchTemplate, onOpenExistingFolder, onCloneRepository, onImportRepositoryCandidate, onInitializeRepository, onRefreshAll }: Props) {
   const [tab, setTab] = useState<ImportTab>('upload')
   const [raw, setRaw] = useState('')
   const [fileName, setFileName] = useState('')
@@ -212,11 +214,12 @@ export function ImportDialog({ open, onOpenChange, onImport, onPreview, fetchTem
         </div>
 
         <Tabs value={tab} onValueChange={(v) => { setTab(v as ImportTab); setError(''); setPreviewError('') }} className="mt-1">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-4">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-5">
             <TabsTrigger value="upload" className="gap-1.5"><Upload className="h-3.5 w-3.5" /> File</TabsTrigger>
             <TabsTrigger value="paste" className="gap-1.5"><ClipboardPaste className="h-3.5 w-3.5" /> Paste</TabsTrigger>
             <TabsTrigger value="git" className="gap-1.5"><GitBranch className="h-3.5 w-3.5" /> Git repo</TabsTrigger>
             <TabsTrigger value="folder" className="gap-1.5"><FolderOpen className="h-3.5 w-3.5" /> Folder</TabsTrigger>
+            <TabsTrigger value="github" className="gap-1.5"><Code2 className="h-3.5 w-3.5" /> Code / PAT</TabsTrigger>
           </TabsList>
 
           <TabsContent value="upload" className="mt-3">
@@ -311,6 +314,12 @@ export function ImportDialog({ open, onOpenChange, onImport, onPreview, fetchTem
               </div>
             </Field>
           </TabsContent>
+          <TabsContent value="github" className="mt-3">
+            <GitHubCodeSummaryPanel
+              onGenerated={async () => { await onRefreshAll?.() }}
+              onClose={() => onOpenChange(false)}
+            />
+          </TabsContent>
         </Tabs>
 
         {fileImportTab && checking && (
@@ -363,10 +372,12 @@ export function ImportDialog({ open, onOpenChange, onImport, onPreview, fetchTem
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || !canSubmit}>{submitLabel}</Button>
-        </DialogFooter>
+        {tab !== 'github' && (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={submit} disabled={busy || !canSubmit}>{submitLabel}</Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )
